@@ -1,0 +1,16 @@
+[Unit]
+Description=OpsSwarm Enterprise OpenClaw+GitHub
+After=network-online.target openclaw-gateway.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/opsswarm
+EnvironmentFile=/opt/opsswarm/.env
+ExecStart=/opt/opsswarm/.venv/bin/uvicorn opsswarm.api:app --host 127.0.0.1 --port 8088
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
