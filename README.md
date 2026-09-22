@@ -41,25 +41,42 @@ For the implementation-aligned architecture and trust boundaries, see [`docs/ARC
 
 ## Canonical incident lifecycle
 
-```text
-Monitoring/User
-    -> GitHub Issue
-    -> OpsSwarm webhook
-    -> S1 incident normalization / triage
-    -> S2 read-only investigation TaskGraph
-    -> S4 OpenClaw specialist dispatch
-    -> S5 evidence aggregation
-    -> root-cause synthesis
-    -> S3 remediation plan
-    -> policy classification
-       -> AUTO for allowed low-risk work, or
-       -> WAITING_APPROVAL / WAITING_DECISION / WAITING_INPUT
-    -> explicit GitHub human command when required
-    -> S5 bounded recovery execution through OpenClaw
-    -> S6 fail-closed resilience / ambiguity handling
-    -> S7 independent recovery verification
-    -> final GitHub summary + postmortem
-    -> close Issue only after verified recovery
+```mermaid
+flowchart TD
+    SRC[Monitoring / User] --> GH[GitHub Issue]
+    GH --> API[OpsSwarm webhook / monitoring ingress]
+    API --> S8[S8 OrchestrationHub]
+    S8 --> S1[S1 IntentGuard<br/>normalize and triage]
+    S1 --> S2[S2 TaskGraph<br/>read-only investigation DAG]
+    S2 --> S4[S4 RoleDispatch]
+    S4 --> OC[OpenClaw specialist agents]
+    OC --> S5A[S5 CollabExec<br/>structured findings and evidence]
+    S5A --> RCA[Root-cause synthesis]
+    RCA --> S3[S3 HorizonPlan<br/>remediation options]
+    S3 --> POLICY{Policy classification}
+
+    POLICY -->|AUTO| EXEC[S5 bounded recovery execution]
+    POLICY -->|risky write| WA[WAITING_APPROVAL]
+    POLICY -->|multiple options / ambiguous state| WD[WAITING_DECISION]
+    POLICY -->|missing business context| WI[WAITING_INPUT]
+    POLICY -->|DENY| FAIL[FAILED / fail closed]
+
+    WA --> CMD[Explicit /opsswarm command in GitHub]
+    WD --> CMD
+    WI --> CMD
+    CMD --> S8
+    S8 -->|authorized approval / decision / input| EXEC
+
+    EXEC --> RESULT{Execution result}
+    RESULT -->|success| S7[S7 ObserveVerify<br/>independent recovery verification]
+    RESULT -->|ambiguous write| S6[S6 ResilienceGuard<br/>reconcile; never blind retry]
+    RESULT -->|definite failure| FAIL
+    S6 --> WD
+
+    S7 --> VERIFIED{Verified above threshold?}
+    VERIFIED -->|yes| FINAL[Final GitHub summary + postmortem]
+    FINAL --> CLOSE[Close Issue]
+    VERIFIED -->|no| FAIL2[FAILED / Issue remains open]
 ```
 
 The exact implemented runtime states are defined by `RunState` in `opsswarm/models.py` and documented in [`docs/FLOWS.md`](docs/FLOWS.md).
