@@ -31,6 +31,17 @@ Monitoring/User
     -> close issue
 ```
 
+### Architecture documentation
+
+The repository includes implementation-aligned architecture and flow documentation with Mermaid diagrams:
+
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system context, control plane vs OpenClaw agent plane, S1-S8 responsibility map, policy/human authority, evidence/persistence, trust boundaries, and architecture invariants.
+- [`docs/FLOWS.md`](docs/FLOWS.md) — human and machine incident ingress, investigation, planning, approval/decision/input gates, execution, ambiguous-write handling, exact `RunState` state machine, S7 verification, and issue closure.
+- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — operator-facing incident creation, human commands, and runtime evidence locations.
+- [`docs/SECURITY.md`](docs/SECURITY.md) — security and authority boundaries.
+
+The diagrams describe **implemented behavior**. Planned hardening such as stronger distributed idempotency or additional runtime states must not be represented as current behavior until code and tests exist.
+
 ### Human commands
 
 Only explicit commands carry authority for side effects:
@@ -90,4 +101,4 @@ For machine incidents, send normalized monitoring events to:
 POST /hooks/monitoring
 ```
 
-See `docs/INSTALLATION.md`, `docs/ARCHITECTURE.md`, and `docs/OPERATIONS.md`.
+See `docs/INSTALLATION.md`, `docs/ARCHITECTURE.md`, `docs/FLOWS.md`, and `docs/OPERATIONS.md`.
