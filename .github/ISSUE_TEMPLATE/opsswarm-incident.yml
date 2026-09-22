@@ -1,0 +1,27 @@
+name: OpsSwarm Incident
+description: Open an incident for autonomous investigation and governed recovery
+title: "[Incident] "
+labels: ["opsswarm", "incident"]
+body:
+  - type: input
+    id: service
+    attributes: {label: Service, placeholder: booking-api}
+    validations: {required: true}
+  - type: textarea
+    id: symptoms
+    attributes: {label: Symptoms, description: What is failing?}
+    validations: {required: true}
+  - type: textarea
+    id: impact
+    attributes: {label: Customer impact, description: What are users/business experiencing?}
+    validations: {required: true}
+  - type: dropdown
+    id: environment
+    attributes: {label: Environment, options: [production, staging, development]}
+    validations: {required: true}
+  - type: input
+    id: observed
+    attributes: {label: Observed since, placeholder: "2026-09-21 09:05 +07:00"}
+  - type: textarea
+    id: additional
+    attributes: {label: Additional information}
