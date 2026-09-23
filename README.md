@@ -41,28 +41,80 @@ For the implementation-aligned architecture and trust boundaries, see [`docs/ARC
 
 ## Canonical incident lifecycle
 
-```text
-Monitoring/User
-    -> GitHub Issue
-    -> OpsSwarm webhook
-    -> S1 incident normalization / triage
-    -> S2 read-only investigation TaskGraph
-    -> S4 OpenClaw specialist dispatch
-    -> S5 evidence aggregation
-    -> root-cause synthesis
-    -> S3 remediation plan
-    -> policy classification
-       -> AUTO for allowed low-risk work, or
-       -> WAITING_APPROVAL / WAITING_DECISION / WAITING_INPUT
-    -> explicit GitHub human command when required
-    -> S5 bounded recovery execution through OpenClaw
-    -> S6 fail-closed resilience / ambiguity handling
-    -> S7 independent recovery verification
-    -> final GitHub summary + postmortem
-    -> close Issue only after verified recovery
+```mermaid
+flowchart TD
+    A["🚨 Monitoring / User<br/>Incident detected"]
+        --> B["📝 GitHub Issue<br/>System of Record"]
+
+    B --> C["🌐 OpsSwarm Webhook / API"]
+    C --> S8["🧭 S8 OrchestrationHub<br/>Governed Control Plane"]
+
+    S8 --> S1["🛡️ S1 IntentGuard<br/>Normalize & bound incident context"]
+    S1 --> S2["🧩 S2 TaskGraph<br/>Build read-only investigation DAG"]
+
+    S2 --> S4["👥 S4 RoleDispatch<br/>Assign specialist agents"]
+    S4 --> OC["🤖 OpenClaw Runtime"]
+
+    OC --> AG1["📈 Observability"]
+    OC --> AG2["💻 Application"]
+    OC --> AG3["🖥️ Infrastructure"]
+    OC --> AG4["🗄️ Database"]
+
+    AG1 --> S5
+    AG2 --> S5
+    AG3 --> S5
+    AG4 --> S5
+
+    S5["🔎 S5 CollabExec<br/>Aggregate findings & evidence"]
+    S5 --> RCA["🧠 Root-Cause Synthesis<br/>Evidence-backed RCA"]
+    RCA --> S3["🗺️ S3 HorizonPlan<br/>Recovery options & plan"]
+
+    S3 --> P{"⚖️ Policy Gate"}
+
+    P -->|"READ / SAFE_WRITE"| AUTO["✅ AUTO"]
+    P -->|"RISKY_WRITE"| WA["⏸️ WAITING_APPROVAL"]
+    P -->|"Multiple options"| WD["🔀 WAITING_DECISION"]
+    P -->|"Missing context"| WI["❓ WAITING_INPUT"]
+    P -->|"DESTRUCTIVE / DENY"| FAIL["⛔ Fail Closed"]
+
+    WA --> GH["👤 Human Operator<br/>GitHub Issue Comment"]
+    WD --> GH
+    WI --> GH
+
+    GH --> CMD{"/opsswarm command?"}
+
+    CMD -->|"approve <option-id>"| AUTH["🔐 Permission + Policy Check"]
+    CMD -->|"investigate / provide"| S8
+    CMD -->|"abort"| ABORT["🛑 ABORTED"]
+    CMD -->|"free text"| INFO["ℹ️ Information only<br/>No side-effect authority"]
+
+    AUTH -->|"authorized"| EXEC["⚙️ S5 Bounded Recovery Execution<br/>via OpenClaw"]
+    AUTH -->|"not authorized"| FAIL
+    AUTO --> EXEC
+
+    EXEC --> OUT{"📡 Execution outcome"}
+
+    OUT -->|"success"| S7["🔬 S7 ObserveVerify<br/>Independent Verification"]
+    OUT -->|"definite failure"| FAIL
+    OUT -->|"ambiguous"| S6["🛡️ S6 ResilienceGuard<br/>No blind retry"]
+
+    S6 --> RECON["🔍 Reconcile external evidence"]
+    RECON --> RC{"Effect known?"}
+
+    RC -->|"effect confirmed"| S7
+    RC -->|"no effect + safe retry"| EXEC
+    RC -->|"still unknown"| WD
+
+    S7 --> V{"✅ Recovery verified?"}
+
+    V -->|"yes"| DONE["📋 Final Summary + Postmortem"]
+    DONE --> CLOSE["🏁 Close GitHub Issue"]
+
+    V -->|"no"| KEEP["🔁 Keep Issue Open<br/>Continue investigation"]
+    KEEP --> S8
 ```
 
-The exact implemented runtime states are defined by `RunState` in `opsswarm/models.py` and documented in [`docs/FLOWS.md`](docs/FLOWS.md).
+The lifecycle diagram is intentionally icon-assisted for readability. The exact implemented runtime states are defined by `RunState` in `opsswarm/models.py` and documented in [`docs/FLOWS.md`](docs/FLOWS.md). The diagram does not introduce a separate `RECOVERING` state.
 
 ## S1–S8 Skill model
 
