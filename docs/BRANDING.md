@@ -2,9 +2,9 @@
 
 ## Primary brand emblem
 
-The canonical OpsSwarm Enterprise emblem is the selected transparent shield-based visual identity approved for this project. It is intentionally designed without the project name inside the mark so the emblem can work independently as a reusable brand symbol.
+![OpsSwarm Enterprise brand emblem](assets/opsswarm-enterprise-brand-emblem.png)
 
-> The binary master asset is intentionally not embedded in this PR until the exact selected source image can be committed without transformation or truncation.
+`docs/assets/opsswarm-enterprise-brand-emblem.png` is the canonical project emblem for OpsSwarm Enterprise. It is the selected transparent shield-based visual identity approved for this project and intentionally contains no project-name text so the emblem can work independently as a reusable brand symbol.
 
 The visual system is designed to communicate the project's identity without depending on any one vendor, agent runtime, or enterprise tool.
 
@@ -21,6 +21,12 @@ The visual system is designed to communicate the project's identity without depe
 - **Enterprise skyline** — applicability to real enterprise and smart-environment operations.
 
 The emblem intentionally does **not** use a literal bee as the primary identity. Instead, the `swarm` concept is expressed through distributed nodes, orbital coordination, modular structure, and a protected central control core.
+
+## Primary asset
+
+- `docs/assets/opsswarm-enterprise-brand-emblem.png` — canonical transparent PNG emblem.
+
+The repository copy is intended for GitHub rendering and project identification. Higher-resolution derivatives may be maintained for presentation, print, social, and application assets while preserving this same approved visual identity.
 
 ## Recommended usage
 
