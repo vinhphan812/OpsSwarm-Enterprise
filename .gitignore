@@ -1,11 +1,20 @@
-.venv/
+.venv
+venv
 __pycache__/
 .pytest_cache/
+.mypy_cache/
 *.pyc
 .env
 runtime-data/
 *.log
 .DS_Store
-*.txt
+.vscode
+.idea
 
 .gitnexus
+dist*
+build
+.ruff_cache
+artifacts/
+*.egg-info/
+.coverage

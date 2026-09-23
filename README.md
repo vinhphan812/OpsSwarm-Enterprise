@@ -1,10 +1,18 @@
 # OpsSwarm Enterprise
 
-**Governed multi-agent incident response with OpenClaw as the AI runtime and GitHub Issues as the human control surface.**
+**Governed multi-agent incident response with OpenClaw as the AI runtime and GitHub Issues as the human control surface.
+**
 
-OpsSwarm Enterprise coordinates incident investigation, recovery planning, human authorization, bounded execution, evidence capture, and independent verification through eight governed Skills (S1–S8). It is intentionally designed so that AI agents can reason and use tools, while OpsSwarm retains workflow authority, policy enforcement, state, evidence correlation, and terminal decisions.
+OpsSwarm Enterprise coordinates incident investigation, recovery planning, human authorization, bounded execution,
+evidence capture, and independent verification through eight governed Skills (S1–S8). It is intentionally designed so
+that AI agents can reason and use tools, while OpsSwarm retains workflow authority, policy enforcement, state, evidence
+correlation, and terminal decisions.
 
-> **Current status:** the runtime is version **2.1.0**. Documentation and quality hardening for **v2.2** are in progress. The repository currently has a working OpenClaw + GitHub control architecture and baseline tests, but the planned 192 Skill self-tests, full CI/security gates, stronger idempotency/restart guarantees, and reproducible release pipeline are not yet complete. See [v2.2 Quality & Skill Hardening](../../issues/1).
+> **Current status:** the runtime is version **2.1.0**. Documentation and quality hardening for **v2.2** are in
+> progress. The repository currently has a working OpenClaw + GitHub control architecture and baseline tests, but the
+> planned 192 Skill self-tests, full CI/security gates, stronger idempotency/restart guarantees, and reproducible
+> release
+> pipeline are not yet complete. See [v2.2 Quality & Skill Hardening](../../issues/1).
 
 ## Architecture principles
 
@@ -37,7 +45,8 @@ flowchart LR
     S8 --> GH
 ```
 
-For the implementation-aligned architecture and trust boundaries, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). For runtime sequences and state transitions, see [`docs/FLOWS.md`](docs/FLOWS.md).
+For the implementation-aligned architecture and trust boundaries, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+For runtime sequences and state transitions, see [`docs/FLOWS.md`](docs/FLOWS.md).
 
 ## Canonical incident lifecycle
 
@@ -79,22 +88,25 @@ flowchart TD
     VERIFIED -->|no| FAIL2[FAILED / Issue remains open]
 ```
 
-The exact implemented runtime states are defined by `RunState` in `opsswarm/models.py` and documented in [`docs/FLOWS.md`](docs/FLOWS.md).
+The exact implemented runtime states are defined by `RunState` in `opsswarm/models.py` and documented in [
+`docs/FLOWS.md`](docs/FLOWS.md).
 
 ## S1–S8 Skill model
 
-| Skill | Responsibility |
-| --- | --- |
-| **S1 IntentGuard** | Normalize the GitHub Issue into bounded incident context without inventing missing facts. |
-| **S2 TaskGraph** | Build the minimum read-only investigation DAG using OBSERVE / INVESTIGATE / DIAGNOSE tasks. |
-| **S3 HorizonPlan** | Produce evidence-supported remediation options and risk-aware recovery plans. |
-| **S4 RoleDispatch** | Dispatch dependency-ready tasks to bounded OpenClaw specialist profiles. |
-| **S5 CollabExec** | Aggregate structured evidence and execute only the selected/authorized recovery option. |
-| **S6 ResilienceGuard** | Enforce fail-closed handling for policy gates, ambiguity, rejection, and human escalation. |
-| **S7 ObserveVerify** | Independently verify service/business recovery using read-only evidence. |
+| Skill                   | Responsibility                                                                                                              |
+|-------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| **S1 IntentGuard**      | Normalize the GitHub Issue into bounded incident context without inventing missing facts.                                   |
+| **S2 TaskGraph**        | Build the minimum read-only investigation DAG using OBSERVE / INVESTIGATE / DIAGNOSE tasks.                                 |
+| **S3 HorizonPlan**      | Produce evidence-supported remediation options and risk-aware recovery plans.                                               |
+| **S4 RoleDispatch**     | Dispatch dependency-ready tasks to bounded OpenClaw specialist profiles.                                                    |
+| **S5 CollabExec**       | Aggregate structured evidence and execute only the selected/authorized recovery option.                                     |
+| **S6 ResilienceGuard**  | Enforce fail-closed handling for policy gates, ambiguity, rejection, and human escalation.                                  |
+| **S7 ObserveVerify**    | Independently verify service/business recovery using read-only evidence.                                                    |
 | **S8 OrchestrationHub** | Own lifecycle, state transitions, cross-Skill ordering, GitHub synchronization, evidence correlation, and terminal outcome. |
 
-The current implementation maps these architectural Skills across `opsswarm/orchestrator.py`, `opsswarm/skill_logic.py`, `opsswarm/prompts.py`, `opsswarm/policy.py`, and the domain models. Not every Skill is a separate Python service/class today.
+The current implementation maps these architectural Skills across `opsswarm/orchestrator.py`, `opsswarm/skill_logic.py`,
+`opsswarm/prompts.py`, `opsswarm/policy.py`, and the domain models. Not every Skill is a separate Python service/class
+today.
 
 ## OpenClaw agent profiles
 
@@ -108,7 +120,8 @@ The supplied OpenClaw configuration defines these profiles:
 - `opsswarm-recovery-responder`
 - `opsswarm-communications-postmortem`
 
-Investigation profiles are intended to operate read-only. Recovery execution is bounded by OpsSwarm policy and explicit authorization rules.
+Investigation profiles are intended to operate read-only. Recovery execution is bounded by OpsSwarm policy and explicit
+authorization rules.
 
 ## Human control through GitHub
 
@@ -127,12 +140,12 @@ A comment such as `rollback looks fine` is stored as information only and **cann
 
 Default authorization policy in `config/production.yaml`:
 
-| Risk | Default policy |
-| --- | --- |
-| `read` | `AUTO` |
-| `safe_write` | `AUTO` |
+| Risk          | Default policy   |
+|---------------|------------------|
+| `read`        | `AUTO`           |
+| `safe_write`  | `AUTO`           |
 | `risky_write` | `HUMAN_APPROVAL` |
-| `destructive` | `DENY` |
+| `destructive` | `DENY`           |
 
 By default, input requires at least GitHub `read` permission, while approval/abort requires `maintain` permission.
 
@@ -141,7 +154,8 @@ By default, input requires at least GitHub `read` permission, while approval/abo
 - Python **3.11+**
 - Git
 - A GitHub repository with Issues enabled
-- A GitHub token with permissions sufficient to read/write Issues and read collaborator permission for the target repository
+- A GitHub token with permissions sufficient to read/write Issues and read collaborator permission for the target
+  repository
 - A publicly/reversibly reachable HTTPS endpoint for GitHub webhooks in non-local deployments
 - OpenClaw installed and configured with a model provider
 - Enterprise tools/APIs exposed to the appropriate OpenClaw profiles according to least privilege
@@ -179,7 +193,8 @@ OPSWARM_CONFIG=config/production.yaml
 OPSWARM_DATA_DIR=runtime-data
 ```
 
-The current runtime reads environment variables from the process environment; it does **not** automatically load `.env`. On a Unix-like shell you can load the file with:
+The current runtime reads environment variables from the process environment; it does **not** automatically load `.env`.
+On a Unix-like shell you can load the file with:
 
 ```bash
 set -a
@@ -187,17 +202,20 @@ source .env
 set +a
 ```
 
-For production, prefer your service manager, container runtime, or secret manager instead of storing production credentials in a shell-loaded file.
+For production, prefer your service manager, container runtime, or secret manager instead of storing production
+credentials in a shell-loaded file.
 
 ### 3. Install and configure OpenClaw
 
-Install OpenClaw separately and configure/authenticate the model provider you intend to use. Initialize a baseline gateway:
+Install OpenClaw separately and configure/authenticate the model provider you intend to use. Initialize a baseline
+gateway:
 
 ```bash
 openclaw setup --baseline
 ```
 
-Edit `openclaw/openclaw.patch.json5` and replace every repository-path placeholder with the absolute path to this checkout, then validate and apply it:
+Edit `openclaw/openclaw.patch.json5` and replace every repository-path placeholder with the absolute path to this
+checkout, then validate and apply it:
 
 ```bash
 openclaw config patch --file openclaw/openclaw.patch.json5 --dry-run
@@ -216,13 +234,37 @@ openclaw agent \
   --json
 ```
 
-### 4. Run baseline tests
+### 4. Run local quality gates
+
+Install the development extras, then use the Make targets that mirror the `CI` workflow:
 
 ```bash
-pytest -q
+make install
+make lint        # Ruff lint plus the explicitly scoped format check
+make typecheck   # Mypy over the opsswarm package
+make test-unit   # Tests marked unit
+make test        # Complete test suite
+make coverage    # Complete suite with the required >=90% coverage gate
+make build       # Wheel and source distribution
+make ci          # Lint, type check, test, coverage, and build
 ```
 
-The repository currently contains baseline tests for policy, command authority, webhook signatures, issue parsing, OpenClaw JSON parsing, and core orchestrator behavior. The full v2.2 layered test campaign and 192 per-Skill self-tests are tracked separately and must not be assumed complete yet.
+The equivalent direct commands are:
+
+```bash
+python -m ruff check .
+python -m ruff format --check opsswarm/commands.py opsswarm/policy.py opsswarm/webhook.py
+python -m mypy
+python -m pytest -q -m unit
+python -m pytest -q
+python -m pytest -q --cov=opsswarm --cov-report=term-missing --cov-fail-under=90
+python -m build
+```
+
+The checked-in configuration for Ruff, Mypy, pytest, coverage, and build tooling is in `pyproject.toml`. The format gate
+is deliberately scoped to the listed runtime modules while legacy formatting debt is retired; lint still checks the
+repository for syntax and undefined-name failures. A local failure is expected whenever any enforced gate is unmet,
+including coverage below 90%. These commands describe local parity only and do not assert that GitHub Actions has run.
 
 ### 5. Start OpsSwarm
 
@@ -240,7 +282,11 @@ curl http://localhost:8088/health
 Expected shape:
 
 ```json
-{"ok": true, "version": "2.1.0", "architecture": "openclaw+github"}
+{
+  "ok": true,
+  "version": "2.1.0",
+  "architecture": "openclaw+github"
+}
 ```
 
 ## GitHub webhook setup
@@ -256,7 +302,8 @@ Events:       Issues, Issue comments
 
 OpsSwarm validates the GitHub webhook body with HMAC-SHA256 before accepting the event.
 
-For a human-created incident, open an Issue using the supplied incident template and keep the required `opsswarm` label. An `issues.opened` webhook starts the governed run.
+For a human-created incident, open an Issue using the supplied incident template and keep the required `opsswarm` label.
+An `issues.opened` webhook starts the governed run.
 
 ## Machine-created monitoring incidents
 
@@ -307,9 +354,13 @@ runtime-data/runs/*.json
 runtime-data/evidence/*.jsonl
 ```
 
-The run store persists the current `RunRecord`; the evidence store appends structured provenance such as normalized incident context, task graphs, findings, root-cause artifacts, plans, human gates/approvals, execution results, and S7 verification.
+The run store persists the current `RunRecord`; the evidence store appends structured provenance such as normalized
+incident context, task graphs, findings, root-cause artifacts, plans, human gates/approvals, execution results, and S7
+verification.
 
-The current runtime reloads persisted run records at startup. Stronger distributed webhook deduplication, cross-process concurrency control, and restart/reconciliation semantics are part of the v2.2 hardening work and are **not** claimed as completed guarantees.
+The current runtime reloads persisted run records at startup. Stronger distributed webhook deduplication, cross-process
+concurrency control, and restart/reconciliation semantics are part of the v2.2 hardening work and are **not** claimed as
+completed guarantees.
 
 ## Security and authority model
 
@@ -326,7 +377,8 @@ Key invariants:
 - S7 independently verifies recovery; executor success is context, not proof.
 - Failed or unverified recovery leaves the Issue open.
 
-For production deployments, also apply OpenClaw sandbox/tool allowlists and least-privilege credentials for every specialist profile, especially the recovery responder.
+For production deployments, also apply OpenClaw sandbox/tool allowlists and least-privilege credentials for every
+specialist profile, especially the recovery responder.
 
 See [`docs/SECURITY.md`](docs/SECURITY.md).
 
@@ -371,8 +423,10 @@ OpsSwarm-Enterprise/
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system context, S1–S8 responsibility map, authority, evidence, trust boundaries, invariants.
-- [`docs/FLOWS.md`](docs/FLOWS.md) — end-to-end sequences, exact runtime state machine, human gates, ambiguous-write handling.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system context, S1–S8 responsibility map, authority, evidence, trust
+  boundaries, invariants.
+- [`docs/FLOWS.md`](docs/FLOWS.md) — end-to-end sequences, exact runtime state machine, human gates, ambiguous-write
+  handling.
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — installation and OpenClaw/GitHub setup.
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — human-created and machine-created incident operation.
 - [`docs/SECURITY.md`](docs/SECURITY.md) — security and authority model.
@@ -383,8 +437,8 @@ OpsSwarm-Enterprise/
 The following should be treated as open hardening areas rather than production guarantees:
 
 - no complete 192-test Skill campaign yet;
-- no mandatory GitHub Actions CI/security/release pipeline yet;
-- no distributed GitHub webhook delivery deduplication yet;
+- the repository includes a SHA-pinned GitHub Actions `CI` workflow for Python 3.11–3.13 quality gates; local commands
+  are documented above, but no GitHub execution is claimed here;
 - no strong multi-process transaction/locking model yet;
 - persistence is currently file-based rather than a transactional database;
 - restart/resume behavior is not yet proven for every state/fault combination;
@@ -397,6 +451,7 @@ See issues #1, #2, #3, #4, #5, #6, #7, #8, and #9 for the v2.2 hardening plan.
 
 OpsSwarm Enterprise is released under the **MIT License**. See [`LICENSE`](LICENSE).
 
-The MIT license applies to the original project material covered by this repository's license. Third-party libraries, tools, generated integrations, or vendored materials remain subject to their respective licenses and notices.
+The MIT license applies to the original project material covered by this repository's license. Third-party libraries,
+tools, generated integrations, or vendored materials remain subject to their respective licenses and notices.
 
 Copyright (c) 2026 Phan Thanh Vinh.

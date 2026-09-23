@@ -1,0 +1,71 @@
+# Skill-Gate Configuration
+# Per SKILL_GATE_VALIDATOR_CONTRACT_SPEC.md
+
+# Minimum test threshold per skill (Issue #3 mandate)
+min_tests_per_skill: 24
+
+# Test category expectations (optional - for reporting)
+test_categories:
+  normal: 8
+  boundary: 6
+  fault: 8
+  cross_skill: 2
+
+# Skills configuration
+skills:
+  - id: s1-intent-guard
+    name: IntentGuard
+    pipeline_phase: triage
+    required: true
+
+  - id: s2-task-graph
+    name: TaskGraph
+    pipeline_phase: planning
+    required: true
+
+  - id: s3-horizon-plan
+    name: HorizonPlan
+    pipeline_phase: planning
+    required: true
+
+  - id: s4-role-dispatch
+    name: RoleDispatch
+    pipeline_phase: execution
+    required: true
+
+  - id: s5-collab-exec
+    name: CollabExec
+    pipeline_phase: execution
+    required: true
+
+  - id: s6-resilience-guard
+    name: ResilienceGuard
+    pipeline_phase: execution
+    required: true
+
+  - id: s7-observe-verify
+    name: ObserveVerify
+    pipeline_phase: verification
+    required: true
+
+  - id: s8-orchestration-hub
+    name: OrchestrationHub
+    pipeline_phase: orchestration
+    required: true
+
+# Evidence storage configuration
+evidence:
+  output_dir: runtime-data/evidence
+  format: jsonl
+  retention: append_only
+
+# Validation modes
+validation:
+  static:
+    - frontmatter_check
+    - structure_check
+
+  runnable:
+    - dependency_check
+    - test_threshold_check
+    - cross_skill_contract_check

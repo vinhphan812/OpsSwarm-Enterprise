@@ -71,19 +71,19 @@ Repository: <name> (<path>)   Worktree: <path>   Index: <commit>, <n> behind HEA
 ## Understanding Output
 
 | Depth | Risk Level       | Meaning                  |
-| ----- | ---------------- | ------------------------ |
+|-------|------------------|--------------------------|
 | d=1   | **WILL BREAK**   | Direct callers/importers |
 | d=2   | LIKELY AFFECTED  | Indirect dependencies    |
 | d=3   | MAY NEED TESTING | Transitive effects       |
 
 ## Risk Assessment
 
-| Affected                       | Risk     |
-| ------------------------------ | -------- |
-| <5 symbols, few processes      | LOW      |
-| 5-15 symbols, 2-5 processes    | MEDIUM   |
-| >15 symbols or many processes  | HIGH     |
-| Critical path (auth, payments) | CRITICAL |
+| Affected                       | Risk        |
+|--------------------------------|-------------|
+| <5 symbols, few processes      | LOW         |
+| 5-15 symbols, 2-5 processes    | MEDIUM      |
+| >15 symbols or many processes  | HIGH        |
+| Critical path (auth, payments) | CRITICAL    |
 | **Zero callers found**         | **UNKNOWN** |
 
 `UNKNOWN` is not a low rung on this scale — it means the walk could not answer.
@@ -104,7 +104,8 @@ symbols before enrichment.
 
 ## Tools
 
-**impact** — the primary tool for symbol blast radius. If MCP is unavailable, use `node .gitnexus/run.cjs impact <symbol> --direction upstream --repo .` instead:
+**impact** — the primary tool for symbol blast radius. If MCP is unavailable, use
+`node .gitnexus/run.cjs impact <symbol> --direction upstream --repo .` instead:
 
 ```
 impact({
@@ -123,7 +124,8 @@ impact({
   - authRouter (src/routes/auth.ts:22) [CALLS, 95%]
 ```
 
-**detect_changes** — git-diff based impact analysis. If MCP is unavailable, use `node .gitnexus/run.cjs detect-changes --scope all --repo .` instead:
+**detect_changes** — git-diff based impact analysis. If MCP is unavailable, use
+`node .gitnexus/run.cjs detect-changes --scope all --repo .` instead:
 
 ```
 detect_changes({scope: "all"})

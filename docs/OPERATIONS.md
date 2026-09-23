@@ -2,7 +2,8 @@
 
 ## Human-created incident
 
-Open a GitHub Issue using the supplied incident template. Keep the `opsswarm` label. OpsSwarm starts after the `issues.opened` webhook.
+Open a GitHub Issue using the supplied incident template. Keep the `opsswarm` label. OpsSwarm starts after the
+`issues.opened` webhook.
 
 ## Machine-created incident
 
@@ -30,7 +31,8 @@ When the Issue has `state:waiting-approval`, `state:waiting-decision`, or `state
 /opsswarm abort
 ```
 
-Only explicit `/opsswarm` commands carry decision authority. A comment such as "rollback looks fine" is stored as information and cannot authorize a side effect.
+Only explicit `/opsswarm` commands carry decision authority. A comment such as "rollback looks fine" is stored as
+information and cannot authorize a side effect.
 
 ## Evidence
 

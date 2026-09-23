@@ -59,14 +59,14 @@ diagnosis.
 
 ## Debugging Patterns
 
-| Symptom              | GitNexus Approach                                          |
-| -------------------- | ---------------------------------------------------------- |
-| Error message        | `query` for error text → `context` on throw sites |
-| Wrong return value   | `context` on the function → trace callees for data flow    |
-| Intermittent failure | `context` → look for external calls, async deps            |
-| Performance issue    | `context` → find symbols with many callers (hot paths)     |
-| Recent regression    | `detect_changes` to see what your changes affect — pass `worktree` for a linked worktree |
-| "How does A reach B?" | `trace` between the two symbols — shortest call chain in one call |
+| Symptom               | GitNexus Approach                                                                        |
+|-----------------------|------------------------------------------------------------------------------------------|
+| Error message         | `query` for error text → `context` on throw sites                                        |
+| Wrong return value    | `context` on the function → trace callees for data flow                                  |
+| Intermittent failure  | `context` → look for external calls, async deps                                          |
+| Performance issue     | `context` → find symbols with many callers (hot paths)                                   |
+| Recent regression     | `detect_changes` to see what your changes affect — pass `worktree` for a linked worktree |
+| "How does A reach B?" | `trace` between the two symbols — shortest call chain in one call                        |
 
 ## Tools
 
@@ -96,7 +96,8 @@ MATCH path = (a)-[:CodeRelation {type: 'CALLS'}*1..2]->(b:Function {name: "valid
 RETURN [n IN nodes(path) | n.name] AS chain
 ```
 
-**trace** — shortest call chain between two symbols ("how does A reach B?"), one call instead of chaining `context` hops:
+**trace** — shortest call chain between two symbols ("how does A reach B?"), one call instead of chaining `context`
+hops:
 
 ```
 trace({ from: "processCheckout", to: "fetchRates", repo: "my-app" })
@@ -105,7 +106,8 @@ trace({ from: "processCheckout", to: "fetchRates", repo: "my-app" })
 → edges: CALLS (1.0), CALLS (0.95), CALLS (1.0)
 ```
 
-When no path exists, `trace` reports the furthest reachable node — exactly where the chain breaks (dynamic dispatch, reflection, or an external boundary).
+When no path exists, `trace` reports the furthest reachable node — exactly where the chain breaks (dynamic dispatch,
+reflection, or an external boundary).
 
 ## Example: "Payment endpoint returns 500 intermittently"
 

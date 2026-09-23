@@ -28,7 +28,7 @@ human_authority:
   minimum_permission_for_abort: maintain
 
 labels:
-  base: [opsswarm, incident]
+  base: [ opsswarm, incident ]
   lifecycle:
     TRIAGE: state:triage
     INVESTIGATING: state:investigating
@@ -42,3 +42,9 @@ labels:
     RESOLVED: state:resolved
     FAILED: state:failed
     ABORTED: state:aborted
+
+persistence:
+  enable_idempotency: true
+  enable_state_enforcement: false  # audit mode first
+  enable_checkpoints: true
+  enable_atomic_writes: true

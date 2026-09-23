@@ -35,7 +35,8 @@ openclaw agent --agent opsswarm-observability-investigator --message "Return onl
 
 ## 3. GitHub
 
-Create a fine-grained token for the target repository with permissions sufficient to read/write Issues and read collaborator permission. Set:
+Create a fine-grained token for the target repository with permissions sufficient to read/write Issues and read
+collaborator permission. Set:
 
 ```bash
 export GITHUB_TOKEN=...
