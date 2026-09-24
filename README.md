@@ -255,7 +255,7 @@ openclaw agent \
 pytest -q
 ```
 
-The repository currently contains baseline tests for policy, command authority, webhook signatures, issue parsing, OpenClaw JSON parsing, and core orchestrator behavior. The full v2.2 layered test campaign and 192 per-Skill self-tests are tracked separately and must not be assumed complete yet.
+The repository includes a layered test suite (unit, integration, contracts, e2e, faults, security). See docs/index.md for the complete test structure.
 
 ### 5. Start OpsSwarm
 
