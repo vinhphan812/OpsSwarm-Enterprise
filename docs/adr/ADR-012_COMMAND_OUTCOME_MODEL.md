@@ -1,7 +1,8 @@
 # ADR-012: Command Outcome Model
 
-**Status:** Proposed  
-**Created:** 2026-09-23  
+**Status:** Approved
+**Created:** 2026-09-23
+**Implemented:** 2026-09-23
 **Related:** Issue #9, ADR-009-5
 
 ## Context

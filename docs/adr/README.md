@@ -12,7 +12,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | 004                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
 | 005                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
 | [006](ADR-006_SKILL_FRONTMATTER_CONTRACT.md)     | Skill Frontmatter Contract     | Approved | S1–S8 SKILL.md schema                           |
-| [007](ADR-007_SKILL_GATE_VALIDATOR.md)           | Skill Gate Validator           | Proposed | Independent CI; see `scripts/validate_skill.py` |
+| [007](ADR-007_SKILL_GATE_VALIDATOR.md)           | Skill Gate Validator           | Approved | Independent CI; see `scripts/validate_skill.py` |
 | [008](ADR-008_DEPENDENCY_LOCK_RELEASE_POLICY.md) | Dependency Lock Release Policy | Approved | requirements.txt, SBOM, checksum                |
 | [009-1](ADR-009-1_IDEMPOTENCY_STRATEGY.md)       | Idempotency Strategy           | Approved | #9 reliability                                  |
 | [009-2](ADR-009-2_STATE_ENFORCEMENT.md)          | State Enforcement              | Approved | #9 reliability                                  |
@@ -21,7 +21,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [009-5](ADR-009-5_COMMAND_DETERMINISM.md)        | Command Determinism            | Approved | #9 reliability                                  |
 | [010](ADR-010_SECURITY_WORKFLOW_AND_POLICY.md)   | Security Workflow and Policy   | Approved | #7 CI gate                                      |
 | [011](ADR-011_SKILL_ARTEFACT_CONTRACT.md) | Skill Artifact Contract        | Approved | #2, #6                                     |
-| [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Proposed | #9 reliability (Once-style CONFIRMED/ABSENT/UNKNOWN) |
+| [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Approved | #9 reliability (CONFIRMED/ABSENT/UNKNOWN) |
 
 ## ADR Lifecycle Statuses
 
