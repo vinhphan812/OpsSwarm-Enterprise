@@ -1,6 +1,6 @@
 # OpsSwarm Enterprise Runtime Flows
 
-This document describes the **implemented v2.1 runtime flow** used as the baseline for v2.2 quality hardening. It
+This document describes the **implemented runtime flow** for OpsSwarm Enterprise. It
 complements [ARCHITECTURE.md](./ARCHITECTURE.md) by showing event ordering, state transitions, human gates, evidence
 production, and failure branches.
 
@@ -297,10 +297,7 @@ flowchart TD
 
 ### Current state-guard nuance
 
-The current handler strongly enforces **permissions and policy**, but not every command has an explicit state whitelist
-before it is processed. The diagrams show the intended operational use of commands from the relevant waiting states
-while documenting the current implementation truth. Tightening command/state guards belongs to v2.2 reliability
-hardening rather than being silently claimed as already implemented.
+The current handler strongly enforces **permissions and policy**. Command/state guards are validated by `VALID_TRANSITIONS` in `opsswarm/models.py` (ADR-009-2) and by the `CommandOutcome` state machine (ADR-012).
 
 ## 8. Side-effect execution and ambiguous-write flow
 

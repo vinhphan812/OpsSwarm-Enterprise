@@ -7,7 +7,7 @@ Claude Code, GitHub Copilot (agent mode), Windsurf, Aider, and Continue.dev.
 
 ## Project Overview
 
-OpsSwarm Enterprise v2.1.0 coordinates governed multi-agent incident response:
+OpsSwarm Enterprise coordinates governed multi-agent incident response:
 
 - **OpenClaw** is the AI reasoning/execution runtime.
 - **GitHub Issues** are the human control surface (one issue = one incident).

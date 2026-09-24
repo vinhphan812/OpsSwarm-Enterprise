@@ -1,7 +1,5 @@
 # OpsSwarm Enterprise Architecture
 
-> Documentation hardening for v2.2. The runtime implementation remains v2.1 unless otherwise stated.
-
 OpsSwarm Enterprise is a governed incident-response control plane built around three explicit boundaries:
 
 1. **GitHub Issues are the incident system of record and the only human decision/input surface.**
@@ -267,9 +265,7 @@ flowchart LR
     ES --> AUDIT[Audit / provenance review]
 ```
 
-Current startup behavior reloads persisted run records into the orchestrator. Stronger webhook-delivery deduplication,
-cross-process concurrency guarantees, and restart semantics are part of the v2.2 reliability hardening work and must not
-be inferred beyond what the code currently implements.
+Current startup behavior reloads persisted run records into the orchestrator. Idempotency, concurrency, and restart semantics are documented in [`ADR-009-1`](../adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md) and [`ADR-012`](../adr/ADR-012_COMMAND_OUTCOME_MODEL.md).
 
 ## 10. Trust boundaries and interfaces
 
@@ -371,8 +367,7 @@ The following invariants are normative for the current architecture:
   confidence threshold.
 - **A10 — Traceability:** every external recovery action is correlated with a run and Issue context.
 - **A11 — Terminal safety:** `FAILED` and `ABORTED` never cause automatic issue closure.
-- **A12 — No invented implementation:** architecture documentation must distinguish implemented behavior from planned
-  v2.2 hardening.
+- **A12 — No invented implementation:** architecture documentation must distinguish implemented behavior from planned extensions.
 
 ## 14. Implementation map
 
