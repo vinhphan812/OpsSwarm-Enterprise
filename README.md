@@ -4,8 +4,6 @@
 
 OpsSwarm Enterprise coordinates incident investigation, recovery planning, human authorization, bounded execution, evidence capture, and independent verification through eight governed Skills (S1–S8). It is intentionally designed so that AI agents can reason and use tools, while OpsSwarm retains workflow authority, policy enforcement, state, evidence correlation, and terminal decisions.
 
-> **Current status:** the runtime is version **2.1.0**. Documentation and quality hardening for **v2.2** are in progress. The repository currently has a working OpenClaw + GitHub control architecture and baseline tests, but the planned 192 Skill self-tests, full CI/security gates, stronger idempotency/restart guarantees, and reproducible release pipeline are not yet complete. See [v2.2 Quality & Skill Hardening](../../issues/1).
-
 ## Architecture principles
 
 The current architecture is built around these boundaries:
@@ -129,7 +127,7 @@ The lifecycle diagram is intentionally icon-assisted for readability. The exact 
 | **S7 ObserveVerify** | Independently verify service/business recovery using read-only evidence. |
 | **S8 OrchestrationHub** | Own lifecycle, state transitions, cross-Skill ordering, GitHub synchronization, evidence correlation, and terminal outcome. |
 
-The current implementation maps these architectural Skills across `opsswarm/orchestrator.py`, `opsswarm/skill_logic.py`, `opsswarm/prompts.py`, `opsswarm/policy.py`, and the domain models. Not every Skill is a separate Python service/class today.
+Skill contracts are documented in [`skills/`](skills/) and validated by [`scripts/validate_skill.py`](scripts/validate_skill.py).
 
 ## OpenClaw agent profiles
 
@@ -327,6 +325,8 @@ GET  /health
 GET  /runs
 GET  /runs/{issue_number}
 GET  /runs/{issue_number}/evidence
+GET  /runs/{issue_number}/checkpoint
+POST /runs/{issue_number}/resume
 POST /webhooks/github
 POST /hooks/monitoring
 ```
@@ -344,7 +344,7 @@ runtime-data/evidence/*.jsonl
 
 The run store persists the current `RunRecord`; the evidence store appends structured provenance such as normalized incident context, task graphs, findings, root-cause artifacts, plans, human gates/approvals, execution results, and S7 verification.
 
-The current runtime reloads persisted run records at startup. Stronger distributed webhook deduplication, cross-process concurrency control, and restart/reconciliation semantics are part of the v2.2 hardening work and are **not** claimed as completed guarantees.
+Idempotency, concurrency, and crash-recovery semantics are documented in [`docs/adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md`](docs/adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md).
 
 ## Security and authority model
 
@@ -367,38 +367,31 @@ See [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Testing and quality status
 
-Run the current suite with:
+Run the full test suite with:
 
 ```bash
 pytest -q
 ```
 
-Quality hardening is tracked in the v2.2 epic and child issues. Planned gates include:
-
-- production-grade S1–S8 Skill contracts;
-- 24 substantive self-tests per Skill (192 total);
-- layered unit, contract, integration, E2E, fault, security, and smoke suites;
-- GitHub Actions quality gates;
-- Skill validation gates;
-- dependency/security/secret/license/SBOM checks;
-- reproducible wheel build and clean-install verification;
-- stronger persistence/idempotency/concurrency/restart testing.
-
-These are targets, not current PASS claims.
+See [`docs/index.md`](docs/index.md) for the complete test structure and quality gates.
 
 ## Repository layout
 
-```text
+```
 OpsSwarm-Enterprise/
 ├── opsswarm/                  # governed Python runtime
-├── skills/                    # S1–S8 Skill definitions
+├── skills/                   # S1–S8 Skill definitions (ADR-011)
 ├── openclaw/                  # OpenClaw patch and specialist workspaces
-├── config/                    # test/production configuration
-├── docs/                      # architecture, flows, installation, operations, security
-├── tests/                     # current baseline test suite
-├── scripts/                   # helper scripts
-├── deploy/                    # deployment assets
-├── .github/                   # Issue templates; CI workflows are v2.2 work
+├── config/                   # test/production configuration
+├── docs/                     # architecture, flows, installation, operations, security
+│   ├── adr/                 # architecture decision records
+│   ├── guides/              # operational guides and contracts
+│   ├── triage/             # issue triage and gap analysis
+│   └── audits/              # documentation and security audits
+├── tests/                    # layered test suite (unit/integration/contract/e2e/faults/security)
+├── scripts/                  # helper scripts (validate_skill.py, smoke-wheel.py)
+├── deploy/                   # deployment assets
+├── .github/                  # Issue templates and CI workflows
 ├── pyproject.toml
 ├── Makefile
 └── LICENSE
@@ -406,27 +399,22 @@ OpsSwarm-Enterprise/
 
 ## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system context, S1–S8 responsibility map, authority, evidence, trust boundaries, invariants.
-- [`docs/FLOWS.md`](docs/FLOWS.md) — end-to-end sequences, exact runtime state machine, human gates, ambiguous-write handling.
-- [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — installation and OpenClaw/GitHub setup.
-- [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — human-created and machine-created incident operation.
-- [`docs/SECURITY.md`](docs/SECURITY.md) — security and authority model.
-- [`openclaw/README.md`](openclaw/README.md) — OpenClaw-specific configuration notes.
+| Document | Description |
+|---|---|
+| [`docs/index.md`](docs/index.md) | **Main documentation entry point.** Navigation hub for all docs. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System context, S1–S8 responsibility map, authority, evidence, trust boundaries, invariants. |
+| [`docs/FLOWS.md`](docs/FLOWS.md) | End-to-end sequences, exact runtime state machine, human gates, ambiguous-write handling. |
+| [`docs/INSTALLATION.md`](docs/INSTALLATION.md) | Installation and OpenClaw/GitHub setup. |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Human/machine incident operation. |
+| [`docs/SECURITY.md`](docs/SECURITY.md) | Security and authority model. |
+| [`docs/adr/README.md`](docs/adr/README.md) | Index of all architectural decision records. |
+| [`openclaw/README.md`](openclaw/README.md) | OpenClaw-specific configuration notes. |
 
 ## Current limitations
 
-The following should be treated as open hardening areas rather than production guarantees:
-
-- no complete 192-test Skill campaign yet;
-- no mandatory GitHub Actions CI/security/release pipeline yet;
-- no distributed GitHub webhook delivery deduplication yet;
-- no strong multi-process transaction/locking model yet;
-- persistence is currently file-based rather than a transactional database;
-- restart/resume behavior is not yet proven for every state/fault combination;
-- Skill folders are still being expanded into full production-grade contracts;
-- external enterprise tool behavior depends on the capabilities and credentials configured for each OpenClaw profile.
-
-See issues #1, #2, #3, #4, #5, #6, #7, #8, and #9 for the v2.2 hardening plan.
+- Persistence is currently file-based rather than a transactional database.
+- Restart/resume behavior has not been proven for every state/fault combination.
+- External enterprise tool behavior depends on the capabilities and credentials configured for each OpenClaw profile.
 
 ## License
 
