@@ -66,11 +66,11 @@ jobs:
 
       # ── Gitleaks (gitleaks-action v3) ──────────────────────────────────────
       # Gate-only: exit code determines pass/fail; no report uploaded.
+      # GITHUB_TOKEN required by gitleaks-action v3 for PR scans.
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v3
-        with:
-          config-format: golang
-          flags: --no-git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ── License scan (pip-licenses 5.5.5) ───────────────────────────────────
       - name: Install pip-licenses
@@ -201,9 +201,8 @@ jobs:
       # ── Gitleaks (gitleaks-action v3) ──────────────────────────────────────
       - name: Run Gitleaks
         uses: gitleaks/gitleaks-action@v3
-        with:
-          config-format: golang
-          flags: --no-git
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ── License scan (pip-licenses 5.5.5) ───────────────────────────────────
       - name: Install pip-licenses
