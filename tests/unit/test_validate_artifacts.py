@@ -114,7 +114,7 @@ class TestLooksLikePlaceholder:
 class TestBanditJsonFalsePositive:
     """PR #32 regression: bandit.json code snippets must not trigger the validator."""
 
-    def _make_bandit_payload(self) -> dict:
+    def _make_bandit_payload(self, metrics: dict | None = None) -> dict:
         """Minimal bandit.json structure that mirrors the real failing artifact."""
         return {
             "results": [
@@ -140,13 +140,40 @@ class TestBanditJsonFalsePositive:
                 },
             ],
             "errors": [],
-            "metrics": {},
+            "metrics": metrics if metrics is not None else {},
         }
 
     def test_bandit_json_with_secret_key_snippets_passes(self, tmp_path):
         """bandit.json containing 'secret_key' from test fixtures must validate cleanly."""
         p = _write_json(tmp_path, self._make_bandit_payload())
         # Should not raise; if it does the test surfaces the error message.
+        validate(p)
+
+    def test_bandit_json_with_long_metrics_key_passes(self, tmp_path):
+        """bandit.json whose metrics{} keys are long editable-install paths must pass.
+
+        Bandit scans site-packages and records per-file metrics using the full
+        file-system path as the dict key.  Editable-install finder filenames
+        (e.g. ``__editable___pkg_name_1_0_finder.py``) are 40+ characters and
+        would trigger the high-entropy token check if not redacted.
+        """
+        long_key = ".venv/Lib/site-packages/__editable___opsswarm_openclaw_github_2_1_0_finder.py"
+        metrics = {
+            long_key: {
+                "CONFIDENCE.HIGH": 0,
+                "CONFIDENCE.LOW": 0,
+                "CONFIDENCE.MEDIUM": 0,
+                "CONFIDENCE.UNDEFINED": 0,
+                "SEVERITY.HIGH": 0,
+                "SEVERITY.LOW": 0,
+                "SEVERITY.MEDIUM": 0,
+                "SEVERITY.UNDEFINED": 0,
+                "loc": 49,
+                "nosec": 0,
+                "skipped_tests": 0,
+            }
+        }
+        p = _write_json(tmp_path, self._make_bandit_payload(metrics=metrics))
         validate(p)
 
     def test_assignment_pattern_secret_key_does_not_raise(self):
