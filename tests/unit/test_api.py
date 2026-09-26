@@ -28,6 +28,7 @@ class TestHealthEndpoint:
             api_module.engine = mock_engine
 
             # Create test client
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.get("/health")
 
@@ -39,6 +40,7 @@ class TestHealthEndpoint:
         finally:
             # Restore original
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
 
 class TestRunsEndpoints:
@@ -54,6 +56,7 @@ class TestRunsEndpoints:
             mock_engine.runs = {}
 
             api_module.engine = mock_engine
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.get("/runs")
 
@@ -61,6 +64,7 @@ class TestRunsEndpoints:
             assert response.json() == []
         finally:
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
     def test_run_not_found(self):
         """GET /runs/{id} returns 404 for missing run."""
@@ -72,12 +76,14 @@ class TestRunsEndpoints:
             mock_engine.runs = {}
 
             api_module.engine = mock_engine
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.get("/runs/999")
 
             assert response.status_code == 404
         finally:
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
 
 class TestEvidenceEndpoint:
@@ -93,12 +99,14 @@ class TestEvidenceEndpoint:
             mock_engine.runs = {}
 
             api_module.engine = mock_engine
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.get("/runs/999/evidence")
 
             assert response.status_code == 404
         finally:
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
 
 class TestCheckpointEndpoint:
@@ -114,12 +122,14 @@ class TestCheckpointEndpoint:
             mock_engine.runs = {}
 
             api_module.engine = mock_engine
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.get("/runs/999/checkpoint")
 
             assert response.status_code == 404
         finally:
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
 
 class TestResumeEndpoint:
@@ -135,12 +145,14 @@ class TestResumeEndpoint:
             mock_engine.runs = {}
 
             api_module.engine = mock_engine
+            api_module.app.dependency_overrides[api_module.verify_api_key] = lambda: "mock-key"
             client = TestClient(api_module.app)
             response = client.post("/runs/999/resume")
 
             assert response.status_code == 404
         finally:
             api_module.engine = orig_engine
+            api_module.app.dependency_overrides = {}
 
 
 class TestWebhookEndpoint:
@@ -165,6 +177,7 @@ class TestWebhookEndpoint:
             assert response.status_code == 401
         finally:
             api_module.verify_signature = orig_verify
+            api_module.app.dependency_overrides = {}
 
     def test_webhook_ignored_event(self):
         """Ignores non-issue events."""
@@ -185,3 +198,4 @@ class TestWebhookEndpoint:
             assert response.json()["ignored"] is True
         finally:
             api_module.verify_signature = orig_verify
+            api_module.app.dependency_overrides = {}
