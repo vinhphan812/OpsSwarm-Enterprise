@@ -9,7 +9,8 @@ The workflow never publishes a release automatically. It may only create or upda
 explicit human action after the evidence in this document has been reviewed.
 
 This policy implements the accepted decisions in [ADR-008](../adr/ADR-008_DEPENDENCY_LOCK_RELEASE_POLICY.md), consumes
-the quality interface planned in [CI Quality Gates](../triage/CI_QUALITY_GATES_TRIAGE.md), and applies the artifact and
+the quality interface planned in [CI Quality Gates](../triage/historical/CI_QUALITY_GATES_TRIAGE.md), and applies the
+artifact and
 severity policy in [ADR-010](../adr/ADR-010_SECURITY_WORKFLOW_AND_POLICY.md). Where the linked CI and security documents
 describe proposed controls, this policy does not claim those controls have run until the corresponding GitHub checks
 exist and report success for the release commit.
@@ -26,7 +27,12 @@ A release candidate is eligible for drafting only when all of the following are 
    required checks succeeded; the release workflow cannot safely poll concurrently triggered tag workflows. On manual
    dispatch, the workflow additionally queries GitHub Actions and fails closed unless both workflow names already report
    success for the tagged commit. Release consumes these results instead of duplicating their test and scanning logic.
-4. The committed `requirements.txt` is the hash-locked pip-tools output derived from `requirements.txt` under ADR-008-1.
+4. The committed `requirements.lock` is the portable, hash-locked pip-tools output derived from the direct runtime input
+   `requirements.txt`. CI verifies that input against `pyproject.toml`, regenerates the lock with pip-tools 7.5.2, and
+   rejects any diff. Security and release workflows install it with `--require-hashes` in an isolated virtual
+   environment;
+   vulnerability scans and CycloneDX SBOM generation target that exact environment rather than an editable project
+   install.
 5. The wheel and source distribution build successfully on Python 3.11. Functional compatibility across Python 3.11,
    3.12, and 3.13 remains owned by the CI matrix.
 6. The clean-wheel smoke harness passes from a temporary directory outside the repository with explicit external
@@ -72,8 +78,8 @@ branch:
 - **Name:** e.g. `Release CI Gate`
 - **Target branches:** the repository's default branch (currently `master`); use `~DEFAULT` or explicit `master` pattern
 - **Rules:**
-     - "Require status checks to pass before merging" enabled
-     - Required checks: `CI`, `Security CI`
+    - "Require status checks to pass before merging" enabled
+    - Required checks: `CI`, `Security CI`
 - **Bypass actors:** none (enforce for all, including admins); or restrict to service accounts only
 
 ### Verification step
@@ -136,14 +142,14 @@ OpenClaw assets have been deployed or validated in a target environment.
 
 Every successful draft run produces the following evidence:
 
-| Evidence                    | Purpose                                                                                                     | Publication/retention                            |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| `*.whl`                     | Installable Python distribution                                                                             | Draft GitHub Release and workflow artifact       |
-| `*.tar.gz`                  | Source distribution                                                                                         | Draft GitHub Release and workflow artifact       |
-| `SHA256SUMS.txt`            | Portable SHA-256 digest list for both distributions                                                         | Draft GitHub Release and workflow artifact       |
-| `sbom.cdx.json`             | Reproducible CycloneDX JSON inventory generated from locked `requirements.txt` using `cyclonedx-bom==7.4.0` | Draft GitHub Release and workflow artifact       |
-| GitHub artifact attestation | OIDC-backed build provenance binding the release files to the workflow run                                  | GitHub attestation store; linked from draft body |
-| `PROVENANCE.md`             | Attestation URL, workflow-run URL, and verification command                                                 | Workflow artifact only                           |
+| Evidence                    | Purpose                                                                                                                                       | Publication/retention                            |
+|-----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------|
+| `*.whl`                     | Installable Python distribution                                                                                                               | Draft GitHub Release and workflow artifact       |
+| `*.tar.gz`                  | Source distribution                                                                                                                           | Draft GitHub Release and workflow artifact       |
+| `SHA256SUMS.txt`            | Portable SHA-256 digest list for both distributions                                                                                           | Draft GitHub Release and workflow artifact       |
+| `sbom.cdx.json`             | Reproducible CycloneDX JSON inventory of the isolated environment installed from hash-locked `requirements.lock` using `cyclonedx-bom==7.4.0` | Draft GitHub Release and workflow artifact       |
+| GitHub artifact attestation | OIDC-backed build provenance binding the release files to the workflow run                                                                    | GitHub attestation store; linked from draft body |
+| `PROVENANCE.md`             | Attestation URL, workflow-run URL, and verification command                                                                                   | Workflow artifact only                           |
 
 The combined `release-evidence-<tag>` workflow artifact is retained for 30 days under ADR-010. The draft release
 contains exactly the wheel, source distribution, checksum file, and SBOM. Its body references the GitHub attestation and
