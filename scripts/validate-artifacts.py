@@ -165,11 +165,6 @@ def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> N
 
     for match in ASSIGNMENT_PATTERN.finditer(text):
         if not _looks_like_placeholder(match.group(1)):
-            # Debug: print the offending value to stderr (will appear in CI logs).
-            import sys as _sys
-            _ctx_start = max(0, match.start() - 60)
-            _ctx = text[_ctx_start: match.start() + 120].replace("\n", "\\n")
-            print(f"DEBUG credential-like assignment: val={match.group(1)!r} ctx={_ctx!r}", file=_sys.stderr)
             raise ValidationError("credential-like assignment")
 
     for match in LONG_TOKEN_PATTERN.finditer(text):
@@ -219,22 +214,23 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
     return text
 
 
-def _strip_bandit_code_snippets(value: Any) -> Any:
-    """Return a deep copy of a bandit.json document with code snippets removed.
+def _strip_bandit_results(value: Any) -> Any:
+    """Return a copy of a bandit.json document with results[] content redacted.
 
-    Bandit embeds verbatim source-code lines in results[].code.  Those snippets
-    routinely contain credential-like assignment patterns (e.g. ``secret =
-    'secret_key'``) that are intentional test fixtures — not real secrets.
-    Stripping the ``code`` field before the text scan avoids false-positives
-    while still checking every other field (issue_text, filename, metadata …).
+    Bandit embeds verbatim source-code snippets and issue descriptions in the
+    results[] array.  These fields routinely contain credential-like patterns
+    (e.g. ``secret = 'secret_key'``, ``issue_text: 'Possible hardcoded
+    password: secret_key'``) that are intentional test fixtures — not real
+    secrets in the artifact itself.
+
+    We redact the entire results[] array before the text credential scan so
+    that no bandit finding text can trigger a false-positive.  The structural
+    fields (errors[], metrics{}, generated_at, etc.) are left intact and still
+    scanned, because those could in principle carry sensitive metadata.
     """
-    if isinstance(value, dict):
-        return {
-            k: (_strip_bandit_code_snippets(v) if k != "code" else "")
-            for k, v in value.items()
-        }
-    if isinstance(value, list):
-        return [_strip_bandit_code_snippets(item) for item in value]
+    if isinstance(value, dict) and "results" in value:
+        # Shallow copy: replace results with an empty list for the scan.
+        return {k: ([] if k == "results" else v) for k, v in value.items()}
     return value
 
 
@@ -296,8 +292,8 @@ def validate(path: Path) -> None:
         raise ValidationError("file cannot be read") from exc
 
     # For SBOM files, first parse JSON to extract known tokens, then scan text with those tokens.
-    # For bandit.json, strip verbatim code snippets before the credential scan so that
-    # intentional test fixtures (e.g. "secret = 'secret_key'") don't trigger false-positives.
+    # For bandit.json, strip the results[] array before the credential scan so that
+    # bandit finding text (code snippets, issue_text) can't trigger false-positives.
     sbom_known_tokens: set[str] = set()
     scan_bytes = raw
     if path.suffix.lower() == ".json":
@@ -305,7 +301,7 @@ def validate(path: Path) -> None:
         if path.name == "bandit.json":
             try:
                 parsed = json.loads(raw.decode("utf-8"))
-                stripped = _strip_bandit_code_snippets(parsed)
+                stripped = _strip_bandit_results(parsed)
                 scan_bytes = json.dumps(stripped).encode("utf-8")
             except (json.JSONDecodeError, UnicodeDecodeError):
                 pass  # Let _validate_text surface the error
