@@ -40,6 +40,16 @@ jobs:
       - name: Create artifacts directory
         run: mkdir -p artifacts
 
+      - name: Install exact locked runtime graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv --clear .locked-runtime
+          .locked-runtime/bin/python -m pip install --require-hashes -r requirements.lock
+          .locked-runtime/bin/python -m pip check
+          rm -rf .locked-runtime/lib/python3.11/site-packages/pip* \
+            .locked-runtime/lib/python3.11/site-packages/setuptools*
+
       # ── Bandit (1.9.4) ─────────────────────────────────────────────────────
       - name: Install Bandit
         run: python -m pip install bandit==1.9.4
@@ -51,8 +61,8 @@ jobs:
       - name: Install pip-audit
         run: python -m pip install pip-audit==2.10.1
 
-      - name: Run pip-audit vulnerability scan
-        run: python -m pip_audit --format=cyclonedx-json --output-file=artifacts/pip-audit.json
+      - name: Run pip-audit vulnerability scan against locked runtime
+        run: python -m pip_audit --path .locked-runtime/lib/python3.11/site-packages --format=cyclonedx-json --output artifacts/pip-audit.json
 
       # ── Gitleaks (gitleaks-action v3) ──────────────────────────────────────
       # Gate-only: exit code determines pass/fail; no report uploaded.
@@ -66,15 +76,21 @@ jobs:
       - name: Install pip-licenses
         run: python -m pip install pip-licenses==5.5.5
 
-      - name: Run license scan
-        run: python -m piplishly --format=json --output-file=artifacts/licenses.json || python -m pip_licenses --format=json --output-file=artifacts/licenses.json
+      - name: Run license scan against locked runtime
+        run: python -m piplicenses --python=.locked-runtime/bin/python --format=json --output-file=artifacts/licenses.json --path .locked-runtime/lib/python3.11/site-packages
 
       # ── SBOM (cyclonedx-bom 7.4.0) ─────────────────────────────────────────
       - name: Install CycloneDX
         run: python -m pip install cyclonedx-bom==7.4.0
 
-      - name: Generate SBOM
-        run: python -m cyclonedx_bom --pip --output-file artifacts/sbom.cdx.json
+      - name: Generate SBOM from locked runtime
+        run: >-
+          cyclonedx-py environment .locked-runtime/bin/python
+          --pyproject pyproject.toml
+          --mc-type application
+          --output-format JSON
+          --output-reproducible
+          --output-file artifacts/sbom.cdx.json
 
       # ── Pre-upload validation (ADR-010-3) ─────────────────────────────────
       - name: Validate artifacts before upload
@@ -158,6 +174,16 @@ jobs:
       - name: Create artifacts directory
         run: mkdir -p artifacts
 
+      - name: Install exact locked runtime graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv --clear .locked-runtime
+          .locked-runtime/bin/python -m pip install --require-hashes -r requirements.lock
+          .locked-runtime/bin/python -m pip check
+          rm -rf .locked-runtime/lib/python3.11/site-packages/pip* \
+            .locked-runtime/lib/python3.11/site-packages/setuptools*
+
       # ── Bandit (1.9.4) ─────────────────────────────────────────────────────
       - name: Install Bandit
         run: python -m pip install bandit==1.9.4
@@ -169,8 +195,8 @@ jobs:
       - name: Install pip-audit
         run: python -m pip install pip-audit==2.10.1
 
-      - name: Run pip-audit vulnerability scan
-        run: python -m pip_audit --format=cyclonedx-json --output-file=artifacts/pip-audit.json
+      - name: Run pip-audit vulnerability scan against locked runtime
+        run: python -m pip_audit --path .locked-runtime/lib/python3.11/site-packages --format=cyclonedx-json --output artifacts/pip-audit.json
 
       # ── Gitleaks (gitleaks-action v3) ──────────────────────────────────────
       - name: Run Gitleaks
@@ -183,15 +209,21 @@ jobs:
       - name: Install pip-licenses
         run: python -m pip install pip-licenses==5.5.5
 
-      - name: Run license scan
-        run: python -m piplishly --format=json --output-file=artifacts/licenses.json || python -m pip_licenses --format=json --output-file=artifacts/licenses.json
+      - name: Run license scan against locked runtime
+        run: python -m piplicenses --python=.locked-runtime/bin/python --format=json --output-file=artifacts/licenses.json --path .locked-runtime/lib/python3.11/site-packages
 
       # ── SBOM (cyclonedx-bom 7.4.0) ─────────────────────────────────────────
       - name: Install CycloneDX
         run: python -m pip install cyclonedx-bom==7.4.0
 
-      - name: Generate SBOM
-        run: python -m cyclonedx_bom --pip --output-file artifacts/sbom.cdx.json
+      - name: Generate SBOM from locked runtime
+        run: >-
+          cyclonedx-py environment .locked-runtime/bin/python
+          --pyproject pyproject.toml
+          --mc-type application
+          --output-format JSON
+          --output-reproducible
+          --output-file artifacts/sbom.cdx.json
 
       # ── Pre-upload validation (ADR-010-3) ─────────────────────────────────
       - name: Validate artifacts before upload
