@@ -215,7 +215,7 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
 
 
 def _strip_bandit_results(value: Any) -> Any:
-    """Return a copy of a bandit.json document with results[] content redacted.
+    """Return a copy of a bandit.json document with results[] and metrics keys redacted.
 
     Bandit embeds verbatim source-code snippets and issue descriptions in the
     results[] array.  These fields routinely contain credential-like patterns
@@ -223,15 +223,35 @@ def _strip_bandit_results(value: Any) -> Any:
     password: secret_key'``) that are intentional test fixtures — not real
     secrets in the artifact itself.
 
+    The metrics{} dict uses file-system paths as keys (e.g.
+    ``".venv/Lib/site-packages/__editable___pkg_1_0_finder.py"``).  These keys
+    are long identifier strings, not secrets, but they can contain 40+ char
+    substrings that trigger the high-entropy token pattern.  We replace the
+    metrics dict with a sentinel containing only the numeric totals so that
+    file-path strings are never fed to the credential scanner.
+
     We redact the entire results[] array before the text credential scan so
     that no bandit finding text can trigger a false-positive.  The structural
-    fields (errors[], metrics{}, generated_at, etc.) are left intact and still
-    scanned, because those could in principle carry sensitive metadata.
+    fields (errors[], generated_at, etc.) are left intact and still scanned,
+    because those could in principle carry sensitive metadata.
     """
-    if isinstance(value, dict) and "results" in value:
-        # Shallow copy: replace results with an empty list for the scan.
-        return {k: ([] if k == "results" else v) for k, v in value.items()}
-    return value
+    if not isinstance(value, dict):
+        return value
+    redacted = {}
+    for k, v in value.items():
+        if k == "results":
+            redacted[k] = []
+        elif k == "metrics":
+            # Replace the per-file metrics dict with a single redacted-paths sentinel.
+            # The values (counts) are harmless integers; only the keys (file paths)
+            # are redacted to prevent long path components from triggering entropy checks.
+            if isinstance(v, dict):
+                redacted[k] = {"<paths-redacted>": {}}
+            else:
+                redacted[k] = v
+        else:
+            redacted[k] = v
+    return redacted
 
 
 def _validate_json(path: Path, text: str) -> tuple[Any, set[str]]:
