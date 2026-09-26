@@ -214,6 +214,25 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
     return text
 
 
+def _strip_bandit_code_snippets(value: Any) -> Any:
+    """Return a deep copy of a bandit.json document with code snippets removed.
+
+    Bandit embeds verbatim source-code lines in results[].code.  Those snippets
+    routinely contain credential-like assignment patterns (e.g. ``secret =
+    'secret_key'``) that are intentional test fixtures — not real secrets.
+    Stripping the ``code`` field before the text scan avoids false-positives
+    while still checking every other field (issue_text, filename, metadata …).
+    """
+    if isinstance(value, dict):
+        return {
+            k: (_strip_bandit_code_snippets(v) if k != "code" else "")
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_strip_bandit_code_snippets(item) for item in value]
+    return value
+
+
 def _validate_json(path: Path, text: str) -> tuple[Any, set[str]]:
     """Validate JSON structure and extract known SBOM tokens.
     
@@ -271,12 +290,22 @@ def validate(path: Path) -> None:
     except OSError as exc:
         raise ValidationError("file cannot be read") from exc
 
-    # For SBOM files, first parse JSON to extract known tokens, then scan text with those tokens
+    # For SBOM files, first parse JSON to extract known tokens, then scan text with those tokens.
+    # For bandit.json, strip verbatim code snippets before the credential scan so that
+    # intentional test fixtures (e.g. "secret = 'secret_key'") don't trigger false-positives.
     sbom_known_tokens: set[str] = set()
+    scan_bytes = raw
     if path.suffix.lower() == ".json":
         _, sbom_known_tokens = _validate_json(path, raw.decode("utf-8"))
+        if path.name == "bandit.json":
+            try:
+                parsed = json.loads(raw.decode("utf-8"))
+                stripped = _strip_bandit_code_snippets(parsed)
+                scan_bytes = json.dumps(stripped).encode("utf-8")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass  # Let _validate_text surface the error
 
-    text = _validate_text(raw, sbom_known_tokens)
+    text = _validate_text(scan_bytes, sbom_known_tokens)
 
     if path.suffix.lower() == ".json":
         _validate_json(path, text)
