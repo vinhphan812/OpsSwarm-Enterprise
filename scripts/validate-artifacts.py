@@ -24,6 +24,14 @@ SAFE_PLACEHOLDERS = {
     "secret",
     "token",
     "xxx",
+    # Compound generic placeholder names used in HMAC/JWT/crypto test fixtures.
+    # These are well-known stand-ins; they carry no real entropy.
+    "secret_key",
+    "secretkey",
+    "api_key",
+    "apikey",
+    "private_key",
+    "privatekey",
 }
 
 CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
