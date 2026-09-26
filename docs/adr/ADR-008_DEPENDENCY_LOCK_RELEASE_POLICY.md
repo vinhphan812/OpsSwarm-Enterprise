@@ -10,7 +10,7 @@
 ## Decision Summary
 
 | ADR       | Decision                                      | Rationale                                                                                  |
-| --------- | --------------------------------------------- | ------------------------------------------------------------------------------------------ |
+|-----------|-----------------------------------------------|--------------------------------------------------------------------------------------------|
 | ADR-008-1 | Adopt `pip-tools` (pip-compile) for lock file | Minimal tooling, no extra runtime deps, matches existing pip ecosystem                     |
 | ADR-008-2 | Adopt CycloneDX JSON for SBOM                 | Python-native (`cyclonedx-bom`), JSON widely consumed, SPDX complexity unjustified         |
 | ADR-008-3 | Explicit "external deployment" asset policy   | Formalize wheel contents contract; config/skills/openclaw are deployment-time, not bundled |
@@ -38,25 +38,32 @@ No lock file exists. Transitive dependencies may resolve differently between bui
 
 ### Decision
 
-Adopt `pip-tools` (specifically `pip-compile`) to generate `requirements.txt` lock file.
+Adopt `pip-tools` (specifically `pip-compile`) to generate the portable `requirements.lock` hash-locked file from the
+direct-dependency input `requirements.txt`. CI verifies that `requirements.txt` exactly mirrors `pyproject.toml` runtime
+dependencies, regenerates the lock with a fixed pip-tools version and no environment-specific index directives, and
+rejects any diff.
 
 ### Rationale
 
 - **Minimal additional tooling**: Uses existing pip ecosystem, no Poetry/PDM runtime dependency
 - **Reproducibility**: Pins all transitive dependencies to exact versions
-- **CI compatibility**: Standard `pip install -r requirements.txt` works in GitHub Actions
+- **CI compatibility**: Standard `pip install -r requirements.lock` works in GitHub Actions
 - **Audit trail**: Lock file is text, diff-friendly, git-reviewable
 
 ### Implementation Contract
 
 ```
-# Files to add:
-- requirements.txt          # Direct deps (mirrors pyproject.toml [project] dependencies)
-- requirements.txt         # Pip-compiled lock file (committed to repo)
+# Files:
+- requirements.txt         # Direct runtime dependencies; mirrors pyproject.toml [project.dependencies]
+- requirements.lock        # Portable pip-compiled lock file with SHA-256 hashes (committed)
+- scripts/verify_dependency_lock.py  # Fails when sources, pins, hashes, or portability drift
 
-# CI workflow addition:
-- pip install pip-tools
-- pip-compile requirements.txt --generate-hashes --output-file=requirements.txt
+# CI workflow contract:
+- pip install pip-tools==7.5.2
+- pip-compile requirements.txt --generate-hashes --no-emit-index-url --no-emit-trusted-host --strip-extras --output-file=requirements.lock
+- diff --unified requirements.lock.committed requirements.lock
+- install the lock in a clean virtual environment with pip install --require-hashes
+- run vulnerability and SBOM tooling against that exact locked environment
 ```
 
 ### Shared Requirements with #7
@@ -77,7 +84,7 @@ The triage report (RELEASE_CLEAN_INSTALL_TRIAGE.md:396-406) identifies SBOM as "
 tool options:
 
 | Tool          | Format              | Notes                  |
-| ------------- | ------------------- | ---------------------- |
+|---------------|---------------------|------------------------|
 | syft          | CycloneDX JSON/SPDX | Go binary, widely used |
 | cyclonedx-bom | CycloneDX XML/JSON  | Python, pip-installed  |
 | spdx-toolkit  | SPDX                | Java-based             |
@@ -102,7 +109,7 @@ Adopt CycloneDX JSON format using `cyclonedx-bom` Python package.
 
 # CI workflow addition:
 - pip install cyclonedx-bom
-- cyclonedx-py requirements requirements.txt --format json --output sbom.json
+- cyclonedx-py requirements requirements.lock --format json --output sbom.json
 ```
 
 ### Shared Requirements with #7
@@ -131,7 +138,7 @@ This is intentional but undocumented as a policy.
 Formalize "External Deployment" asset policy:
 
 | Asset Category                 | Bundled in Wheel? | Deployment Method                      |
-| ------------------------------ | ----------------- | -------------------------------------- |
+|--------------------------------|-------------------|----------------------------------------|
 | `opsswarm/` Python modules     | YES               | pip install                            |
 | `LICENSE`                      | YES               | setuptools default                     |
 | `config/*.yaml`                | NO                | External config mount / env injection  |
@@ -172,16 +179,15 @@ The following are EXCLUDED and must be provided at deployment time:
 
 ### Migration Path
 
-1. Generate initial `requirements.txt` from `pyproject.toml` dependencies
-2. Run `pip-compile requirements.txt --generate-hashes --output-file=requirements.txt`
-3. Add `cyclonedx-bom` to `[project.optional-dependencies]` or CI-only deps
-4. Create `docs/RELEASE_POLICY.md` with asset policy documentation
-5. Update child task t_943885de (release workflow) with these ADR contracts
-6. Update child task t_d322a4b9 (security workflow) to reference lock file + SBOM
+1. Keep `requirements.txt` aligned exactly with `pyproject.toml` runtime dependencies.
+2. Regenerate `requirements.lock` with pip-tools 7.5.2, hashes, and no emitted index/trusted-host directives.
+3. Verify the checked-in lock by deterministic regeneration in CI.
+4. Install the lock into an isolated virtual environment with `pip install --require-hashes`.
+5. Run pip-audit and CycloneDX environment inventory against that isolated environment.
 
 ### Rollback Strategy
 
-- **Lock file**: Revert `requirements.txt` to prior version in git
+- **Lock file**: Revert `requirements.lock` to prior version in git
 - **SBOM**: Prior release SBOM remains in git history / GitHub releases
 - **Asset policy**: Documentation-only change; no runtime impact
 
@@ -189,21 +195,22 @@ The following are EXCLUDED and must be provided at deployment time:
 
 ## Acceptance Criteria Verification
 
-| Criterion                        | Evidence                                                      |
-| -------------------------------- | ------------------------------------------------------------- |
-| Reproducibility guarantees       | `requirements.txt` pins all transitive deps with hashes       |
-| Supported installers/Python      | pip, pip-tools verified; Python 3.11-3.13 from pyproject.toml |
-| SBOM integration                 | CycloneDX JSON generated from locked requirements             |
-| Asset/config deployment contract | docs/RELEASE_POLICY.md formalizes bundle boundaries           |
-| Migration/rollback               | Git-based rollback for lock/SBOM; no schema migration needed  |
-| #7/#8 shared requirements        | Both use same lock file; SBOM feeds security scanning         |
+| Criterion | Evidence |
+|-----------|----------|
+
+- **Reproducibility guarantees**: `requirements.lock` pins all transitive deps with hashes
+  | Supported installers/Python | pip, pip-tools verified; Python 3.11-3.13 from pyproject.toml |
+  | SBOM integration | CycloneDX JSON generated from locked requirements |
+  | Asset/config deployment contract | docs/RELEASE_POLICY.md formalizes bundle boundaries |
+  | Migration/rollback | Git-based rollback for lock/SBOM; no schema migration needed |
+  | #7/#8 shared requirements | Both use same lock file; SBOM feeds security scanning |
 
 ---
 
 ## Open Items
 
 | Item                                         | Owner                | Status                         |
-| -------------------------------------------- | -------------------- | ------------------------------ |
+|----------------------------------------------|----------------------|--------------------------------|
 | Generate requirements.txt / requirements.txt | dev-ops (t_943885de) | BLOCKED - waiting on ADR-008-1 |
 | Add cyclonedx-bom to pyproject.toml or CI    | dev-ops (t_943885de) | BLOCKED - waiting on ADR-008-2 |
 | Document RELEASE_POLICY.md                   | dev-ops (t_943885de) | BLOCKED - waiting on ADR-008-3 |

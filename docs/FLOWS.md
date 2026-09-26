@@ -336,8 +336,8 @@ flowchart TD
     CORR --> CLOSE[Close incident Issue]
 ```
 
-S7 receives the execution result only as context. The verification prompt explicitly states that executor success is *
-*not proof**.
+S7 receives the execution result only as context. The verification prompt explicitly states that executor success is \*
+\*not proof\*\*.
 
 ## 10. Implemented state machine
 

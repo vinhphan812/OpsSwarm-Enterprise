@@ -3,11 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+class MalformedEvidenceError(Exception):
+    """Raised when evidence record is malformed in a way that breaks integrity."""
+    pass
 
 # Signature key fields per event kind (from ADR-009-4)
 SIGNATURE_KEY_FIELDS: dict[str, list[str]] = {
@@ -40,29 +46,24 @@ class EvidenceStore:
         self.persistence_config = persistence_config or {}
         self.enable_idempotency = self.persistence_config.get("enable_idempotency", enable_idempotency)
 
-        # In-memory index for seen signatures: {run_id: set of signatures}
+        # In-memory index for seen signatures (payload-based): {run_id: set of signatures}
         self._index: dict[str, set[str]] = {}
+        # Last signature for hash chaining: {run_id: last_signature}
+        self._last_signature: dict[str, str] = {}
+        # Concurrency lock
+        self._lock = threading.Lock()
 
         # Duplicate counter for logging
         self._duplicate_count: int = 0
+        # Corruption counter for logging
+        self._corrupt_count: int = 0
 
         # Log warnings for legacy mode
         if not self.enable_idempotency:
             logger.warning("[LEGACY] Idempotency disabled - duplicate evidence may be stored")
 
     def _signature(self, kind: str, payload: dict[str, Any]) -> str:
-        """Calculate stable signature for duplicate detection.
-
-        Uses kind-specific key fields from SIGNATURE_KEY_FIELDS, falling back
-        to all non-volatile fields if kind not in the map.
-
-        Args:
-            kind: The event kind (e.g., 'S1.incident', 'finding').
-            payload: The evidence payload data.
-
-        Returns:
-            A stable hash signature for the evidence.
-        """
+        """Calculate stable signature for duplicate detection (payload-based)."""
         # Get key fields for this kind, or use all non-volatile fields
         key_fields = SIGNATURE_KEY_FIELDS.get(kind)
         if key_fields is None:
@@ -77,6 +78,23 @@ class EvidenceStore:
         sig_input = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}"
         return hashlib.sha256(sig_input.encode("utf-8")).hexdigest()[:16]
 
+    def _signature_with_chain(self, kind: str, payload: dict[str, Any], prev_sig: str) -> str:
+        """Calculate stable signature for tamper-evidency (chained)."""
+        # Get key fields for this kind, or use all non-volatile fields
+        key_fields = SIGNATURE_KEY_FIELDS.get(kind)
+        if key_fields is None:
+            # Fallback: exclude volatile fields
+            stable = {k: v for k, v in payload.items()
+                      if k not in ('timestamp', 'eid', 'id', 'run_id')}
+        else:
+            # Use kind-specific key fields
+            stable = {k: payload.get(k) for k in key_fields if k in payload}
+
+        # Create stable JSON for hashing
+        # Include prev_sig for tamper-evidency chain
+        sig_input = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}:{prev_sig}"
+        return hashlib.sha256(sig_input.encode("utf-8")).hexdigest()[:16]
+
     def _compute_idempotency_key(self, event_id: str | None, run_id: str, kind: str) -> str:
         """Compute idempotency key from event_id, run_id, and kind."""
         if event_id is None:
@@ -84,26 +102,12 @@ class EvidenceStore:
         key_input = f"{event_id}:{run_id}:{kind}"
         return hashlib.sha256(key_input.encode("utf-8")).hexdigest()
 
-    def _load_existing_keys(self, run_id: str) -> set[str]:
-        """Load all existing idempotency keys for a run."""
-        p = self.path / f"{run_id}.jsonl"
-        if not p.exists():
-            return set()
-        keys = set()
-        for line in p.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                try:
-                    rec = json.loads(line)
-                    key = rec.get("idempotency_key", "")
-                    if key:
-                        keys.add(key)
-                except json.JSONDecodeError:
-                    continue
-        return keys
-
     def append(self, run_id: str, kind: str, payload: dict[str, Any], event_id: str | None = None) -> tuple[
         str | None, bool]:
-        """Append evidence to the log with signature-based deduplication.
+        """Append evidence to the log with signature-based deduplication and tamper-evidence.
+
+        Deduplication is based on the payload signature.
+        The audit log signature is a rolling hash chain.
 
         Args:
             run_id: The run identifier.
@@ -116,61 +120,86 @@ class EvidenceStore:
             - Evidence ID if appended, None if skipped
             - True if this was a duplicate (skipped), False if new evidence
         """
-        # Initialize run in index if needed
-        if run_id not in self._index:
-            self._index[run_id] = set()
-            # Load existing signatures from disk for this run
-            self._load_existing_signatures(run_id)
+        with self._lock:
+            # Initialize run in index if needed
+            if run_id not in self._index:
+                self._index[run_id] = set()
+                # Load existing signatures and last signature from disk for this run
+                self._load_existing_signatures(run_id)
 
-        # Calculate signature for duplicate detection
-        sig = self._signature(kind, payload)
+            # Calculate signature for duplicate detection (payload-only)
+            sig_payload = self._signature(kind, payload)
 
-        # Check for duplicate using in-memory index
-        if self.enable_idempotency and sig in self._index[run_id]:
-            # Skip duplicate evidence
-            self._duplicate_count += 1
-            logger.debug(f"Skipping duplicate evidence (signature: {sig})")
-            return None, True
+            # Check for duplicate using in-memory index
+            if self.enable_idempotency and sig_payload in self._index[run_id]:
+                # Skip duplicate evidence
+                self._duplicate_count += 1
+                logger.debug(f"Skipping duplicate evidence (payload signature: {sig_payload})")
+                return None, True
 
-        # Add signature to index
-        self._index[run_id].add(sig)
+            # Get previous signature (or Genesis)
+            prev_sig = self._last_signature.get(run_id, "GENESIS")
 
-        # Compute idempotency key if event_id is provided
-        idempotency_key = ""
-        if self.enable_idempotency and event_id is not None:
-            idempotency_key = self._compute_idempotency_key(event_id, run_id, kind)
+            # Calculate signature for audit (chained)
+            sig_chain = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
 
-        eid = f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-        rec = {
-            "id": eid,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "run_id": run_id,
-            "kind": kind,
-            "payload": payload,
-            "signature": sig,  # Store signature for audit
-        }
-        # Add idempotency_key to record if computed
-        if idempotency_key:
-            rec["idempotency_key"] = idempotency_key
+            # Add signature to index
+            self._index[run_id].add(sig_payload)
+            # Update last signature
+            self._last_signature[run_id] = sig_chain
 
-        with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
-        return eid, False
+            # Compute idempotency key if event_id is provided
+            idempotency_key = ""
+            if self.enable_idempotency and event_id is not None:
+                idempotency_key = self._compute_idempotency_key(event_id, run_id, kind)
+
+            eid = f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+            rec = {
+                "id": eid,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "run_id": run_id,
+                "kind": kind,
+                "payload": payload,
+                "signature": sig_chain,  # Store signature for audit
+            }
+            # Add idempotency_key to record if computed
+            if idempotency_key:
+                rec["idempotency_key"] = idempotency_key
+
+            with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+            return eid, False
 
     def _load_existing_signatures(self, run_id: str) -> None:
-        """Load all existing signatures for a run into the in-memory index."""
+        """Load all existing signatures for a run into the in-memory index and update last_signature."""
         p = self.path / f"{run_id}.jsonl"
         if not p.exists():
             return
-        for line in p.read_text(encoding="utf-8").splitlines():
+        # Ensure run_id exists in index
+        if run_id not in self._index:
+            self._index[run_id] = set()
+
+        last_sig = "GENESIS"
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
             if line.strip():
                 try:
                     rec = json.loads(line)
-                    sig = rec.get("signature", "")
-                    if sig:
-                        self._index[run_id].add(sig)
-                except json.JSONDecodeError:
-                    continue
+                    # Re-derive payload signature for deduplication index
+                    sig_payload = self._signature(rec.get("kind", ""), rec.get("payload", {}))
+                    self._index[run_id].add(sig_payload)
+                    # Use stored chained signature for audit chain
+                    sig_chain = rec.get("signature", "")
+                    if sig_chain:
+                        last_sig = sig_chain
+                except json.JSONDecodeError as e:
+                    self._corrupt_count += 1
+                    logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                    # Move to corrupt file
+                    corrupt_path = self.path / f"{run_id}.corrupt"
+                    with corrupt_path.open("a", encoding="utf-8") as cf:
+                        cf.write(line + "\n")
+                    raise MalformedEvidenceError(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}") from e
+        self._last_signature[run_id] = last_sig
 
     def get_duplicate_count(self) -> int:
         """Get the number of duplicate evidence events skipped."""
@@ -179,7 +208,22 @@ class EvidenceStore:
     def list(self, run_id: str) -> list[dict[str, Any]]:
         p = self.path / f"{run_id}.jsonl"
         if not p.exists(): return []
-        return [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+        records = []
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                self._corrupt_count += 1
+                logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                # Move to corrupt file
+                corrupt_path = self.path / f"{run_id}.corrupt"
+                with corrupt_path.open("a", encoding="utf-8") as cf:
+                    cf.write(line + "\n")
+                continue
+        return records
 
     def checkpoint(self, run_id: str, checkpoint_type: str, payload: dict[str, Any]) -> str:
         """Record a checkpoint event for recovery (ADR-009-3).
@@ -216,7 +260,7 @@ class EvidenceStore:
 # =============================================================================
 # Skill-Gate Validator Evidence Models (per SKILL_GATE_VALIDATOR_CONTRACT_SPEC)
 # =============================================================================
-
+#
 from dataclasses import dataclass, field
 
 

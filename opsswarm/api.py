@@ -3,16 +3,29 @@ from __future__ import annotations
 import asyncio
 import os
 
-from fastapi import FastAPI, Request, Header, HTTPException
+from fastapi import FastAPI, Request, Header, HTTPException, Security, Depends
+from fastapi.security import APIKeyHeader
 
 from .commands import parse_command
 from .config import load_config
 from .github_client import GitHubClient
+from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
 from .webhook import verify_signature
 
 cfg = load_config()
+
+API_KEY_NAME = "X-OpsSwarm-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if not api_key or api_key != os.environ.get("OPSWARM_API_KEY"):
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+    return api_key
+
+
 gh = GitHubClient(os.environ.get("GITHUB_TOKEN", ""), os.environ.get("GITHUB_REPO", cfg.get("repo", "")))
 oc = OpenClawClient(os.environ.get("OPSWARM_OPENCLAW_BIN", "openclaw"), int(os.environ.get("OPSWARM_OPENCLAW_TIMEOUT",
                                                                                            cfg.get("openclaw", {}).get(
@@ -26,25 +39,31 @@ app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
 async def health(): return {"ok": True, "version": "2.1.0", "architecture": "openclaw+github"}
 
 
-@app.get("/runs")
+@app.get("/metrics")
+async def get_metrics():
+    from starlette.responses import PlainTextResponse
+    return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
+
+
+@app.get("/runs", dependencies=[Depends(verify_api_key)])
 async def runs(): return [r.model_dump(mode="json") for r in engine.runs.values()]
 
 
-@app.get("/runs/{issue_number}")
+@app.get("/runs/{issue_number}", dependencies=[Depends(verify_api_key)])
 async def run(issue_number: int):
     r = engine.runs.get(issue_number)
     if not r: raise HTTPException(404, "No run for issue")
     return r.model_dump(mode="json")
 
 
-@app.get("/runs/{issue_number}/evidence")
+@app.get("/runs/{issue_number}/evidence", dependencies=[Depends(verify_api_key)])
 async def evidence(issue_number: int):
     r = engine.runs.get(issue_number)
     if not r: raise HTTPException(404, "No run for issue")
     return engine.ev.list(r.run_id)
 
 
-@app.get("/runs/{issue_number}/checkpoint")
+@app.get("/runs/{issue_number}/checkpoint", dependencies=[Depends(verify_api_key)])
 async def get_checkpoint(issue_number: int):
     """Get the last checkpoint for a run."""
     r = engine.runs.get(issue_number)
@@ -55,7 +74,7 @@ async def get_checkpoint(issue_number: int):
     return {"has_checkpoint": True, "checkpoint": checkpoint}
 
 
-@app.post("/runs/{issue_number}/resume")
+@app.post("/runs/{issue_number}/resume", dependencies=[Depends(verify_api_key)])
 async def resume_run(issue_number: int):
     """Resume a run from its last checkpoint."""
     r = engine.runs.get(issue_number)
@@ -101,13 +120,25 @@ async def github_webhook(request: Request, x_github_event: str | None = Header(N
         except PermissionError as e:
             await gh.comment(number, f"OpsSwarm command rejected: {e}")
         except Exception as e:
-            await gh.comment(number, f"OpsSwarm could not process the command: `{type(e).__name__}: {e}`")
+            await gh.comment(number, "OpsSwarm could not process the command. Check server logs for details.")
         return {"accepted": True}
     return {"ignored": True}
 
 
 @app.post("/hooks/monitoring")
-async def monitoring_event(payload: dict):
+async def monitoring_event(request: Request, x_monitoring_signature: str | None = Header(None),
+                           api_key: str = Security(api_key_header)):
+    # Authenticate via API Key or Webhook secret
+    secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
+    body = await request.body()
+
+    is_api_key_valid = (api_key == os.environ.get("OPSWARM_API_KEY"))
+    is_signature_valid = verify_signature(secret, body, x_monitoring_signature)
+
+    if not is_api_key_valid and not is_signature_valid:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+
+    payload = await request.json()
     title = payload.get("title") or f"[Incident] {payload.get('service', 'unknown service')}"
     body = f"""## Incident\n\n### Service\n{payload.get('service', 'unknown')}\n\n### Symptoms\n{payload.get('symptom', 'Monitoring alert')}\n\n### Customer impact\n{payload.get('customer_impact', 'unknown')}\n\n### Environment\n{payload.get('environment', 'production')}\n\n### Observed since\n{payload.get('observed_since', 'unknown')}\n\n### Additional information\nCreated automatically by OpsSwarm monitoring ingress.\n"""
     labels = list(dict.fromkeys(
