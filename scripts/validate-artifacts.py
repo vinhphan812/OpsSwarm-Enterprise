@@ -165,6 +165,11 @@ def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> N
 
     for match in ASSIGNMENT_PATTERN.finditer(text):
         if not _looks_like_placeholder(match.group(1)):
+            # Debug: print the offending value to stderr (will appear in CI logs).
+            import sys as _sys
+            _ctx_start = max(0, match.start() - 60)
+            _ctx = text[_ctx_start: match.start() + 120].replace("\n", "\\n")
+            print(f"DEBUG credential-like assignment: val={match.group(1)!r} ctx={_ctx!r}", file=_sys.stderr)
             raise ValidationError("credential-like assignment")
 
     for match in LONG_TOKEN_PATTERN.finditer(text):
