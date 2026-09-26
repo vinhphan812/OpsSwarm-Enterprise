@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install pip-tools==7.5.2
+          python -m pip install pip-tools==7.6.1
           cp requirements.lock requirements.lock.committed
           export CUSTOM_COMPILE_COMMAND="pip-compile requirements.txt --generate-hashes --no-emit-index-url --no-emit-trusted-host --strip-extras --output-file=requirements.lock"
           python -m piptools compile \
