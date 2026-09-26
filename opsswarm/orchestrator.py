@@ -304,7 +304,7 @@ class Orchestrator:
         run = self.runs.get(number)
         if not run: return
         # Check terminal state: reject all commands if run is in terminal state
-        if run.state in TERMINAL_STATES:
+        if run.state in TERMINAL_STATES and command.name != "resume":
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
