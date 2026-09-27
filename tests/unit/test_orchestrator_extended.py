@@ -389,8 +389,8 @@ async def test_resume_fallback_failed_success(cfg, tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handle_comment_investigate(cfg, tmp_path):
-    """handle_comment investigate command triggers investigation."""
+async def test_handle_comment_investigate_duplicate(cfg, tmp_path):
+    """handle_comment investigate command triggers investigation (second path via PLANNING)."""
     gh = FakeGitHub({'number': 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
@@ -415,33 +415,26 @@ async def test_handle_comment_investigate(cfg, tmp_path):
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_handle_comment_command_confirmed(cfg, tmp_path):
-    """handle_comment command confirmation marks command as confirmed."""
-    gh = FakeGitHub({'number': 1})
+async def test_handle_comment_freetext_on_terminal_run(cfg, tmp_path):
+    """Free-text (None command) on a RESOLVED run must not raise AttributeError.
+
+    Acceptance criteria:
+    - No exception is raised
+    - github.comment is called with the terminal-state rejection message
+    """
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
     run = RunRecord(run_id="test-run", issue_number=1)
-    run.state = RunState.PLANNING
+    run.state = RunState.RESOLVED
     eng.runs[1] = run
 
-    # Mock approve
     eng.github.comment = AsyncMock()
-    eng.store.save = MagicMock()
-    from opsswarm.models import RecoveryPlan, RemediationOption
-    option = RemediationOption(id="opt1", risk="read", description="Safe")
-    run.recovery_plan = RecoveryPlan(options=[option])
 
-    # Using 'approve' command - needs existing recovery plan
-    cmd = MagicMock()
-    cmd.name = "approve"
-    cmd.argument = "opt1"
+    # command=None simulates parse_command() returning None for free-text input
+    await eng.handle_comment(1, "user", "just a comment, no command here", "read", None)
 
-    # Patch execute_option to prevent actual execution
-    eng._execute_option = AsyncMock()
-
-    await eng.handle_comment(1, "reader", "approve", "maintain", cmd, comment_id="cid")
-
-    assert "cid" in run.command_outcomes
-    assert run.command_outcomes["cid"] == "confirmed"
-    eng.store.save.assert_called()
+    eng.github.comment.assert_called_once()
+    comment_text = eng.github.comment.call_args[0][1]
+    assert "closed incident" in comment_text or "terminal state" in comment_text.lower()

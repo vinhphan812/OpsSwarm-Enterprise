@@ -143,11 +143,33 @@ class TestBanditJsonFalsePositive:
             "metrics": metrics if metrics is not None else {},
         }
 
-    def test_bandit_json_with_secret_key_snippets_passes(self, tmp_path):
-        """bandit.json containing 'secret_key' from test fixtures must validate cleanly."""
+    def test_bandit_json_with_safe_finding_passes(self, tmp_path):
+        """Bandit finding metadata remains scan-visible and safe content passes."""
         p = _write_json(tmp_path, self._make_bandit_payload())
-        # Should not raise; if it does the test surfaces the error message.
         validate(p)
+
+    def test_bandit_json_rejects_credential_in_finding(self, tmp_path):
+        """A credential embedded in Bandit evidence must not be hidden from scanning."""
+        payload = self._make_bandit_payload()
+        payload["results"][0]["code"] = (
+            "token = '" + "ghp_" + "A" * 32 + "'\n"
+        )
+        p = _write_json(tmp_path, payload)
+        with pytest.raises(ValidationError, match="GitHub token"):
+            validate(p)
+
+    @pytest.mark.parametrize("severity", ["MEDIUM", "HIGH"])
+    def test_bandit_json_rejects_disallowed_severity(self, tmp_path, severity):
+        payload = self._make_bandit_payload()
+        payload["results"][0]["issue_severity"] = severity
+        p = _write_json(tmp_path, payload)
+        with pytest.raises(ValidationError, match="Bandit policy rejected"):
+            validate(p)
+
+    def test_bandit_json_requires_results_array(self, tmp_path):
+        p = _write_json(tmp_path, {"metrics": {}, "errors": []})
+        with pytest.raises(ValidationError, match="Bandit results must be an array"):
+            validate(p)
 
     def test_bandit_json_with_long_metrics_key_passes(self, tmp_path):
         """bandit.json whose metrics{} keys are long editable-install paths must pass.
@@ -176,6 +198,15 @@ class TestBanditJsonFalsePositive:
         p = _write_json(tmp_path, self._make_bandit_payload(metrics=metrics))
         validate(p)
 
+    def test_bandit_json_ignores_standard_more_info_url(self, tmp_path):
+        payload = self._make_bandit_payload()
+        payload["results"][0]["more_info"] = (
+            "https://bandit.readthedocs.io/en/1.9.4/plugins/"
+            "b603_subprocess_without_shell_equals_true.html"
+        )
+        p = _write_json(tmp_path, payload)
+        validate(p)
+
     def test_assignment_pattern_secret_key_does_not_raise(self):
         """_scan_credentials must not raise on 'secret = secret_key' text."""
         text = "    secret = 'secret_key'\n    password: 'secret_key'\n"
@@ -200,6 +231,10 @@ class TestBanditJsonFalsePositive:
 
 class TestSensitivityNotLowered:
     """Adding placeholder forms must not exempt real secrets."""
+
+    def test_numeric_metric_value_is_not_treated_as_entropy(self):
+        """Large counters and timestamps are not credential material."""
+        _scan_credentials("1790473636100000000000000000000000000000")
 
     def test_real_password_in_assignment_still_caught(self):
         # Value constructed at runtime to avoid gitleaks false-positive on test fixtures.

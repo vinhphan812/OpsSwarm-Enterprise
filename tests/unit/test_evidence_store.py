@@ -36,6 +36,9 @@ class TestEvidenceStoreCore:
         assert len(records) == 2
 
     def test_list_skips_corrupt_lines(self, tmp_path):
+        """list() now fails closed on corrupt JSONL: raises MalformedEvidenceError."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest as _pytest
         ev = EvidenceStore(data_dir=tmp_path)
         run_id = "run-list-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
@@ -45,11 +48,14 @@ class TestEvidenceStoreCore:
                      'invalid json here\n'
                      '{"kind": "finding", "payload": {"msg": "also good"}}\n')
 
-        records = ev.list(run_id)
-        assert len(records) == 2
-        assert records[0]["payload"]["msg"] == "good"
-        assert records[1]["payload"]["msg"] == "also good"
+        # Fail closed: corrupt line raises rather than silently returning partial results
+        with _pytest.raises(MalformedEvidenceError):
+            ev.list(run_id)
+        # Corrupt counter is incremented before raising
         assert ev._corrupt_count == 1
+        # Corrupt line is moved to .corrupt sidecar
+        corrupt_path = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt_path.exists()
 
     def test_duplicate_count_tracked(self, tmp_path):
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
@@ -104,3 +110,109 @@ class TestEvidenceStoreReload:
         # Stored signature is always 16-char hex
         assert len(ev._last_signature[run_id]) == 16
         assert ev._last_signature[run_id].isalnum()
+
+
+class TestEvidenceIntegrityRegression:
+    """Regression tests for discussion_r4111809761 (chain verification) and
+    discussion_r4111809967 (write-before-index ordering)."""
+
+    def test_tampered_payload_detected_on_reload(self, tmp_path):
+        """A record whose payload was mutated after writing must be detected
+        during reload because the recomputed chain sig won't match stored."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest
+
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "tamper-reload"
+        ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "original"})
+        ev.append(run_id, "S4.finding", {"task_id": "T2", "finding": "second"})
+
+        # Tamper the first record in the JSONL file
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        lines = p.read_text(encoding="utf-8").splitlines()
+        first = json.loads(lines[0])
+        first["payload"]["finding"] = "TAMPERED"
+        lines[0] = json.dumps(first)
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        # A new store loading this run must detect chain breakage
+        ev2 = EvidenceStore(data_dir=tmp_path)
+        with pytest.raises(MalformedEvidenceError, match="chain broken|chain"):
+            ev2.append(run_id, "S4.finding", {"task_id": "T3", "finding": "new"})
+
+    def test_broken_predecessor_signature_detected(self, tmp_path):
+        """A record whose stored signature field itself was mutated must be
+        detected on reload — recomputed sig differs from the stored one."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest
+
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "broken-sig"
+        ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "ok"})
+        ev.append(run_id, "S4.finding", {"task_id": "T2", "finding": "ok2"})
+
+        # Corrupt the stored signature of the second record
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        lines = p.read_text(encoding="utf-8").splitlines()
+        rec2 = json.loads(lines[1])
+        rec2["signature"] = "deadbeefdeadbeef"  # wrong hex
+        lines[1] = json.dumps(rec2)
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        ev2 = EvidenceStore(data_dir=tmp_path)
+        with pytest.raises(MalformedEvidenceError):
+            ev2.append(run_id, "S4.finding", {"task_id": "T3", "finding": "new"})
+
+    def test_append_failure_rollback_index_untouched(self, tmp_path):
+        """If the durable write fails the in-memory index must not be updated,
+        so a retry attempt is not mistakenly treated as a duplicate."""
+        import unittest.mock as mock
+        import pytest
+        from pathlib import Path
+
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "rollback-run"
+        ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "first"})
+
+        # Snapshot index state before the failing write
+        index_before = frozenset(ev._index.get(run_id, set()))
+        chain_before = ev._last_signature.get(run_id)
+
+        # Patch Path.open at the module level so only the JSONL write fails
+        original_open = Path.open
+
+        def failing_open(self_path, mode="r", **kwargs):
+            if mode == "a" and str(self_path).endswith(".jsonl"):
+                raise OSError("disk full")
+            return original_open(self_path, mode, **kwargs)
+
+        with mock.patch.object(Path, "open", failing_open):
+            with pytest.raises(OSError):
+                ev.append(run_id, "S4.finding", {"task_id": "T2", "finding": "second"})
+
+        # Index and chain head must be unchanged — retry is still possible
+        assert ev._index.get(run_id) == set(index_before), \
+            "Index must not be updated after a failed write"
+        assert ev._last_signature.get(run_id) == chain_before, \
+            "Chain head must not advance after a failed write"
+
+    def test_malformed_jsonl_public_behavior(self, tmp_path):
+        """list() must raise MalformedEvidenceError and not silently serve a
+        partial audit trail when JSONL contains a corrupt line (r4111809778)."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest
+
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "partial-list"
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            '{"kind": "S4.finding", "payload": {"task_id": "T1", "finding": "ok"}, "signature": "aabbccddeeff0011"}\n'
+            "not json at all\n"
+            '{"kind": "S4.finding", "payload": {"task_id": "T2", "finding": "ok2"}, "signature": "1122334455667788"}\n',
+            encoding="utf-8",
+        )
+        with pytest.raises(MalformedEvidenceError):
+            ev.list(run_id)
+        assert ev._corrupt_count == 1
+        assert (tmp_path / "evidence" / f"{run_id}.corrupt").exists()

@@ -8,24 +8,44 @@ import sys
 import tomllib
 from pathlib import Path
 
+from packaging.requirements import InvalidRequirement, Requirement
+from packaging.utils import canonicalize_name
+from packaging.version import InvalidVersion, Version
+
 ROOT = Path(__file__).resolve().parents[1]
 PYPROJECT = ROOT / "pyproject.toml"
 REQUIREMENTS = ROOT / "requirements.txt"
 LOCK = ROOT / "requirements.lock"
-NAME_PATTERN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^]]+\])?")
 PIN_PATTERN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*==\s*([^\s\\;]+)")
 FORBIDDEN_LOCK_OPTIONS = ("--index-url", "--extra-index-url", "--trusted-host")
 
 
 def normalise_name(name: str) -> str:
-    return re.sub(r"[-_.]+", "-", name).lower()
+    return canonicalize_name(name)
+
+
+def parse_requirement(requirement: str) -> Requirement:
+    """Parse one direct dependency with standards-compliant PEP 508 semantics."""
+    try:
+        parsed = Requirement(requirement)
+    except InvalidRequirement as exc:
+        raise ValueError(f"unsupported requirement: {requirement!r}") from exc
+    if parsed.url is not None:
+        raise ValueError(f"direct URL requirements are unsupported: {requirement!r}")
+    return parsed
 
 
 def dependency_name(requirement: str) -> str:
-    match = NAME_PATTERN.match(requirement)
-    if match is None:
-        raise ValueError(f"unsupported requirement: {requirement!r}")
-    return normalise_name(match.group(1))
+    return normalise_name(parse_requirement(requirement).name)
+
+
+def check_version_satisfies(requirement: Requirement, locked_version: str) -> bool:
+    """Return whether a locked pin satisfies a parsed direct requirement."""
+    try:
+        version = Version(locked_version)
+    except InvalidVersion:
+        return False
+    return requirement.specifier.contains(version, prereleases=None)
 
 
 def direct_requirements() -> list[str]:
@@ -90,9 +110,30 @@ def verify() -> list[str]:
         errors.append(str(exc))
         locked = {}
 
-    missing = sorted({dependency_name(requirement) for requirement in direct} - locked.keys())
+    parsed_direct: list[tuple[str, Requirement]] = []
+    for requirement_text in direct:
+        try:
+            requirement = parse_requirement(requirement_text)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        parsed_direct.append((requirement_text, requirement))
+
+    missing = sorted(
+        {normalise_name(requirement.name) for _, requirement in parsed_direct} - locked.keys()
+    )
     if missing:
         errors.append("direct dependencies missing from requirements.lock: " + ", ".join(missing))
+
+    for requirement_text, requirement in parsed_direct:
+        name = normalise_name(requirement.name)
+        locked_version = locked.get(name)
+        if locked_version is not None and not check_version_satisfies(requirement, locked_version):
+            errors.append(
+                f"locked {name}=={locked_version} does not satisfy "
+                f"direct requirement {requirement_text!r}"
+            )
+
     if not locked:
         errors.append("requirements.lock contains no pinned packages")
     return errors
@@ -106,7 +147,7 @@ def main() -> int:
         return 1
     print(
         "Dependency lock verified: pyproject.toml and requirements.txt align; "
-        "all direct dependencies are present in the portable hash-locked graph."
+        "all direct constraints are satisfied by the portable hash-locked graph."
     )
     return 0
 

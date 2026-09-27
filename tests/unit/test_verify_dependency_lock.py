@@ -70,3 +70,47 @@ B == 2.0
 
     with pytest.raises(ValueError, match="locked package has no SHA-256 hash: a"):
         verify_dependency_lock.locked_requirements(lock_text)
+
+
+def test_check_version_satisfies_packaging_semantics() -> None:
+    requirement = verify_dependency_lock.parse_requirement("fastapi>=0.115,<1")
+    assert verify_dependency_lock.check_version_satisfies(requirement, "0.115.0")
+    assert verify_dependency_lock.check_version_satisfies(requirement, "0.120.1")
+    assert not verify_dependency_lock.check_version_satisfies(requirement, "0.114.9")
+    assert not verify_dependency_lock.check_version_satisfies(requirement, "1.0.0")
+    assert not verify_dependency_lock.check_version_satisfies(requirement, "invalid-version")
+
+
+def test_parse_requirement_supports_extras_and_markers() -> None:
+    requirement = verify_dependency_lock.parse_requirement(
+        'uvicorn[standard]>=0.30,<1; python_version >= "3.11"'
+    )
+
+    assert verify_dependency_lock.normalise_name(requirement.name) == "uvicorn"
+    assert requirement.extras == {"standard"}
+    assert verify_dependency_lock.check_version_satisfies(requirement, "0.35.0")
+
+
+def test_parse_requirement_rejects_invalid_or_direct_url() -> None:
+    with pytest.raises(ValueError, match="unsupported requirement"):
+        verify_dependency_lock.parse_requirement("not a valid requirement !!!")
+    with pytest.raises(ValueError, match="direct URL requirements are unsupported"):
+        verify_dependency_lock.parse_requirement("demo @ https://example.invalid/demo.whl")
+
+
+def test_verify_rejects_incompatible_locked_direct_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(verify_dependency_lock, "direct_requirements", lambda: ["fastapi>=0.115,<1"])
+    monkeypatch.setattr(verify_dependency_lock, "project_requirements", lambda: ["fastapi>=0.115,<1"])
+    monkeypatch.setattr(
+        verify_dependency_lock,
+        "locked_requirements",
+        lambda _lock_text: {"fastapi": "0.1"},
+    )
+
+    errors = verify_dependency_lock.verify()
+
+    assert errors == [
+        "locked fastapi==0.1 does not satisfy direct requirement 'fastapi>=0.115,<1'"
+    ]

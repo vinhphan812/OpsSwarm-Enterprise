@@ -132,7 +132,7 @@ async def monitoring_event(request: Request, x_monitoring_signature: str | None 
     secret = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
     body = await request.body()
 
-    is_api_key_valid = (api_key == os.environ.get("OPSWARM_API_KEY"))
+    is_api_key_valid = bool(api_key) and bool(os.environ.get("OPSWARM_API_KEY")) and api_key == os.environ.get("OPSWARM_API_KEY")
     is_signature_valid = verify_signature(secret, body, x_monitoring_signature)
 
     if not is_api_key_valid and not is_signature_valid:

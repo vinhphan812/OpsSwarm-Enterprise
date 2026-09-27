@@ -143,11 +143,6 @@ class EvidenceStore:
             # Calculate signature for audit (chained)
             sig_chain = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
 
-            # Add signature to index
-            self._index[run_id].add(sig_payload)
-            # Update last signature
-            self._last_signature[run_id] = sig_chain
-
             # Compute idempotency key if event_id is provided
             idempotency_key = ""
             if self.enable_idempotency and event_id is not None:
@@ -166,8 +161,19 @@ class EvidenceStore:
             if idempotency_key:
                 rec["idempotency_key"] = idempotency_key
 
-            with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
-                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+            # Durable write FIRST; update in-memory indexes only after success.
+            # This prevents the index from diverging from persisted state when
+            # the write fails (e.g. disk full, I/O error).
+            try:
+                with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
+                    f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+            except OSError:
+                # Write failed — leave indexes untouched so the caller can retry
+                raise
+
+            # Only update in-memory state after the durable write succeeds
+            self._index[run_id].add(sig_payload)
+            self._last_signature[run_id] = sig_chain
             return eid, False
 
     def _load_existing_signatures(self, run_id: str) -> None:
@@ -184,21 +190,42 @@ class EvidenceStore:
             if line.strip():
                 try:
                     rec = json.loads(line)
-                    # Re-derive payload signature for deduplication index
-                    sig_payload = self._signature(rec.get("kind", ""), rec.get("payload", {}))
-                    self._index[run_id].add(sig_payload)
-                    # Use stored chained signature for audit chain
-                    sig_chain = rec.get("signature", "")
-                    if sig_chain:
-                        last_sig = sig_chain
                 except json.JSONDecodeError as e:
                     self._corrupt_count += 1
                     logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
-                    # Move to corrupt file
                     corrupt_path = self.path / f"{run_id}.corrupt"
                     with corrupt_path.open("a", encoding="utf-8") as cf:
                         cf.write(line + "\n")
-                    raise MalformedEvidenceError(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}") from e
+                    raise MalformedEvidenceError(
+                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
+                    ) from e
+
+                kind = rec.get("kind", "")
+                payload = rec.get("payload", {})
+
+                # Re-derive payload signature for deduplication index
+                sig_payload = self._signature(kind, payload)
+                self._index[run_id].add(sig_payload)
+
+                # Independently verify the stored chained signature rather than
+                # blindly trusting it (discussion_r4111809761).  If the recomputed
+                # signature does not match the stored one the chain is broken,
+                # which means the record was tampered or truncated; raise so the
+                # caller can treat the audit trail as untrusted.
+                stored_sig = rec.get("signature", "")
+                recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=last_sig)
+                if stored_sig and stored_sig != recomputed_sig:
+                    logger.error(
+                        "Evidence chain verification failed for run %s at line %d "
+                        "(stored=%s, recomputed=%s)",
+                        run_id, i + 1, stored_sig, recomputed_sig,
+                    )
+                    raise MalformedEvidenceError(
+                        f"Evidence chain broken for run {run_id} at line {i + 1}: "
+                        f"stored signature does not match recomputed value"
+                    )
+                if stored_sig:
+                    last_sig = stored_sig
         self._last_signature[run_id] = last_sig
 
     def get_duplicate_count(self) -> int:
@@ -215,14 +242,16 @@ class EvidenceStore:
                 continue
             try:
                 records.append(json.loads(line))
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 self._corrupt_count += 1
                 logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
-                # Move to corrupt file
+                # Move to corrupt file before raising so data is preserved
                 corrupt_path = self.path / f"{run_id}.corrupt"
                 with corrupt_path.open("a", encoding="utf-8") as cf:
                     cf.write(line + "\n")
-                continue
+                raise MalformedEvidenceError(
+                    f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
+                ) from exc
         return records
 
     def checkpoint(self, run_id: str, checkpoint_type: str, payload: dict[str, Any]) -> str:

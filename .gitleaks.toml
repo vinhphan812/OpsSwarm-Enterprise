@@ -1,6 +1,0 @@
-title = "gitleaks config - allowlist test fixtures"
-
-[allowlist]
-files = [
-    "tests/unit/test_validate_artifacts.py"
-]

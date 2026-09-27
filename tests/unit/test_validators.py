@@ -1,9 +1,25 @@
 """Extended tests for opsswarm.validators module - covers uncovered branches."""
 
+import pytest
+
 from opsswarm.validators import (
     load_skill_frontmatter,
     validate_skill_artefact,
 )
+
+
+@pytest.mark.parametrize("skill_id", [
+    "s1-intent-guard",
+    "s2-task-graph",
+    "s3-horizon-plan",
+    "s4-role-dispatch",
+    "s5-collab-exec",
+    "s6-resilience-guard",
+    "s7-observe-verify",
+    "s8-orchestration-hub",
+])
+def test_all_eight_skills_pass_validation(skill_id):
+    assert validate_skill_artefact(skill_id) is True, f"{skill_id} failed validation"
 
 
 class TestLoadSkillFrontmatterMalformed:
@@ -192,3 +208,34 @@ class TestValidateSkillArtefactDependencies:
             assert result is False
         finally:
             v._get_skills_dir = orig
+
+
+class TestRealShippedSkills:
+    """Smoke-validate all eight shipped skills so a broken real skill is caught here."""
+
+    REAL_SKILLS = [
+        "s1-intent-guard",
+        "s2-task-graph",
+        "s3-horizon-plan",
+        "s4-role-dispatch",
+        "s5-collab-exec",
+        "s6-resilience-guard",
+        "s7-observe-verify",
+        "s8-orchestration-hub",
+    ]
+
+    def test_all_real_skills_have_valid_frontmatter(self):
+        """Every shipped skill directory must have a SKILL.md with name and description."""
+        import opsswarm.validators as v
+        for skill_id in self.REAL_SKILLS:
+            fm = load_skill_frontmatter(skill_id)
+            assert fm is not None, f"Skill {skill_id}: frontmatter could not be parsed"
+            assert isinstance(fm, dict), f"Skill {skill_id}: frontmatter is not a dict"
+            assert fm.get("name"), f"Skill {skill_id}: missing 'name' in frontmatter"
+            assert fm.get("description"), f"Skill {skill_id}: missing 'description' in frontmatter"
+
+    def test_all_real_skills_pass_validate_skill_artefact(self):
+        """validate_skill_artefact must return True for every shipped skill."""
+        for skill_id in self.REAL_SKILLS:
+            result = validate_skill_artefact(skill_id)
+            assert result is True, f"Skill {skill_id}: validate_skill_artefact returned False"

@@ -56,7 +56,15 @@ jobs:
         run: python -m pip install bandit==1.9.4
 
       - name: Run Bandit security analysis
-        run: python -m bandit -r . -f json -o artifacts/bandit.json --exit-zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          bandit_rc=0
+          python -m bandit -r opsswarm scripts -f json -o artifacts/bandit.json || bandit_rc=$?
+          python scripts/validate-artifacts.py artifacts/bandit.json
+          if [[ "$bandit_rc" -ne 0 && "$bandit_rc" -ne 1 ]]; then
+            exit "$bandit_rc"
+          fi
 
       # ── pip-audit (2.10.1) ────────────────────────────────────────────────
       - name: Install pip-audit
@@ -190,7 +198,15 @@ jobs:
         run: python -m pip install bandit==1.9.4
 
       - name: Run Bandit security analysis
-        run: python -m bandit -r . -f json -o artifacts/bandit.json --exit-zero
+        shell: bash
+        run: |
+          set -euo pipefail
+          bandit_rc=0
+          python -m bandit -r opsswarm scripts -f json -o artifacts/bandit.json || bandit_rc=$?
+          python scripts/validate-artifacts.py artifacts/bandit.json
+          if [[ "$bandit_rc" -ne 0 && "$bandit_rc" -ne 1 ]]; then
+            exit "$bandit_rc"
+          fi
 
       # ── pip-audit (2.10.1) ────────────────────────────────────────────────
       - name: Install pip-audit

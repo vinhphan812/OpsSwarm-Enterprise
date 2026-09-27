@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
 
 from . import skill_logic as S
@@ -15,6 +16,7 @@ from .markdown import (
 from .models import *
 from .models import CommandOutcome  # Import for Issue #9 fix
 from .policy import PolicyEngine
+from .metrics import metrics
 from .reconciliation import ReconciliationManager
 from .store import RunStore
 
@@ -144,6 +146,7 @@ class Orchestrator:
             if delivery_id:
                 run.idempotency_keys.add(delivery_id)
             self.runs[number] = run;
+            metrics.record_run("started")
             await self._set_state(run, RunState.TRIAGE)
             run.incident = S.parse_issue(number, issue);
             await self._save(run, "S1.incident", run.incident.model_dump())
@@ -151,6 +154,7 @@ class Orchestrator:
             return run
 
     async def _investigate(self, run: RunRecord, extra_task: Task | None = None):
+        _t0_investigate = time.monotonic()
         await self._set_state(run, RunState.INVESTIGATING)
         main = self.profile("incident-manager")
         if extra_task:
@@ -198,9 +202,11 @@ class Orchestrator:
             run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="INPUT",
                                            reason="Root-cause analysis is not sufficiently certain for autonomous remediation",
                                            question=question)
+            metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
             await self._set_state(run, RunState.WAITING_INPUT);
             await self.github.comment(run.issue_number, decision_request(run));
             return
+        metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
         await self._plan(run)
 
     async def _plan(self, run: RunRecord):
@@ -265,31 +271,38 @@ class Orchestrator:
             return
         if not run.execution.success:
             run.error = run.execution.summary;
+            metrics.record_run("failed")
             await self._set_state(run, RunState.FAILED);
             await self.github.comment(run.issue_number, f"## OpsSwarm — Recovery failed\n\n{run.execution.summary}");
             return
         await self._verify(run)
 
     async def _verify(self, run: RunRecord):
+        _t0_verify = time.monotonic()
         await self._set_state(run, RunState.VERIFYING)
         run.verification = await S.verify_recovery(self.oc, self.profile("observability-investigator"), run.run_id,
                                                    run.incident, run.execution)
         await self._save(run, "S7.verification", run.verification.model_dump())
+        metrics.record_verification(run.verification.verified)
         threshold = float(self.cfg.get("verification_confidence_threshold", 0.85))
         if not run.verification.verified or run.verification.confidence < threshold:
             # S7 veto: allow abort instead of fail
             if run.verification.abort:
                 run.error = "Verification failed; aborted by S7"
+                metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
                 await self._set_state(run, RunState.ABORTED)
                 await self.github.comment(run.issue_number,
                                           f"## OpsSwarm — Verification failed\n\n{run.verification.summary}\n\nAborted by S7 (veto).");
                 return
             run.error = "Independent recovery verification failed or confidence below threshold";
+            metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
             await self._set_state(run, RunState.FAILED)
             await self.github.comment(run.issue_number,
                                       f"## OpsSwarm — Verification failed\n\n{run.verification.summary}\n\nIssue remains open.");
             return
+        metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
         await self._set_state(run, RunState.RESOLVED);
+        metrics.record_run("resolved")
         await self.github.comment(run.issue_number, resolved(run));
         await self.github.comment(run.issue_number, postmortem(run))
         if self.cfg.get("create_corrective_issues", True) and run.root_cause:
@@ -304,7 +317,7 @@ class Orchestrator:
         run = self.runs.get(number)
         if not run: return
         # Check terminal state: reject all commands if run is in terminal state
-        if run.state in TERMINAL_STATES and command.name != "resume":
+        if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
@@ -367,6 +380,7 @@ class Orchestrator:
                 self.store.save(run)
             run.error = f"Aborted by @{actor}";
             await self._set_state(run, RunState.ABORTED);
+            metrics.record_command("abort")
             await self.github.comment(number, f"## OpsSwarm — Aborted\n\nBy `@{actor}`.")
             # Mark command as executed
             if comment_id:
@@ -381,6 +395,7 @@ class Orchestrator:
             run.human_inputs.append({"actor": actor, "text": command.argument, "authority": "provided-input"});
             run.decision = None;
             await self._save(run, "human.input", run.human_inputs[-1])
+            metrics.record_command("provide")
             # Re-synthesize root cause then plan.
             await self._investigate(run)
             # Mark command as executed
@@ -398,6 +413,7 @@ class Orchestrator:
             # Unique task ID for repeated investigations.
             extra.id = f"HX{len([t for t in run.tasks if t.id.startswith('HX')]) + 1}"
             run.decision = None;
+            metrics.record_command("investigate")
             await self._investigate(run, extra_task=extra)
             # Mark command as executed
             if comment_id:
@@ -412,6 +428,7 @@ class Orchestrator:
             if run.decision: run.decision.status = "REJECTED"
             run.error = f"Proposed remediation rejected by @{actor}";
             await self._set_state(run, RunState.WAITING_DECISION);
+            metrics.record_command("reject")
             await self.github.comment(number,
                                       "OpsSwarm recorded the rejection. Use `/opsswarm investigate ...`, `/opsswarm provide ...`, or `/opsswarm abort`.")
             # Mark command as executed
@@ -427,10 +444,20 @@ class Orchestrator:
             if not run.recovery_plan: raise RuntimeError("No recovery plan exists")
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
             if not option: raise ValueError(f"Unknown option id: {command.argument}")
-            if self.policy.action(option.risk) == "DENY": raise PermissionError(
+            # classify_operation supplements option.risk: use the more restrictive of
+            # the declared risk and the runtime classification of the command argument.
+            _RISK_ORDER = {Risk.SAFE_WRITE: 0, Risk.RISKY_WRITE: 1, Risk.DESTRUCTIVE: 2}
+            classified_risk = self.policy.classify_operation(command.argument)
+            effective_risk = (
+                classified_risk
+                if _RISK_ORDER.get(classified_risk, 0) > _RISK_ORDER.get(option.risk, 0)
+                else option.risk
+            )
+            if self.policy.action(effective_risk) == "DENY": raise PermissionError(
                 "Policy denies this option regardless of human approval")
             if run.decision: run.decision.status = "ANSWERED"
             await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
+            metrics.record_command("approve")
             await self._execute_option(run, option)
             # Mark command as executed (after execution completes)
             if comment_id:

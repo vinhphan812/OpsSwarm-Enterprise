@@ -169,6 +169,8 @@ def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> N
 
     for match in LONG_TOKEN_PATTERN.finditer(text):
         candidate = match.group(1)
+        if candidate.isdigit():
+            continue
         if re.fullmatch(r"[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64}|[0-9A-Fa-f]{128}", candidate):
             continue
         if _looks_like_placeholder(candidate):
@@ -214,44 +216,46 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
     return text
 
 
-def _strip_bandit_results(value: Any) -> Any:
-    """Return a copy of a bandit.json document with results[] and metrics keys redacted.
+def _normalise_bandit_for_scan(value: Any) -> Any:
+    """Preserve Bandit findings while replacing only per-file metric path keys.
 
-    Bandit embeds verbatim source-code snippets and issue descriptions in the
-    results[] array.  These fields routinely contain credential-like patterns
-    (e.g. ``secret = 'secret_key'``, ``issue_text: 'Possible hardcoded
-    password: secret_key'``) that are intentional test fixtures — not real
-    secrets in the artifact itself.
-
-    The metrics{} dict uses file-system paths as keys (e.g.
-    ``".venv/Lib/site-packages/__editable___pkg_1_0_finder.py"``).  These keys
-    are long identifier strings, not secrets, but they can contain 40+ char
-    substrings that trigger the high-entropy token pattern.  We replace the
-    metrics dict with a sentinel containing only the numeric totals so that
-    file-path strings are never fed to the credential scanner.
-
-    We redact the entire results[] array before the text credential scan so
-    that no bandit finding text can trigger a false-positive.  The structural
-    fields (errors[], generated_at, etc.) are left intact and still scanned,
-    because those could in principle carry sensitive metadata.
+    Bandit's ``metrics`` object uses scanned file paths as keys. Long generated
+    paths can resemble high-entropy tokens, but the keys contain no finding
+    evidence. The standard ``more_info`` documentation URL is also omitted.
+    Finding metadata, issue text, and source snippets remain intact so that
+    credential detection is applied to the security-relevant content.
     """
     if not isinstance(value, dict):
         return value
-    redacted = {}
-    for k, v in value.items():
-        if k == "results":
-            redacted[k] = []
-        elif k == "metrics":
-            # Replace the per-file metrics dict with a single redacted-paths sentinel.
-            # The values (counts) are harmless integers; only the keys (file paths)
-            # are redacted to prevent long path components from triggering entropy checks.
-            if isinstance(v, dict):
-                redacted[k] = {"<paths-redacted>": {}}
-            else:
-                redacted[k] = v
-        else:
-            redacted[k] = v
-    return redacted
+    normalised = dict(value)
+    normalised["results"] = [
+        {key: item for key, item in result.items() if key != "more_info"}
+        if isinstance(result, dict)
+        else result
+        for result in value.get("results", [])
+    ]
+    metrics = value.get("metrics")
+    if isinstance(metrics, dict):
+        totals = metrics.get("_totals")
+        normalised["metrics"] = {"_totals": totals} if isinstance(totals, dict) else {}
+    return normalised
+
+
+def _validate_bandit_policy(value: Any) -> None:
+    """Fail when Bandit reports a medium- or high-severity finding."""
+    if not isinstance(value, dict) or not isinstance(value.get("results"), list):
+        raise ValidationError("Bandit results must be an array")
+    disallowed = 0
+    for result in value["results"]:
+        if not isinstance(result, dict):
+            raise ValidationError("Bandit result must be an object")
+        severity = result.get("issue_severity")
+        if severity not in {"LOW", "MEDIUM", "HIGH"}:
+            raise ValidationError("Bandit result has invalid severity")
+        if severity in {"MEDIUM", "HIGH"}:
+            disallowed += 1
+    if disallowed:
+        raise ValidationError(f"Bandit policy rejected {disallowed} medium/high finding(s)")
 
 
 def _validate_json(path: Path, text: str) -> tuple[Any, set[str]]:
@@ -311,20 +315,17 @@ def validate(path: Path) -> None:
     except OSError as exc:
         raise ValidationError("file cannot be read") from exc
 
-    # For SBOM files, first parse JSON to extract known tokens, then scan text with those tokens.
-    # For bandit.json, strip the results[] array before the credential scan so that
-    # bandit finding text (code snippets, issue_text) can't trigger false-positives.
+    # Parse JSON first so SBOM identifiers and Bandit policy can be validated.
+    # Bandit finding metadata and snippets remain in the credential scan. Only
+    # per-file metric path keys are omitted because they are non-evidence data
+    # that can look like high-entropy tokens.
     sbom_known_tokens: set[str] = set()
     scan_bytes = raw
     if path.suffix.lower() == ".json":
-        _, sbom_known_tokens = _validate_json(path, raw.decode("utf-8"))
+        parsed, sbom_known_tokens = _validate_json(path, raw.decode("utf-8"))
         if path.name == "bandit.json":
-            try:
-                parsed = json.loads(raw.decode("utf-8"))
-                stripped = _strip_bandit_results(parsed)
-                scan_bytes = json.dumps(stripped).encode("utf-8")
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                pass  # Let _validate_text surface the error
+            _validate_bandit_policy(parsed)
+            scan_bytes = json.dumps(_normalise_bandit_for_scan(parsed)).encode("utf-8")
 
     text = _validate_text(scan_bytes, sbom_known_tokens)
 

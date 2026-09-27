@@ -45,11 +45,11 @@ async def execute_task(oc, profile_agent: str, run_id: str, incident: IncidentCo
         normalized = normalize_finding(data)
         return Finding.model_validate(normalized)
     except Exception as e:
-        logger.error(f"Validation failed for task {task.id}: {e}")
+        logger.error(f"Validation failed for task {task.id}: [details redacted]")
         # Add basic evidence for validation failure
         return Finding(
             task_id=task.id,
-            finding=f"Validation failed: {str(e)}",
+            finding="Validation failed: structured output could not be parsed",
             evidence=["[Raw output redacted for PII sensitivity]"],
             confidence=0.0
         )
@@ -61,7 +61,7 @@ async def synthesize_root_cause(oc, agent, run_id, incident, findings, human_inp
         normalized = normalize_root_cause_artifact(data)
         return RootCauseArtifact.model_validate(normalized)
     except Exception as e:
-        logger.error(f"Validation failed for root cause: {e}")
+        logger.error(f"Validation failed for root cause: [details redacted]")
         return RootCauseArtifact(
             status="uncertain",
             proximate_cause="Unable to normalize root-cause output",
@@ -75,7 +75,7 @@ async def make_recovery_plan(oc, agent, run_id, incident, root, human_inputs) ->
         normalized = normalize_recovery_plan(data)
         return RecoveryPlan.model_validate(normalized)
     except Exception as e:
-        logger.error(f"Validation failed for recovery plan: {e}")
+        logger.error(f"Validation failed for recovery plan: [details redacted]")
         return RecoveryPlan(options=[])
 
 

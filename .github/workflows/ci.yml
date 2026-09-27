@@ -28,15 +28,21 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.lock
 
+      - name: Install dependency-lock verifier tooling
+        run: python -m pip install 'packaging==25.0'  # Keep aligned with the dev extra.
+
       - name: Verify dependency sources and lock structure
         run: python scripts/verify_dependency_lock.py
 
       # NOTE: strict lock reproduction is intentionally omitted here.
+      # The structural integrity check (verify_dependency_lock.py) confirms
+      # that all direct constraints are satisfied by the pinned graph; it does
+      # NOT regenerate or diff the full transitive closure. This is by design:
       # requirements.lock was generated on Windows; uvloop and other
       # platform-specific packages are omitted there but added by pip-tools
-      # on Linux, making a cross-platform diff inherently unreliable.
-      # The structural integrity check above (verify_dependency_lock.py)
-      # is the authoritative gate for lock correctness.
+      # on Linux, making a deterministic cross-platform diff inherently
+      # unreliable. See docs/adr/ADR-008_DEPENDENCY_LOCK_RELEASE_POLICY.md
+      # (ADR-008-1) for the rationale and the full lock-file strategy.
 
   quality:
     name: Python ${{ matrix.python-version }} quality gates

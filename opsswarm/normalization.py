@@ -24,8 +24,8 @@ def normalize_list_of_strings(value: Any) -> list[str]:
     if isinstance(value, str):
         return [redact_pii(value)]
     if isinstance(value, dict):
-        # Flatten dictionary if it's structured evidence
-        return [f"{k}: {v}" for k, v in value.items()]
+        # Flatten dictionary and redact PII in both keys and values
+        return [redact_pii(f"{k}: {v}") for k, v in value.items()]
     return []
 
 

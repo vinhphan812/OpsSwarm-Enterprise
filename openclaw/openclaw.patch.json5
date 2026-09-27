@@ -6,7 +6,7 @@
     },
     entries: {
       "opsswarm-incident-manager": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-incident-manager",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-incident-manager",
         tools: {
           allow: [
             "read",
@@ -15,7 +15,7 @@
         }
       },
       "opsswarm-observability-investigator": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-observability-investigator",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-observability-investigator",
         tools: {
           allow: [
             "read"
@@ -23,7 +23,7 @@
         }
       },
       "opsswarm-application-investigator": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-application-investigator",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-application-investigator",
         tools: {
           allow: [
             "read"
@@ -31,7 +31,7 @@
         }
       },
       "opsswarm-infrastructure-investigator": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-infrastructure-investigator",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-infrastructure-investigator",
         tools: {
           allow: [
             "read"
@@ -39,7 +39,7 @@
         }
       },
       "opsswarm-database-investigator": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-database-investigator",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-database-investigator",
         tools: {
           allow: [
             "read"
@@ -47,7 +47,7 @@
         }
       },
       "opsswarm-recovery-responder": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-recovery-responder",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-recovery-responder",
         tools: {
           allow: [
             "read",
@@ -57,7 +57,7 @@
         }
       },
       "opsswarm-communications-postmortem": {
-        workspace: "D:/competitions/Minto 2026/OpsSwarm-Enterprise/openclaw/workspaces/opsswarm-communications-postmortem",
+        workspace: "REPLACE_WITH_ABSOLUTE_REPO_PATH/openclaw/workspaces/opsswarm-communications-postmortem",
         tools: {
           allow: [
             "read"
@@ -69,7 +69,7 @@
   skills: {
     load: {
       extraDirs: [
-        "D:/competitions/Minto 2026/OpsSwarm-Enterprise/skills"
+        "REPLACE_WITH_ABSOLUTE_REPO_PATH/skills"
       ],
     },
   },
