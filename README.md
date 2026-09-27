@@ -116,15 +116,15 @@ The lifecycle diagram is intentionally icon-assisted for readability. The exact 
 
 ## S1–S8 Skill model
 
-| Skill | Responsibility |
-| --- | --- |
-| **S1 IntentGuard** | Normalize the GitHub Issue into bounded incident context without inventing missing facts. |
-| **S2 TaskGraph** | Build the minimum read-only investigation DAG using OBSERVE / INVESTIGATE / DIAGNOSE tasks. |
-| **S3 HorizonPlan** | Produce evidence-supported remediation options and risk-aware recovery plans. |
-| **S4 RoleDispatch** | Dispatch dependency-ready tasks to bounded OpenClaw specialist profiles. |
-| **S5 CollabExec** | Aggregate structured evidence and execute only the selected/authorized recovery option. |
-| **S6 ResilienceGuard** | Enforce fail-closed handling for policy gates, ambiguity, rejection, and human escalation. |
-| **S7 ObserveVerify** | Independently verify service/business recovery using read-only evidence. |
+| Skill                   | Responsibility                                                                                                              |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **S1 IntentGuard**      | Normalize the GitHub Issue into bounded incident context without inventing missing facts.                                   |
+| **S2 TaskGraph**        | Build the minimum read-only investigation DAG using OBSERVE / INVESTIGATE / DIAGNOSE tasks.                                 |
+| **S3 HorizonPlan**      | Produce evidence-supported remediation options and risk-aware recovery plans.                                               |
+| **S4 RoleDispatch**     | Dispatch dependency-ready tasks to bounded OpenClaw specialist profiles.                                                    |
+| **S5 CollabExec**       | Aggregate structured evidence and execute only the selected/authorized recovery option.                                     |
+| **S6 ResilienceGuard**  | Enforce fail-closed handling for policy gates, ambiguity, rejection, and human escalation.                                  |
+| **S7 ObserveVerify**    | Independently verify service/business recovery using read-only evidence.                                                    |
 | **S8 OrchestrationHub** | Own lifecycle, state transitions, cross-Skill ordering, GitHub synchronization, evidence correlation, and terminal outcome. |
 
 Skill contracts are documented in [`skills/`](skills/) and validated by [`scripts/validate_skill.py`](scripts/validate_skill.py).
@@ -160,12 +160,12 @@ A comment such as `rollback looks fine` is stored as information only and **cann
 
 Default authorization policy in `config/production.yaml`:
 
-| Risk | Default policy |
-| --- | --- |
-| `read` | `AUTO` |
-| `safe_write` | `AUTO` |
+| Risk          | Default policy   |
+| ------------- | ---------------- |
+| `read`        | `AUTO`           |
+| `safe_write`  | `AUTO`           |
 | `risky_write` | `HUMAN_APPROVAL` |
-| `destructive` | `DENY` |
+| `destructive` | `DENY`           |
 
 By default, input requires at least GitHub `read` permission, while approval/abort requires `maintain` permission.
 
@@ -273,7 +273,7 @@ curl http://localhost:8088/health
 Expected shape:
 
 ```json
-{"ok": true, "version": "2.1.0", "architecture": "openclaw+github"}
+{ "ok": true, "version": "2.1.0", "architecture": "openclaw+github" }
 ```
 
 ## GitHub webhook setup
@@ -399,16 +399,16 @@ OpsSwarm-Enterprise/
 
 ## Documentation
 
-| Document | Description |
-|---|---|
-| [`docs/index.md`](docs/index.md) | **Main documentation entry point.** Navigation hub for all docs. |
+| Document                                       | Description                                                                                  |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| [`docs/index.md`](docs/index.md)               | **Main documentation entry point.** Navigation hub for all docs.                             |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System context, S1–S8 responsibility map, authority, evidence, trust boundaries, invariants. |
-| [`docs/FLOWS.md`](docs/FLOWS.md) | End-to-end sequences, exact runtime state machine, human gates, ambiguous-write handling. |
-| [`docs/INSTALLATION.md`](docs/INSTALLATION.md) | Installation and OpenClaw/GitHub setup. |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Human/machine incident operation. |
-| [`docs/SECURITY.md`](docs/SECURITY.md) | Security and authority model. |
-| [`docs/adr/README.md`](docs/adr/README.md) | Index of all architectural decision records. |
-| [`openclaw/README.md`](openclaw/README.md) | OpenClaw-specific configuration notes. |
+| [`docs/FLOWS.md`](docs/FLOWS.md)               | End-to-end sequences, exact runtime state machine, human gates, ambiguous-write handling.    |
+| [`docs/INSTALLATION.md`](docs/INSTALLATION.md) | Installation and OpenClaw/GitHub setup.                                                      |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md)     | Human/machine incident operation.                                                            |
+| [`docs/SECURITY.md`](docs/SECURITY.md)         | Security and authority model.                                                                |
+| [`docs/adr/README.md`](docs/adr/README.md)     | Index of all architectural decision records.                                                 |
+| [`openclaw/README.md`](openclaw/README.md)     | OpenClaw-specific configuration notes.                                                       |
 
 ## Current limitations
 

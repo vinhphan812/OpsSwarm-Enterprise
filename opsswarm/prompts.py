@@ -4,7 +4,7 @@ import json
 
 from .models import IncidentContext, Finding, RootCauseArtifact
 
-JSON_ONLY = "Return ONLY valid JSON. No markdown fences and no prose outside JSON."
+JSON_ONLY = "Return ONLY valid JSON. No markdown fences and no prose outside JSON. The system normalizes structured object/dict outputs into the required schema fields automatically if fields are structured."
 
 
 def task_graph_prompt(incident: IncidentContext) -> str:

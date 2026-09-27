@@ -17,3 +17,7 @@ openclaw agents list
 ```
 
 OpsSwarm intentionally does not use a second harness or runtime adapter.
+
+Configuration Schema Note:
+Agent-specific tool restrictions must be defined using the `tools: { allow: [...], deny: [...] }` schema;
+`tool_allowlist` is not supported. Use built-in identifiers (e.g., `read`, `write`, `apply_patch`).

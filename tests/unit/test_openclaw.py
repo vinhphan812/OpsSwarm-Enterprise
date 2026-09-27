@@ -121,6 +121,38 @@ class TestOpenClawClient:
                 await client.run_text("agent", "session", "prompt")
 
     @pytest.mark.asyncio
+    async def test_run_text_from_payloads_invalid_element(self, client):
+        """run_text handles invalid elements in payloads."""
+        envelope = {
+            "ok": True,
+            "payloads": ["not a dict", {"text": 123}]  # Not dict, and not a string
+        }
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(json.dumps(envelope).encode(), b""))
+            mock_exec.return_value = mock_proc
+
+            with pytest.raises(OpenClawError, match="No assistant text"):
+                await client.run_text("agent", "session", "prompt")
+
+    @pytest.mark.asyncio
+    async def test_run_text_from_result_payloads_not_dict(self, client):
+        """run_text handles result that is not a dict."""
+        envelope = {
+            "ok": True,
+            "result": "not a dict"
+        }
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_proc = MagicMock()
+            mock_proc.returncode = 0
+            mock_proc.communicate = AsyncMock(return_value=(json.dumps(envelope).encode(), b""))
+            mock_exec.return_value = mock_proc
+
+            with pytest.raises(OpenClawError, match="No assistant text"):
+                await client.run_text("agent", "session", "prompt")
+
+    @pytest.mark.asyncio
     async def test_run_text_timeout_exceeded(self, client):
         """run_text raises error when process times out."""
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:

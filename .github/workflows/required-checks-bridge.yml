@@ -1,0 +1,157 @@
+name: Required Checks Bridge
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  checks: read
+
+jobs:
+  ci-required:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for canonical CI checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            "Verify dependency lock"
+            "Python 3.11 quality gates"
+            "Python 3.12 quality gates"
+            "Python 3.13 quality gates"
+            "Coverage enforcement"
+            "Build distributions"
+          )
+
+          for attempt in $(seq 1 60); do
+            json="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100")"
+
+            pending=0
+            failed=0
+            for check in "${expected[@]}"; do
+              state="$(jq -r --arg n "$check" '[.check_runs[] | select(.name == $n)] | sort_by(.started_at // .created_at) | last | if . == null then "missing" elif .status != "completed" then .status else (.conclusion // "null") end' <<<"$json")"
+              echo "${check}: ${state}"
+              case "$state" in
+                success|neutral|skipped) ;;
+                missing|queued|in_progress|requested|waiting|pending|null) pending=1 ;;
+                *) failed=1 ;;
+              esac
+            done
+
+            if [[ "$failed" -eq 1 ]]; then
+              echo "One or more canonical CI checks failed." >&2
+              exit 1
+            fi
+            if [[ "$pending" -eq 0 ]]; then
+              echo "All canonical CI checks passed."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for canonical CI checks." >&2
+          exit 1
+
+  security-required:
+    name: Security CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for canonical Security CI check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="PR security checks"
+
+          for attempt in $(seq 1 90); do
+            json="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100")"
+
+            state="$(jq -r --arg n "$expected" '[.check_runs[] | select(.name == $n)] | sort_by(.started_at // .created_at) | last | if . == null then "missing" elif .status != "completed" then .status else (.conclusion // "null") end' <<<"$json")"
+            echo "${expected}: ${state}"
+
+            case "$state" in
+              success|neutral|skipped) exit 0 ;;
+              missing|queued|in_progress|requested|waiting|pending|null) sleep 10 ;;
+              *) echo "Canonical Security CI check failed." >&2; exit 1 ;;
+            esac
+          done
+
+          echo "Timed out waiting for canonical Security CI check." >&2
+          exit 1
+
+  skill-gates-required:
+    name: Skill Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for canonical Skill Gates checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=(
+            "Skill gate s1-intent-guard"
+            "Skill gate s2-task-graph"
+            "Skill gate s3-horizon-plan"
+            "Skill gate s4-role-dispatch"
+            "Skill gate s5-collab-exec"
+            "Skill gate s6-resilience-guard"
+            "Skill gate s7-observe-verify"
+            "Skill gate s8-orchestration-hub"
+          )
+
+          for attempt in $(seq 1 60); do
+            json="$(curl -fsSL \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100")"
+
+            pending=0
+            failed=0
+            for check in "${expected[@]}"; do
+              state="$(jq -r --arg n "$check" '[.check_runs[] | select(.name == $n)] | sort_by(.started_at // .created_at) | last | if . == null then "missing" elif .status != "completed" then .status else (.conclusion // "null") end' <<<"$json")"
+              echo "${check}: ${state}"
+              case "$state" in
+                success|neutral|skipped) ;;
+                missing|queued|in_progress|requested|waiting|pending|null) pending=1 ;;
+                *) failed=1 ;;
+              esac
+            done
+
+            if [[ "$failed" -eq 1 ]]; then
+              echo "One or more canonical Skill Gates checks failed." >&2
+              exit 1
+            fi
+            if [[ "$pending" -eq 0 ]]; then
+              echo "All canonical Skill Gates checks passed."
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for canonical Skill Gates checks." >&2
+          exit 1

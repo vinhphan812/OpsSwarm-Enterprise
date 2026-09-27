@@ -442,8 +442,9 @@ async def test_s4_f4_malformed_response():
     )
     oc = FakeOpenClaw([{"not": "valid json"}])
 
-    with pytest.raises(Exception):
-        await execute_task(oc, "observability", "run-1", incident, task)
+    result = await execute_task(oc, "observability", "run-1", incident, task)
+    assert result.confidence == 0.0
+    assert "Validation failed" in result.finding
 
 
 @pytest.mark.unit

@@ -265,7 +265,7 @@ flowchart LR
     ES --> AUDIT[Audit / provenance review]
 ```
 
-Current startup behavior reloads persisted run records into the orchestrator. Idempotency, concurrency, and restart semantics are documented in [`ADR-009-1`](../adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md) and [`ADR-012`](../adr/ADR-012_COMMAND_OUTCOME_MODEL.md).
+Current startup behavior reloads persisted run records into the orchestrator. Idempotency, concurrency, and restart semantics are documented in [`ADR-009-1`](./adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md) and [`ADR-012`](./adr/ADR-012_COMMAND_OUTCOME_MODEL.md).
 
 ## 10. Trust boundaries and interfaces
 

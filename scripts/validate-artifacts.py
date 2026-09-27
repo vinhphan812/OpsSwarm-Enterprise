@@ -24,6 +24,14 @@ SAFE_PLACEHOLDERS = {
     "secret",
     "token",
     "xxx",
+    # Compound generic placeholder names used in HMAC/JWT/crypto test fixtures.
+    # These are well-known stand-ins; they carry no real entropy.
+    "secret_key",
+    "secretkey",
+    "api_key",
+    "apikey",
+    "private_key",
+    "privatekey",
 }
 
 CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -161,6 +169,8 @@ def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> N
 
     for match in LONG_TOKEN_PATTERN.finditer(text):
         candidate = match.group(1)
+        if candidate.isdigit():
+            continue
         if re.fullmatch(r"[0-9A-Fa-f]{40}|[0-9A-Fa-f]{64}|[0-9A-Fa-f]{128}", candidate):
             continue
         if _looks_like_placeholder(candidate):
@@ -204,6 +214,48 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
         raise ValidationError("disallowed control character")
     _scan_credentials(text, sbom_known_tokens)
     return text
+
+
+def _normalise_bandit_for_scan(value: Any) -> Any:
+    """Preserve Bandit findings while replacing only per-file metric path keys.
+
+    Bandit's ``metrics`` object uses scanned file paths as keys. Long generated
+    paths can resemble high-entropy tokens, but the keys contain no finding
+    evidence. The standard ``more_info`` documentation URL is also omitted.
+    Finding metadata, issue text, and source snippets remain intact so that
+    credential detection is applied to the security-relevant content.
+    """
+    if not isinstance(value, dict):
+        return value
+    normalised = dict(value)
+    normalised["results"] = [
+        {key: item for key, item in result.items() if key != "more_info"}
+        if isinstance(result, dict)
+        else result
+        for result in value.get("results", [])
+    ]
+    metrics = value.get("metrics")
+    if isinstance(metrics, dict):
+        totals = metrics.get("_totals")
+        normalised["metrics"] = {"_totals": totals} if isinstance(totals, dict) else {}
+    return normalised
+
+
+def _validate_bandit_policy(value: Any) -> None:
+    """Fail when Bandit reports a medium- or high-severity finding."""
+    if not isinstance(value, dict) or not isinstance(value.get("results"), list):
+        raise ValidationError("Bandit results must be an array")
+    disallowed = 0
+    for result in value["results"]:
+        if not isinstance(result, dict):
+            raise ValidationError("Bandit result must be an object")
+        severity = result.get("issue_severity")
+        if severity not in {"LOW", "MEDIUM", "HIGH"}:
+            raise ValidationError("Bandit result has invalid severity")
+        if severity in {"MEDIUM", "HIGH"}:
+            disallowed += 1
+    if disallowed:
+        raise ValidationError(f"Bandit policy rejected {disallowed} medium/high finding(s)")
 
 
 def _validate_json(path: Path, text: str) -> tuple[Any, set[str]]:
@@ -263,12 +315,19 @@ def validate(path: Path) -> None:
     except OSError as exc:
         raise ValidationError("file cannot be read") from exc
 
-    # For SBOM files, first parse JSON to extract known tokens, then scan text with those tokens
+    # Parse JSON first so SBOM identifiers and Bandit policy can be validated.
+    # Bandit finding metadata and snippets remain in the credential scan. Only
+    # per-file metric path keys are omitted because they are non-evidence data
+    # that can look like high-entropy tokens.
     sbom_known_tokens: set[str] = set()
+    scan_bytes = raw
     if path.suffix.lower() == ".json":
-        _, sbom_known_tokens = _validate_json(path, raw.decode("utf-8"))
+        parsed, sbom_known_tokens = _validate_json(path, raw.decode("utf-8"))
+        if path.name == "bandit.json":
+            _validate_bandit_policy(parsed)
+            scan_bytes = json.dumps(_normalise_bandit_for_scan(parsed)).encode("utf-8")
 
-    text = _validate_text(raw, sbom_known_tokens)
+    text = _validate_text(scan_bytes, sbom_known_tokens)
 
     if path.suffix.lower() == ".json":
         _validate_json(path, text)

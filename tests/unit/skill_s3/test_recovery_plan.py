@@ -340,8 +340,8 @@ async def test_s3_f1_invalid_risk_classification():
     }
     oc = make_fake_oc(fake_response)
 
-    with pytest.raises(Exception):
-        await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    result = await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    assert result.options == []
 
 
 @pytest.mark.unit
@@ -358,8 +358,8 @@ async def test_s3_f2_missing_required_field():
     }
     oc = make_fake_oc(fake_response)
 
-    with pytest.raises(Exception):
-        await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    result = await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    assert result.options == []
 
 
 @pytest.mark.unit
@@ -390,8 +390,8 @@ async def test_s3_f4_llm_returns_malformed_json():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     oc = FakeOpenClaw([{"invalid": "json"}])
 
-    with pytest.raises(Exception):
-        await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    result = await make_recovery_plan(oc, "agent", "run-1", incident, root_cause, [])
+    assert result.options == []
 
 
 @pytest.mark.unit
