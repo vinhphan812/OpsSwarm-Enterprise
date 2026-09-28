@@ -28,9 +28,13 @@ A release candidate is eligible for drafting only when all of the following are 
    dispatch, the workflow additionally queries GitHub Actions and fails closed unless both workflow names already report
    success for the tagged commit. Release consumes these results instead of duplicating their test and scanning logic.
 4. The committed `requirements.lock` is the portable, hash-locked pip-tools output derived from the direct runtime input
-   `requirements.txt`. CI verifies that input against `pyproject.toml`, regenerates the lock with pip-tools 7.5.2, and
-   rejects any diff. Security and release workflows install it with `--require-hashes` in an isolated virtual
-   environment;
+   `requirements.txt`. CI does not regenerate the lock; instead it runs a structural integrity check
+   (`scripts/verify_dependency_lock.py`) that confirms all direct dependencies are present and version-satisfied in
+   the lock, that every pinned package carries a SHA-256 hash, and that the lock contains no environment-specific
+   index directives. Regeneration is a developer responsibility — run `pip-compile` locally before committing a changed
+   `requirements.txt` and diff the result manually; ADR-008-1 explains the cross-platform constraints that prevent a
+   deterministic automated diff in CI. Security and release workflows install the lock with `--require-hashes` in an
+   isolated virtual environment;
    vulnerability scans and CycloneDX SBOM generation target that exact environment rather than an editable project
    install.
 5. The wheel and source distribution build successfully on Python 3.11. Functional compatibility across Python 3.11,
