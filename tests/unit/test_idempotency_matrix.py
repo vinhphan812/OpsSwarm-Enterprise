@@ -8,6 +8,7 @@ Tests the complete flow:
 - Checkpoint/resume
 - Atomic writes
 """
+
 import os
 import tempfile
 from unittest.mock import patch
@@ -135,7 +136,7 @@ class TestStateMachine:
         run = RunRecord(run_id="RUN-1", issue_number=1, state=RunState.RESOLVED)
 
         # In audit mode, should log warning but allow
-        with patch('opsswarm.models.logger') as mock_logger:
+        with patch("opsswarm.models.logger") as mock_logger:
             run.transition(RunState.OPEN, enforcement="audit")
             # Audit mode logs warning but allows transition
             assert mock_logger.warning.called
@@ -220,9 +221,9 @@ class TestCheckpointResume:
             run = RunRecord(run_id="run1", issue_number=1, state=RunState.OPEN)
 
             # Record checkpoint at state transition
-            eid = store.checkpoint(run.run_id, CheckpointType.STATE_TRANSITION, {
-                "state": RunState.TRIAGE.value
-            })
+            eid = store.checkpoint(
+                run.run_id, CheckpointType.STATE_TRANSITION, {"state": RunState.TRIAGE.value}
+            )
 
             assert eid is not None
 
@@ -230,7 +231,10 @@ class TestCheckpointResume:
             last_checkpoint = store.get_last_checkpoint(run.run_id)
             assert last_checkpoint is not None
             assert last_checkpoint["kind"] == "checkpoint"
-            assert last_checkpoint["payload"]["checkpoint_type"] == CheckpointType.STATE_TRANSITION.value
+            assert (
+                last_checkpoint["payload"]["checkpoint_type"]
+                == CheckpointType.STATE_TRANSITION.value
+            )
 
     def test_resume_loads_correct_state(self):
         """Resume should load correct state from checkpoint."""
@@ -347,11 +351,7 @@ class TestIntegration:
         delivery_id = "12345-abcde"
 
         # Create run record with idempotency tracking
-        run = RunRecord(
-            run_id="RUN-TEST-1",
-            issue_number=42,
-            state=RunState.OPEN
-        )
+        run = RunRecord(run_id="RUN-TEST-1", issue_number=42, state=RunState.OPEN)
 
         # First webhook - should process
         if delivery_id not in run.idempotency_keys:
@@ -365,11 +365,7 @@ class TestIntegration:
 
     def test_complete_command_flow(self):
         """Test complete command processing flow."""
-        run = RunRecord(
-            run_id="RUN-TEST-2",
-            issue_number=42,
-            state=RunState.WAITING_APPROVAL
-        )
+        run = RunRecord(run_id="RUN-TEST-2", issue_number=42, state=RunState.WAITING_APPROVAL)
 
         comment_id = "comment-12345"
 
@@ -444,7 +440,7 @@ class TestCommandOutcome:
         """RunRecord should have command_outcomes field."""
         run = RunRecord(run_id="RUN-1", issue_number=1)
 
-        assert hasattr(run, 'command_outcomes')
+        assert hasattr(run, "command_outcomes")
         assert isinstance(run.command_outcomes, dict)
         assert len(run.command_outcomes) == 0
 

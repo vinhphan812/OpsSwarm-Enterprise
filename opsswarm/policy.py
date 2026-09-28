@@ -13,9 +13,10 @@ class PolicyEngine:
     def classify_operation(self, command: str | None) -> Risk:
         if not command:
             return Risk.RISKY_WRITE
-        if "patch /admin/" in command:
+        normalized = command.lower().strip()
+        if "patch /admin/" in normalized:
             return Risk.DESTRUCTIVE
-        if "patch" in command:
+        if "patch" in normalized:
             return Risk.SAFE_WRITE
         return Risk.RISKY_WRITE
 

@@ -9,18 +9,20 @@ from tests.fakes import FakeGitHub, FakeOpenClaw
 @pytest.fixture
 def cfg():
     import yaml
-    return yaml.safe_load(open('config/test.yaml'))
+
+    return yaml.safe_load(open("config/test.yaml"))
 
 
 @pytest.mark.asyncio
 async def test_recover_runs_missing_run_in_self_runs(cfg, tmp_path):
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     # disable recovery in init
     eng = Orchestrator(cfg, gh, oc, str(tmp_path), enable_recovery=False)
 
     # Create a non-terminal run
     from opsswarm.models import RunRecord, RunState
+
     nr = RunRecord(run_id="run1", issue_number=101)
     nr.state = RunState.WAITING_APPROVAL
 
@@ -45,13 +47,14 @@ async def test_recover_runs_missing_run_in_self_runs(cfg, tmp_path):
 
 @pytest.mark.asyncio
 async def test_recover_runs_failed_recovery(cfg, tmp_path):
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     # disable recovery in init
     eng = Orchestrator(cfg, gh, oc, str(tmp_path), enable_recovery=False)
 
     # Create a non-terminal run
     from opsswarm.models import RunRecord
+
     nr = RunRecord(run_id="run1", issue_number=101)
 
     # Mock load_non_terminal_runs
@@ -59,7 +62,9 @@ async def test_recover_runs_failed_recovery(cfg, tmp_path):
     eng.runs = {101: nr}
 
     # Mock recover_run to return failed
-    eng.reconciliation.recover_run = MagicMock(return_value=MagicMock(recovered=False, message="failed"))
+    eng.reconciliation.recover_run = MagicMock(
+        return_value=MagicMock(recovered=False, message="failed")
+    )
 
     # Run recovery
     eng._recover_runs()

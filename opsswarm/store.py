@@ -13,8 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class RunStore:
-    def __init__(self, data_dir: str, enable_atomic_writes: bool = True, enable_checkpoints: bool = True,
-                 persistence_config: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        data_dir: str,
+        enable_atomic_writes: bool = True,
+        enable_checkpoints: bool = True,
+        persistence_config: dict[str, Any] | None = None,
+    ):
         """Initialize the run store.
 
         Args:
@@ -28,8 +33,12 @@ class RunStore:
 
         # Feature flags from config
         self.persistence_config = persistence_config or {}
-        self.enable_atomic_writes = self.persistence_config.get("enable_atomic_writes", enable_atomic_writes)
-        self.enable_checkpoints = self.persistence_config.get("enable_checkpoints", enable_checkpoints)
+        self.enable_atomic_writes = self.persistence_config.get(
+            "enable_atomic_writes", enable_atomic_writes
+        )
+        self.enable_checkpoints = self.persistence_config.get(
+            "enable_checkpoints", enable_checkpoints
+        )
 
         # Log warnings for legacy mode
         if not self.enable_atomic_writes:
@@ -78,7 +87,9 @@ class RunStore:
                 return True
             except Exception as e:
                 last_error = e
-                logger.warning(f"Save attempt {attempt + 1}/{max_retries} failed for run {run.run_id}: {e}")
+                logger.warning(
+                    f"Save attempt {attempt + 1}/{max_retries} failed for run {run.run_id}: {e}"
+                )
                 if attempt < max_retries - 1:
                     time.sleep(0.1 * (attempt + 1))  # Exponential backoff
 

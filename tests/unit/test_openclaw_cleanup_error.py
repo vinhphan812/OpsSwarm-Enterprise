@@ -12,8 +12,10 @@ async def test_run_text_unlink_error():
     client = OpenClawClient()
     envelope = {"ok": True, "final": "Assistant response text"}
 
-    with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec, \
-            patch("os.unlink", side_effect=OSError("Cleanup failed")):
+    with (
+        patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec,
+        patch("os.unlink", side_effect=OSError("Cleanup failed")),
+    ):
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.communicate = AsyncMock(return_value=(json.dumps(envelope).encode(), b""))

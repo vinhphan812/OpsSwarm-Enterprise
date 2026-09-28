@@ -2,7 +2,11 @@
 import pytest
 
 from opsswarm.models import (
-    RunState, RunRecord, VALID_TRANSITIONS, TERMINAL_STATES, InvalidStateTransition
+    RunState,
+    RunRecord,
+    VALID_TRANSITIONS,
+    TERMINAL_STATES,
+    InvalidStateTransition,
 )
 
 
@@ -116,5 +120,6 @@ class TestS7Veto:
     def test_verification_result_abort_field_exists(self):
         """VerificationResult should have abort field."""
         from opsswarm.models import VerificationResult
+
         vr = VerificationResult(verified=False, summary="test", abort=True)
         assert vr.abort is True

@@ -1,4 +1,5 @@
 """Tests for evidence.py skill validation models (ADR-006 / SKILL_GATE_VALIDATOR_CONTRACT_SPEC)."""
+
 import pytest
 from opsswarm.evidence import (
     SkillValidationResult,
@@ -77,13 +78,13 @@ class TestSaveAndLoadSkillEvidence:
 
     def test_multiple_records_same_run(self, tmp_path):
         for i in range(3):
-            result = SkillValidationResult(skill_id=f"s{i+1}", static_pass=True)
+            result = SkillValidationResult(skill_id=f"s{i + 1}", static_pass=True)
             record = EvidenceRecord(
                 run_id="multi-run",
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 actor="test",
                 validation_mode="static",
-                skills_validated=[f"s{i+1}"],
+                skills_validated=[f"s{i + 1}"],
                 results=[result],
                 overall_pass=True,
             )

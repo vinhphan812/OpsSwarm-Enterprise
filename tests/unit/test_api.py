@@ -2,6 +2,7 @@
 
 These tests use dependency override to avoid module-level initialization.
 """
+
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
@@ -171,7 +172,7 @@ class TestWebhookEndpoint:
             response = client.post(
                 "/webhooks/github",
                 json={"action": "opened", "issue": {"number": "1"}},
-                headers={"x-github-event": "issues"}
+                headers={"x-github-event": "issues"},
             )
 
             assert response.status_code == 401
@@ -191,7 +192,7 @@ class TestWebhookEndpoint:
             response = client.post(
                 "/webhooks/github",
                 json={"action": "push", "ref": "refs/heads/main"},
-                headers={"x-github-event": "push", "x-hub-signature-256": "sha256=abc"}
+                headers={"x-github-event": "push", "x-hub-signature-256": "sha256=abc"},
             )
 
             assert response.status_code == 200

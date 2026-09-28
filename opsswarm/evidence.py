@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 class MalformedEvidenceError(Exception):
     """Raised when evidence record is malformed in a way that breaks integrity."""
+
     pass
+
 
 # Signature key fields per event kind (from ADR-009-4)
 SIGNATURE_KEY_FIELDS: dict[str, list[str]] = {
@@ -30,8 +32,12 @@ SIGNATURE_KEY_FIELDS: dict[str, list[str]] = {
 
 
 class EvidenceStore:
-    def __init__(self, data_dir: str, enable_idempotency: bool = True,
-                 persistence_config: dict[str, Any] | None = None):
+    def __init__(
+        self,
+        data_dir: str,
+        enable_idempotency: bool = True,
+        persistence_config: dict[str, Any] | None = None,
+    ):
         """Initialize the evidence store.
 
         Args:
@@ -44,7 +50,9 @@ class EvidenceStore:
 
         # Feature flags from config
         self.persistence_config = persistence_config or {}
-        self.enable_idempotency = self.persistence_config.get("enable_idempotency", enable_idempotency)
+        self.enable_idempotency = self.persistence_config.get(
+            "enable_idempotency", enable_idempotency
+        )
 
         # In-memory index for seen signatures (payload-based): {run_id: set of signatures}
         self._index: dict[str, set[str]] = {}
@@ -68,8 +76,9 @@ class EvidenceStore:
         key_fields = SIGNATURE_KEY_FIELDS.get(kind)
         if key_fields is None:
             # Fallback: exclude volatile fields
-            stable = {k: v for k, v in payload.items()
-                      if k not in ('timestamp', 'eid', 'id', 'run_id')}
+            stable = {
+                k: v for k, v in payload.items() if k not in ("timestamp", "eid", "id", "run_id")
+            }
         else:
             # Use kind-specific key fields
             stable = {k: payload.get(k) for k in key_fields if k in payload}
@@ -84,8 +93,9 @@ class EvidenceStore:
         key_fields = SIGNATURE_KEY_FIELDS.get(kind)
         if key_fields is None:
             # Fallback: exclude volatile fields
-            stable = {k: v for k, v in payload.items()
-                      if k not in ('timestamp', 'eid', 'id', 'run_id')}
+            stable = {
+                k: v for k, v in payload.items() if k not in ("timestamp", "eid", "id", "run_id")
+            }
         else:
             # Use kind-specific key fields
             stable = {k: payload.get(k) for k in key_fields if k in payload}
@@ -102,8 +112,9 @@ class EvidenceStore:
         key_input = f"{event_id}:{run_id}:{kind}"
         return hashlib.sha256(key_input.encode("utf-8")).hexdigest()
 
-    def append(self, run_id: str, kind: str, payload: dict[str, Any], event_id: str | None = None) -> tuple[
-        str | None, bool]:
+    def append(
+        self, run_id: str, kind: str, payload: dict[str, Any], event_id: str | None = None
+    ) -> tuple[str | None, bool]:
         """Append evidence to the log with signature-based deduplication and tamper-evidence.
 
         Deduplication is based on the payload signature.
@@ -192,7 +203,9 @@ class EvidenceStore:
                     rec = json.loads(line)
                 except json.JSONDecodeError as e:
                     self._corrupt_count += 1
-                    logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                    logger.error(
+                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
+                    )
                     corrupt_path = self.path / f"{run_id}.corrupt"
                     with corrupt_path.open("a", encoding="utf-8") as cf:
                         cf.write(line + "\n")
@@ -228,7 +241,10 @@ class EvidenceStore:
                     logger.error(
                         "Evidence chain verification failed for run %s at line %d "
                         "(stored=%s, recomputed=%s)",
-                        run_id, i + 1, stored_sig, recomputed_sig,
+                        run_id,
+                        i + 1,
+                        stored_sig,
+                        recomputed_sig,
                     )
                     raise MalformedEvidenceError(
                         f"Evidence chain broken for run {run_id} at line {i + 1}: "
@@ -288,7 +304,10 @@ class EvidenceStore:
                 logger.error(
                     "Evidence chain verification failed for run %s at line %d "
                     "(stored=%s, recomputed=%s)",
-                    run_id, i + 1, stored_sig, recomputed_sig,
+                    run_id,
+                    i + 1,
+                    stored_sig,
+                    recomputed_sig,
                 )
                 raise MalformedEvidenceError(
                     f"Evidence chain broken for run {run_id} at line {i + 1}: "
@@ -311,10 +330,14 @@ class EvidenceStore:
         Returns:
             Evidence ID for the checkpoint event.
         """
-        return self.append(run_id, "checkpoint", {
-            "checkpoint_type": checkpoint_type,
-            "payload": payload,
-        })[0]
+        return self.append(
+            run_id,
+            "checkpoint",
+            {
+                "checkpoint_type": checkpoint_type,
+                "payload": payload,
+            },
+        )[0]
 
     def get_last_checkpoint(self, run_id: str) -> dict[str, Any] | None:
         """Get the last checkpoint event for a run.
@@ -342,6 +365,7 @@ from dataclasses import dataclass, field
 @dataclass
 class SkillValidationResult:
     """Result of skill validation for evidence recording."""
+
     skill_id: str
     static_pass: bool
     static_errors: list[str] = field(default_factory=list)
@@ -358,6 +382,7 @@ class SkillValidationResult:
 @dataclass
 class EvidenceRecord:
     """Complete evidence record for skill validation runs."""
+
     run_id: str
     timestamp: str
     actor: str

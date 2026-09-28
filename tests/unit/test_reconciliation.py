@@ -1,4 +1,5 @@
 """Unit tests for opsswarm.reconciliation module."""
+
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
@@ -40,8 +41,18 @@ class TestReconcile:
     def test_reconcile_with_evidence(self, manager):
         """Analyzes evidence records correctly."""
         evidence = [
-            {"id": "1", "kind": "S1.incident", "idempotency_key": "key1", "timestamp": "2024-01-01T00:00:00Z"},
-            {"id": "2", "kind": "S2.task_graph", "idempotency_key": "key2", "timestamp": "2024-01-01T01:00:00Z"},
+            {
+                "id": "1",
+                "kind": "S1.incident",
+                "idempotency_key": "key1",
+                "timestamp": "2024-01-01T00:00:00Z",
+            },
+            {
+                "id": "2",
+                "kind": "S2.task_graph",
+                "idempotency_key": "key2",
+                "timestamp": "2024-01-01T01:00:00Z",
+            },
         ]
 
         with patch.object(manager.evidence, "list", return_value=evidence):
@@ -199,7 +210,7 @@ class TestReconciliationReport:
             evidence_kinds=["S1.incident"],
             gaps_detected=[],
             last_evidence_timestamp=datetime.now(timezone.utc),
-            generated_at=datetime.now(timezone.utc)
+            generated_at=datetime.now(timezone.utc),
         )
 
         assert report.run_id == "test"
@@ -217,7 +228,7 @@ class TestRecoveryResult:
             resume_from_checkpoint=True,
             checkpoint_sequence=5,
             state_at_recovery=RunState.PLANNING,
-            message="Success"
+            message="Success",
         )
 
         assert result.recovered is True

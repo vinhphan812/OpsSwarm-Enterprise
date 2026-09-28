@@ -1,4 +1,5 @@
 """Unit tests for opsswarm.config module."""
+
 import os
 
 import pytest

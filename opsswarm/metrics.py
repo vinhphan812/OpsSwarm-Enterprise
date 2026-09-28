@@ -27,13 +27,13 @@ class Metrics:
         lines = []
         # Runs
         for state, count in self.runs.items():
-            lines.append(f"opsswarm_runs_total{{state=\"{state}\"}} {count}")
+            lines.append(f'opsswarm_runs_total{{state="{state}"}} {count}')
         # Commands
         for outcome, count in self.commands.items():
-            lines.append(f"opsswarm_commands_executed{{outcome=\"{outcome}\"}} {count}")
+            lines.append(f'opsswarm_commands_executed{{outcome="{outcome}"}} {count}')
         # Verifications
         for verified, count in self.verifications.items():
-            lines.append(f"opsswarm_verifications_total{{verified=\"{verified}\"}} {count}")
+            lines.append(f'opsswarm_verifications_total{{verified="{verified}"}} {count}')
         # Durations
         for name in self.histograms_count:
             lines.append(f"{name}_count {self.histograms_count[name]}")

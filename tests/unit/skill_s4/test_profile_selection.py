@@ -13,7 +13,7 @@ ALLOWED_INVESTIGATOR_PROFILES = {
     "observability-investigator",
     "application-investigator",
     "infrastructure-investigator",
-    "database-investigator"
+    "database-investigator",
 }
 
 
@@ -24,6 +24,7 @@ def make_fake_oc(finding_data):
 
 # === PROFILE SELECTION TESTS (8 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_s4_ps1_valid_observability_profile():
@@ -33,12 +34,9 @@ async def test_s4_ps1_valid_observability_profile():
         id="T1",
         type=TaskType.OBSERVE,
         objective="Check API metrics",
-        profile="observability-investigator"
+        profile="observability-investigator",
     )
-    fake_response = {
-        "task_id": "T1",
-        "finding": "API latency is elevated"
-    }
+    fake_response = {"task_id": "T1", "finding": "API latency is elevated"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "observability-investigator", "run-1", incident, task)
@@ -55,12 +53,9 @@ async def test_s4_ps2_valid_application_profile():
         id="T2",
         type=TaskType.INVESTIGATE,
         objective="Investigate application error",
-        profile="application-investigator"
+        profile="application-investigator",
     )
-    fake_response = {
-        "task_id": "T2",
-        "finding": "Application exception found"
-    }
+    fake_response = {"task_id": "T2", "finding": "Application exception found"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "application-investigator", "run-1", incident, task)
@@ -77,12 +72,9 @@ async def test_s4_ps3_valid_infrastructure_profile():
         id="T3",
         type=TaskType.OBSERVE,
         objective="Check network connectivity",
-        profile="infrastructure-investigator"
+        profile="infrastructure-investigator",
     )
-    fake_response = {
-        "task_id": "T3",
-        "finding": "Network timeout detected"
-    }
+    fake_response = {"task_id": "T3", "finding": "Network timeout detected"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "infrastructure-investigator", "run-1", incident, task)
@@ -99,12 +91,9 @@ async def test_s4_ps4_valid_database_profile():
         id="T4",
         type=TaskType.INVESTIGATE,
         objective="Check database performance",
-        profile="database-investigator"
+        profile="database-investigator",
     )
-    fake_response = {
-        "task_id": "T4",
-        "finding": "Database query slow"
-    }
+    fake_response = {"task_id": "T4", "finding": "Database query slow"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "database-investigator", "run-1", incident, task)
@@ -121,12 +110,12 @@ async def test_s4_ps5_observability_for_metrics_task():
         id="T1",
         type=TaskType.OBSERVE,
         objective="Observe API latency metrics",
-        profile="observability-investigator"
+        profile="observability-investigator",
     )
     fake_response = {
         "task_id": "T1",
         "finding": "p99 latency is 2000ms",
-        "evidence": ["prometheus:latency_p99=2000ms"]
+        "evidence": ["prometheus:latency_p99=2000ms"],
     }
     oc = make_fake_oc(fake_response)
 
@@ -145,13 +134,13 @@ async def test_s4_ps6_application_for_code_investigation():
         id="T2",
         type=TaskType.INVESTIGATE,
         objective="Investigate application error logs",
-        profile="application-investigator"
+        profile="application-investigator",
     )
     fake_response = {
         "task_id": "T2",
         "finding": "NullPointerException in handler",
         "evidence": ["log:NullPointerException"],
-        "hypothesis": "Missing null check"
+        "hypothesis": "Missing null check",
     }
     oc = make_fake_oc(fake_response)
 
@@ -170,20 +159,12 @@ async def test_s4_ps7_all_allowed_profiles_work():
         "observability-investigator",
         "application-investigator",
         "infrastructure-investigator",
-        "database-investigator"
+        "database-investigator",
     ]
 
     for i, profile in enumerate(profiles):
-        task = Task(
-            id=f"T{i + 1}",
-            type=TaskType.OBSERVE,
-            objective="Check",
-            profile=profile
-        )
-        fake_response = {
-            "task_id": f"T{i + 1}",
-            "finding": f"Finding from {profile}"
-        }
+        task = Task(id=f"T{i + 1}", type=TaskType.OBSERVE, objective="Check", profile=profile)
+        fake_response = {"task_id": f"T{i + 1}", "finding": f"Finding from {profile}"}
         oc = make_fake_oc(fake_response)
 
         result = await execute_task(oc, profile, "run-1", incident, task)
@@ -199,12 +180,9 @@ async def test_s4_ps8_profile_prompt_context():
         id="T1",
         type=TaskType.OBSERVE,
         objective="Check metrics",
-        profile="observability-investigator"
+        profile="observability-investigator",
     )
-    fake_response = {
-        "task_id": "T1",
-        "finding": "Done"
-    }
+    fake_response = {"task_id": "T1", "finding": "Done"}
     oc = FakeOpenClaw([fake_response])
 
     result = await execute_task(oc, "observability-investigator", "run-1", incident, task)
@@ -218,21 +196,14 @@ async def test_s4_ps8_profile_prompt_context():
 
 # === PROFILE VALIDATION TESTS (4 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_s4_pv1_unknown_profile_accepted():
     """S4-PV1: Unknown profile is accepted (no validation at S4 level)"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
-    task = Task(
-        id="T1",
-        type=TaskType.OBSERVE,
-        objective="Check",
-        profile="unknown-profile"
-    )
-    fake_response = {
-        "task_id": "T1",
-        "finding": "Done"
-    }
+    task = Task(id="T1", type=TaskType.OBSERVE, objective="Check", profile="unknown-profile")
+    fake_response = {"task_id": "T1", "finding": "Done"}
     oc = make_fake_oc(fake_response)
 
     # No validation - profile is passed through
@@ -245,16 +216,8 @@ async def test_s4_pv1_unknown_profile_accepted():
 async def test_s4_pv2_recovery_responder_profile():
     """S4-PV2: recovery-responder profile accepted for S4 (though typically S5)"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
-    task = Task(
-        id="T1",
-        type=TaskType.OBSERVE,
-        objective="Check",
-        profile="recovery-responder"
-    )
-    fake_response = {
-        "task_id": "T1",
-        "finding": "Done"
-    }
+    task = Task(id="T1", type=TaskType.OBSERVE, objective="Check", profile="recovery-responder")
+    fake_response = {"task_id": "T1", "finding": "Done"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "recovery-responder", "run-1", incident, task)
@@ -266,16 +229,8 @@ async def test_s4_pv2_recovery_responder_profile():
 async def test_s4_pv3_empty_profile_handled():
     """S4-PV3: Empty profile string handled"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
-    task = Task(
-        id="T1",
-        type=TaskType.OBSERVE,
-        objective="Check",
-        profile=""
-    )
-    fake_response = {
-        "task_id": "T1",
-        "finding": "Done"
-    }
+    task = Task(id="T1", type=TaskType.OBSERVE, objective="Check", profile="")
+    fake_response = {"task_id": "T1", "finding": "Done"}
     oc = make_fake_oc(fake_response)
 
     result = await execute_task(oc, "", "run-1", incident, task)
@@ -296,11 +251,11 @@ async def test_s4_pv4_multiple_task_types_with_same_profile():
             id=f"T_{task_type.value}",
             type=task_type,
             objective=f"Execute {task_type.value}",
-            profile=profile
+            profile=profile,
         )
         fake_response = {
             "task_id": f"T_{task_type.value}",
-            "finding": f"Finding for {task_type.value}"
+            "finding": f"Finding for {task_type.value}",
         }
         oc = make_fake_oc(fake_response)
 
@@ -309,6 +264,7 @@ async def test_s4_pv4_multiple_task_types_with_same_profile():
 
 
 # === CROSS-SKILL PROFILE TESTS (4 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -319,12 +275,12 @@ async def test_s4_cs1_profile_from_task_assigned():
         id="T1",
         type=TaskType.INVESTIGATE,
         objective="Investigate DB issue",
-        profile="database-investigator"  # Task specifies profile
+        profile="database-investigator",  # Task specifies profile
     )
     fake_response = {
         "task_id": "T1",
         "finding": "Connection pool exhausted",
-        "evidence": ["db:pool_active=100"]
+        "evidence": ["db:pool_active=100"],
     }
     oc = make_fake_oc(fake_response)
 
@@ -342,10 +298,30 @@ async def test_s4_cs2_parallel_different_profiles():
     incident = IncidentContext(issue_number=1, title="Test", service="api")
 
     tasks = [
-        Task(id="T1", type=TaskType.OBSERVE, objective="Check metrics", profile="observability-investigator"),
-        Task(id="T2", type=TaskType.INVESTIGATE, objective="Check app logs", profile="application-investigator"),
-        Task(id="T3", type=TaskType.OBSERVE, objective="Check network", profile="infrastructure-investigator"),
-        Task(id="T4", type=TaskType.INVESTIGATE, objective="Check DB", profile="database-investigator"),
+        Task(
+            id="T1",
+            type=TaskType.OBSERVE,
+            objective="Check metrics",
+            profile="observability-investigator",
+        ),
+        Task(
+            id="T2",
+            type=TaskType.INVESTIGATE,
+            objective="Check app logs",
+            profile="application-investigator",
+        ),
+        Task(
+            id="T3",
+            type=TaskType.OBSERVE,
+            objective="Check network",
+            profile="infrastructure-investigator",
+        ),
+        Task(
+            id="T4",
+            type=TaskType.INVESTIGATE,
+            objective="Check DB",
+            profile="database-investigator",
+        ),
     ]
 
     results = []
@@ -353,7 +329,7 @@ async def test_s4_cs2_parallel_different_profiles():
         fake_response = {
             "task_id": task.id,
             "finding": f"Finding from {task.profile}",
-            "evidence": [f"evidence_{task.id}"]
+            "evidence": [f"evidence_{task.id}"],
         }
         oc = make_fake_oc(fake_response)
         result = await execute_task(oc, task.profile, "run-1", incident, task)
@@ -372,16 +348,8 @@ async def test_s4_cs3_profile_selection_matches_allowed_set():
 
     # All allowed profiles from task_graph_prompt
     for profile in ALLOWED_INVESTIGATOR_PROFILES:
-        task = Task(
-            id=f"T_{profile}",
-            type=TaskType.OBSERVE,
-            objective="Check",
-            profile=profile
-        )
-        fake_response = {
-            "task_id": f"T_{profile}",
-            "finding": "Finding"
-        }
+        task = Task(id=f"T_{profile}", type=TaskType.OBSERVE, objective="Check", profile=profile)
+        fake_response = {"task_id": f"T_{profile}", "finding": "Finding"}
         oc = make_fake_oc(fake_response)
 
         result = await execute_task(oc, profile, "run-1", incident, task)
@@ -398,14 +366,14 @@ async def test_s4_cs4_profile_persists_in_finding():
         id="DB-T1",
         type=TaskType.INVESTIGATE,
         objective="Investigate database",
-        profile="database-investigator"
+        profile="database-investigator",
     )
     fake_response = {
         "task_id": "DB-T1",
         "finding": "Database query deadlock",
         "evidence": ["db:deadlock_detected"],
         "confidence": 0.85,
-        "hypothesis": "Transaction ordering issue"
+        "hypothesis": "Transaction ordering issue",
     }
     oc = make_fake_oc(fake_response)
 

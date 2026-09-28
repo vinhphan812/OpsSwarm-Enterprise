@@ -2,9 +2,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
+
 def redact_pii(text: str) -> str:
     """Redact simple PII like emails."""
-    return re.sub(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', '[REDACTED]', text)
+    return re.sub(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", "[REDACTED]", text)
 
 
 def normalize_confidence(value: Any) -> float:
@@ -30,14 +31,15 @@ def normalize_list_of_strings(value: Any) -> list[str]:
 
 
 def normalize_optional_string(value: Any) -> str | None:
-    """Normalize input to optional string."""
+    """Normalize input to optional string, applying PII redaction to all string output."""
     if value is None:
         return None
     if isinstance(value, str):
-        return value
+        return redact_pii(value)
     if isinstance(value, dict):
-        return str(value)
-    return str(value)
+        # Apply redaction to stringified representation to catch PII in dict values
+        return redact_pii(str(value))
+    return redact_pii(str(value))
 
 
 def normalize_finding(data: dict[str, Any]) -> dict[str, Any]:
@@ -56,13 +58,19 @@ def normalize_root_cause_artifact(data: dict[str, Any]) -> dict[str, Any]:
     if "evidence_refs" in normalized:
         normalized["evidence_refs"] = normalize_list_of_strings(normalized["evidence_refs"])
     if "remediation_options" in normalized:
-        normalized["remediation_options"] = normalize_list_of_strings(normalized["remediation_options"])
+        normalized["remediation_options"] = normalize_list_of_strings(
+            normalized["remediation_options"]
+        )
     if "corrective_actions" in normalized:
-        normalized["corrective_actions"] = normalize_list_of_strings(normalized["corrective_actions"])
+        normalized["corrective_actions"] = normalize_list_of_strings(
+            normalized["corrective_actions"]
+        )
     if "confidence" in normalized:
         normalized["confidence"] = normalize_confidence(normalized["confidence"])
     if "human_input_question" in normalized:
-        normalized["human_input_question"] = normalize_optional_string(normalized["human_input_question"])
+        normalized["human_input_question"] = normalize_optional_string(
+            normalized["human_input_question"]
+        )
     return normalized
 
 
@@ -81,10 +89,14 @@ def normalize_recovery_plan(data: dict[str, Any]) -> dict[str, Any]:
     """Normalize RecoveryPlan data."""
     normalized = data.copy()
     if "options" in normalized and isinstance(normalized["options"], list):
-        normalized["options"] = [normalize_remidiation_option(opt) if isinstance(opt, dict) else opt for opt in
-                                 normalized["options"]]
+        normalized["options"] = [
+            normalize_remidiation_option(opt) if isinstance(opt, dict) else opt
+            for opt in normalized["options"]
+        ]
     if "confidence" in normalized:
         normalized["confidence"] = normalize_confidence(normalized["confidence"])
     if "business_input_question" in normalized:
-        normalized["business_input_question"] = normalize_optional_string(normalized["business_input_question"])
+        normalized["business_input_question"] = normalize_optional_string(
+            normalized["business_input_question"]
+        )
     return normalized

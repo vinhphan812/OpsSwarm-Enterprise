@@ -1,7 +1,7 @@
-
 import json
 import hashlib
 from opsswarm.evidence import EvidenceStore
+
 
 def test_tamper_detection(tmp_path):
     ev = EvidenceStore(data_dir=str(tmp_path))
@@ -31,10 +31,14 @@ def test_tamper_detection(tmp_path):
 
             # Let's replicate the stable payload extraction
             from opsswarm.evidence import SIGNATURE_KEY_FIELDS
+
             key_fields = SIGNATURE_KEY_FIELDS.get(kind)
             if key_fields is None:
-                stable = {k: v for k, v in payload.items()
-                          if k not in ('timestamp', 'eid', 'id', 'run_id')}
+                stable = {
+                    k: v
+                    for k, v in payload.items()
+                    if k not in ("timestamp", "eid", "id", "run_id")
+                }
             else:
                 stable = {k: payload.get(k) for k in key_fields if k in payload}
 
@@ -42,7 +46,10 @@ def test_tamper_detection(tmp_path):
             recomputed = hashlib.sha256(sig_input.encode("utf-8")).hexdigest()[:16]
 
             if recomputed != r["signature"]:
-                return False, f"Signature mismatch for {r['id']}: expected {r['signature']}, got {recomputed}"
+                return (
+                    False,
+                    f"Signature mismatch for {r['id']}: expected {r['signature']}, got {recomputed}",
+                )
 
             prev_sig = r["signature"]
         return True, "Chain valid"

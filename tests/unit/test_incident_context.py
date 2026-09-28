@@ -10,6 +10,7 @@ from opsswarm.models import IncidentContext
 
 # === CONSTRUCTION & VALIDATION (8 tests) ===
 
+
 @pytest.mark.unit
 def test_incident_context_minimal_valid():
     """IC-1: Minimal valid construction - required fields only"""
@@ -43,7 +44,7 @@ def test_incident_context_full_construction():
         customer_impact="30% users affected",
         source="github",
         actor="oncall-engineer",
-        labels=["opsswarm", "sev:1"]
+        labels=["opsswarm", "sev:1"],
     )
 
     assert ctx.issue_number == 42
@@ -115,15 +116,11 @@ def test_incident_context_labels_as_empty_list():
 
 # === SERIALIZATION (6 tests) ===
 
+
 @pytest.mark.unit
 def test_incident_context_to_dict():
     """IC-9: To dict - all fields serialized"""
-    ctx = IncidentContext(
-        issue_number=1,
-        title="Test",
-        service="api",
-        severity="SEV2"
-    )
+    ctx = IncidentContext(issue_number=1, title="Test", service="api", severity="SEV2")
     d = ctx.model_dump()
 
     assert isinstance(d, dict)
@@ -136,11 +133,7 @@ def test_incident_context_to_dict():
 @pytest.mark.unit
 def test_incident_context_to_json():
     """IC-10: To JSON - valid JSON produced"""
-    ctx = IncidentContext(
-        issue_number=1,
-        title="Test",
-        severity="SEV1"
-    )
+    ctx = IncidentContext(issue_number=1, title="Test", severity="SEV1")
     json_str = ctx.model_dump_json()
 
     assert isinstance(json_str, str)
@@ -163,7 +156,7 @@ def test_incident_context_from_dict():
         "customer_impact": "some impact",
         "source": "github",
         "actor": "testuser",
-        "labels": ["test", "label"]
+        "labels": ["test", "label"],
     }
     ctx = IncidentContext.model_validate(data)
 
@@ -209,6 +202,7 @@ def test_incident_context_symptoms_default_factory():
 
 # === FIELD CONSTRAINTS (5 tests) ===
 
+
 @pytest.mark.unit
 def test_incident_context_severity_accepts_arbitrary():
     """IC-15: Severity accepts arbitrary string - no validation"""
@@ -229,11 +223,7 @@ def test_incident_context_environment_accepts_arbitrary():
 @pytest.mark.unit
 def test_incident_context_symptoms_list_of_strings():
     """IC-17: Symptoms must be list of strings"""
-    ctx = IncidentContext(
-        issue_number=1,
-        title="Test",
-        symptoms=["symptom1", "symptom2"]
-    )
+    ctx = IncidentContext(issue_number=1, title="Test", symptoms=["symptom1", "symptom2"])
     assert len(ctx.symptoms) == 2
     assert all(isinstance(s, str) for s in ctx.symptoms)
 
@@ -242,9 +232,7 @@ def test_incident_context_symptoms_list_of_strings():
 def test_incident_context_labels_list_of_strings():
     """IC-18: Labels must be list of strings"""
     ctx = IncidentContext(
-        issue_number=1,
-        title="Test",
-        labels=["opsswarm", "sev:1", "infrastructure"]
+        issue_number=1, title="Test", labels=["opsswarm", "sev:1", "infrastructure"]
     )
     assert len(ctx.labels) == 3
     assert all(isinstance(l, str) for l in ctx.labels)
@@ -259,16 +247,17 @@ def test_incident_context_source_default_github():
 
 # === CROSS-MODEL INTEGRATION (3 tests) ===
 
+
 @pytest.mark.unit
 def test_incident_context_parse_issue_integration():
     """IC-20: IncidentContext from parse_issue - valid model"""
     from opsswarm.skill_logic import parse_issue
 
     issue = {
-        'title': 'Test',
-        'body': '### Service\napi\n### Environment\nprod\n',
-        'labels': [{'name': 'sev:2'}],
-        'user': {'login': 'testuser'}
+        "title": "Test",
+        "body": "### Service\napi\n### Environment\nprod\n",
+        "labels": [{"name": "sev:2"}],
+        "user": {"login": "testuser"},
     }
     result = parse_issue(1, issue)
 
@@ -293,7 +282,7 @@ def test_incident_context_roundtrip_through_json():
         customer_impact="test impact",
         source="github",
         actor="test-actor",
-        labels=["label1"]
+        labels=["label1"],
     )
 
     json_str = original.model_dump_json()
@@ -319,7 +308,7 @@ def test_incident_context_can_be_used_as_dict_key():
     # Use issue_number + title as composite key (common pattern)
     lookup = {
         (ctx1.issue_number, ctx1.title): "incident1",
-        (ctx2.issue_number, ctx2.title): "incident2"
+        (ctx2.issue_number, ctx2.title): "incident2",
     }
 
     assert lookup[(1, "Test1")] == "incident1"

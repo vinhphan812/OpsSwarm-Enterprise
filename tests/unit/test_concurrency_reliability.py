@@ -19,8 +19,12 @@ import pytest
 
 from opsswarm.evidence import EvidenceStore
 from opsswarm.models import (
-    RunRecord, RunState, Risk,
-    CommandOutcome, TERMINAL_STATES, VALID_TRANSITIONS
+    RunRecord,
+    RunState,
+    Risk,
+    CommandOutcome,
+    TERMINAL_STATES,
+    VALID_TRANSITIONS,
 )
 from opsswarm.reconciliation import ReconciliationManager
 from opsswarm.store import RunStore
@@ -28,7 +32,7 @@ from opsswarm.store import RunStore
 
 class TestDuplicateWebhookDelivery:
     """Test Case 1: Duplicate/simultaneous GitHub delivery processing.
-    
+
     Verifies that duplicate webhook deliveries with the same delivery ID
     result in only one logical run being created/processed.
     """
@@ -45,11 +49,7 @@ class TestDuplicateWebhookDelivery:
         store = RunStore(temp_data_dir)
 
         # Create first run with delivery ID
-        run1 = RunRecord(
-            run_id="RUN-GH-1-abc123",
-            issue_number=1,
-            state=RunState.OPEN
-        )
+        run1 = RunRecord(run_id="RUN-GH-1-abc123", issue_number=1, state=RunState.OPEN)
         run1.idempotency_keys.add("delivery-123")
         store.save(run1)
 
@@ -100,9 +100,7 @@ class TestDuplicateWebhookDelivery:
                         results.append(("skipped", existing.run_id))
                     else:
                         new_run = RunRecord(
-                            run_id=f"RUN-GH-1-{delivery_id}",
-                            issue_number=1,
-                            state=RunState.OPEN
+                            run_id=f"RUN-GH-1-{delivery_id}", issue_number=1, state=RunState.OPEN
                         )
                         new_run.idempotency_keys.add(delivery_id)
                         store.save(new_run)
@@ -133,7 +131,7 @@ class TestDuplicateWebhookDelivery:
 
 class TestConcurrentCommandOutcome:
     """Test Case 2: Deterministic concurrent approve-vs-abort command outcome.
-    
+
     Tests that approve and abort commands on the same run have deterministic
     ordering - either serializes explicitly or documents the contract.
     """
@@ -149,11 +147,7 @@ class TestConcurrentCommandOutcome:
         """Command outcomes should be tracked correctly in run record."""
         store = RunStore(temp_data_dir)
 
-        run = RunRecord(
-            run_id="RUN-GH-1-test",
-            issue_number=1,
-            state=RunState.WAITING_APPROVAL
-        )
+        run = RunRecord(run_id="RUN-GH-1-test", issue_number=1, state=RunState.WAITING_APPROVAL)
 
         comment_id = "comment-123"
 
@@ -182,11 +176,7 @@ class TestConcurrentCommandOutcome:
         """Abort command should transition to ABORTED terminal state."""
         store = RunStore(temp_data_dir)
 
-        run = RunRecord(
-            run_id="RUN-GH-1-test",
-            issue_number=1,
-            state=RunState.EXECUTING
-        )
+        run = RunRecord(run_id="RUN-GH-1-test", issue_number=1, state=RunState.EXECUTING)
 
         # Simulate abort command execution
         comment_id = "comment-abort"
@@ -209,30 +199,23 @@ class TestConcurrentCommandOutcome:
 
     def test_concurrent_approve_and_abort_deterministic(self, temp_data_dir):
         """Concurrent approve vs abort should result in deterministic outcome.
-        
+
         Tests the current explicit ordering contract: abort sets terminal state
         immediately, while approve triggers execution flow. Only one wins.
         """
         store = RunStore(temp_data_dir)
 
         # Create run in WAITING_APPROVAL state
-        run = RunRecord(
-            run_id="RUN-GH-1-test",
-            issue_number=1,
-            state=RunState.WAITING_APPROVAL
-        )
+        run = RunRecord(run_id="RUN-GH-1-test", issue_number=1, state=RunState.WAITING_APPROVAL)
 
         # Pre-add a recovery plan for approve command
         from opsswarm.models import RecoveryPlan, RemediationOption
+
         run.recovery_plan = RecoveryPlan(
             options=[
-                RemediationOption(
-                    id="opt-1",
-                    description="Test option",
-                    risk=Risk.SAFE_WRITE
-                )
+                RemediationOption(id="opt-1", description="Test option", risk=Risk.SAFE_WRITE)
             ],
-            recommended_option="opt-1"
+            recommended_option="opt-1",
         )
 
         approve_comment = "comment-approve"
@@ -271,11 +254,7 @@ class TestConcurrentCommandOutcome:
         """Command idempotency: marking command as executed prevents re-execution."""
         store = RunStore(temp_data_dir)
 
-        run = RunRecord(
-            run_id="RUN-GH-1-test",
-            issue_number=1,
-            state=RunState.WAITING_APPROVAL
-        )
+        run = RunRecord(run_id="RUN-GH-1-test", issue_number=1, state=RunState.WAITING_APPROVAL)
 
         comment_id = "comment-123"
 
@@ -292,8 +271,8 @@ class TestConcurrentCommandOutcome:
         #         return  # Skip duplicate
 
         is_duplicate = (
-                comment_id in run.command_outcomes and
-                run.command_outcomes.get(comment_id) == CommandOutcome.CONFIRMED.value
+            comment_id in run.command_outcomes
+            and run.command_outcomes.get(comment_id) == CommandOutcome.CONFIRMED.value
         )
 
         assert is_duplicate, "Duplicate command should be detected"
@@ -301,7 +280,7 @@ class TestConcurrentCommandOutcome:
 
 class TestReconciliationGapDetection:
     """Test Case 3: ReconciliationManager._detect_gaps() / non-terminal recovery.
-    
+
     Tests gap detection in evidence sequences for recovery scenarios.
     """
 
@@ -329,8 +308,11 @@ class TestReconciliationGapDetection:
         # Partial sequence: only S1 and S2 evidence
         records = [
             {"kind": "S1.incident", "timestamp": "2024-01-01T00:00:00Z"},
-            {"kind": "S2.task_graph", "timestamp": "2024-01-01T00:01:00Z",
-             "payload": {"tasks": [{"id": "t1"}, {"id": "t2"}]}},
+            {
+                "kind": "S2.task_graph",
+                "timestamp": "2024-01-01T00:01:00Z",
+                "payload": {"tasks": [{"id": "t1"}, {"id": "t2"}]},
+            },
         ]
 
         gaps = mgr._detect_gaps(records)
@@ -347,8 +329,11 @@ class TestReconciliationGapDetection:
         # Complete sequence
         records = [
             {"kind": "S1.incident", "timestamp": "2024-01-01T00:00:00Z"},
-            {"kind": "S2.task_graph", "timestamp": "2024-01-01T00:01:00Z",
-             "payload": {"tasks": [{"id": "t1"}, {"id": "t2"}]}},
+            {
+                "kind": "S2.task_graph",
+                "timestamp": "2024-01-01T00:01:00Z",
+                "payload": {"tasks": [{"id": "t1"}, {"id": "t2"}]},
+            },
             {"kind": "S4.finding", "timestamp": "2024-01-01T00:02:00Z"},
             {"kind": "S4.finding", "timestamp": "2024-01-01T00:03:00Z"},
             {"kind": "RCA.root_cause", "timestamp": "2024-01-01T00:04:00Z"},
@@ -368,7 +353,7 @@ class TestReconciliationGapDetection:
             "RCA.root_cause",
             "S3.recovery_plan",
             "S5.execution",
-            "S7.verification"
+            "S7.verification",
         ]
 
         # All expected kinds should be present
@@ -403,7 +388,7 @@ class TestReconciliationGapDetection:
 
 class TestTerminalStateMonotonicity:
     """Test Case 4: Terminal-state uniqueness/monotonicity under concurrent sequences.
-    
+
     Verifies that terminal states (RESOLVED, FAILED, ABORTED) are unique
     and transitions to them are monotonic (can't go back).
     """
@@ -423,16 +408,23 @@ class TestTerminalStateMonotonicity:
         """Cannot transition FROM terminal states (monotonicity)."""
         # RESOLVED is terminal - no valid transitions out
         allowed_from_resolved = VALID_TRANSITIONS.get(RunState.RESOLVED, set())
-        assert len(allowed_from_resolved) == 0, f"RESOLVED should have no transitions, got {allowed_from_resolved}"
+        assert len(allowed_from_resolved) == 0, (
+            f"RESOLVED should have no transitions, got {allowed_from_resolved}"
+        )
 
         # ABORTED is terminal - no valid transitions out
         allowed_from_aborted = VALID_TRANSITIONS.get(RunState.ABORTED, set())
-        assert len(allowed_from_aborted) == 0, f"ABORTED should have no transitions, got {allowed_from_aborted}"
+        assert len(allowed_from_aborted) == 0, (
+            f"ABORTED should have no transitions, got {allowed_from_aborted}"
+        )
 
         # FAILED has some retry paths
         allowed_from_failed = VALID_TRANSITIONS.get(RunState.FAILED, set())
         # FAILED can go to waiting states, investigating, or ABORTED
-        assert RunState.WAITING_APPROVAL in allowed_from_failed or RunState.WAITING_DECISION in allowed_from_failed
+        assert (
+            RunState.WAITING_APPROVAL in allowed_from_failed
+            or RunState.WAITING_DECISION in allowed_from_failed
+        )
 
     def test_terminal_state_cannot_transition_to_another_terminal(self):
         """Should not transition directly between terminal states."""
@@ -451,11 +443,7 @@ class TestTerminalStateMonotonicity:
         # This simulates the orchestrator's behavior:
         # Multiple commands try to transition to terminal state
 
-        run = RunRecord(
-            run_id="test-run",
-            issue_number=1,
-            state=RunState.WAITING_APPROVAL
-        )
+        run = RunRecord(run_id="test-run", issue_number=1, state=RunState.WAITING_APPROVAL)
 
         # Simulate concurrent abort and reject commands
         # In practice, these are serialized by the lock in orchestrator
@@ -478,11 +466,7 @@ class TestTerminalStateMonotonicity:
 
     def test_terminal_state_uniqueness(self):
         """Run should have exactly one terminal state at any time."""
-        run = RunRecord(
-            run_id="test-run",
-            issue_number=1,
-            state=RunState.OPEN
-        )
+        run = RunRecord(run_id="test-run", issue_number=1, state=RunState.OPEN)
 
         # Non-terminal: no terminal state
         assert run.state not in TERMINAL_STATES
@@ -513,11 +497,7 @@ class TestAtomicWritesConsistency:
         """Atomic write should create and then rename temp file."""
         store = RunStore(temp_data_dir, enable_atomic_writes=True)
 
-        run = RunRecord(
-            run_id="test-run",
-            issue_number=1,
-            state=RunState.OPEN
-        )
+        run = RunRecord(run_id="test-run", issue_number=1, state=RunState.OPEN)
 
         # Save creates temp file then renames
         store.save(run)
@@ -529,11 +509,7 @@ class TestAtomicWritesConsistency:
         """If process crashes during write, temp file cleanup should happen."""
         store = RunStore(temp_data_dir, enable_atomic_writes=True)
 
-        run = RunRecord(
-            run_id="test-run",
-            issue_number=1,
-            state=RunState.OPEN
-        )
+        run = RunRecord(run_id="test-run", issue_number=1, state=RunState.OPEN)
 
         # First save
         store.save(run)

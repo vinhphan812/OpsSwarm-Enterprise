@@ -45,7 +45,9 @@ def test_locked_requirements_accepts_hash_anywhere_in_own_long_block() -> None:
 
 
 def test_verify_reports_source_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(verify_dependency_lock, "direct_requirements", lambda: ["fastapi>=0.115,<1"])
+    monkeypatch.setattr(
+        verify_dependency_lock, "direct_requirements", lambda: ["fastapi>=0.115,<1"]
+    )
     monkeypatch.setattr(verify_dependency_lock, "project_requirements", lambda: ["httpx>=0.27,<1"])
     monkeypatch.setattr(
         verify_dependency_lock,
@@ -54,7 +56,6 @@ def test_verify_reports_source_mismatch(monkeypatch: pytest.MonkeyPatch) -> None
     )
 
     errors = verify_dependency_lock.verify()
-
 
     assert any("must exactly match" in error for error in errors)
 
@@ -101,8 +102,12 @@ def test_parse_requirement_rejects_invalid_or_direct_url() -> None:
 def test_verify_rejects_incompatible_locked_direct_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(verify_dependency_lock, "direct_requirements", lambda: ["fastapi>=0.115,<1"])
-    monkeypatch.setattr(verify_dependency_lock, "project_requirements", lambda: ["fastapi>=0.115,<1"])
+    monkeypatch.setattr(
+        verify_dependency_lock, "direct_requirements", lambda: ["fastapi>=0.115,<1"]
+    )
+    monkeypatch.setattr(
+        verify_dependency_lock, "project_requirements", lambda: ["fastapi>=0.115,<1"]
+    )
     monkeypatch.setattr(
         verify_dependency_lock,
         "locked_requirements",
@@ -111,6 +116,4 @@ def test_verify_rejects_incompatible_locked_direct_version(
 
     errors = verify_dependency_lock.verify()
 
-    assert errors == [
-        "locked fastapi==0.1 does not satisfy direct requirement 'fastapi>=0.115,<1'"
-    ]
+    assert errors == ["locked fastapi==0.1 does not satisfy direct requirement 'fastapi>=0.115,<1'"]
