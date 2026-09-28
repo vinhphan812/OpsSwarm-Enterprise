@@ -22,6 +22,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [010](ADR-010_SECURITY_WORKFLOW_AND_POLICY.md)   | Security Workflow and Policy   | Approved | #7 CI gate                                      |
 | [011](ADR-011_SKILL_ARTEFACT_CONTRACT.md) | Skill Artifact Contract        | Approved | #2, #6                                     |
 | [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Approved | #9 reliability (CONFIRMED/ABSENT/UNKNOWN) |
+| [013](ADR-013_CAPABILITY_REGISTRY.md)  | Trusted Capability Registry    | Proposed | #24 deterministic approval                 |
 
 ## ADR Lifecycle Statuses
 
