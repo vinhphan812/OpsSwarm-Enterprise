@@ -3,5 +3,5 @@
 # The value "***" in test data carries zero entropy and is not a secret.
 [rules.allowlist]
   description = "Placeholder token values in test fixtures"
-  files = ['''tests/unit/test_coverage_gaps\.py''']
-  regex = '''"token":\s*"\*\*\*"'''
+  paths = ['''tests/unit/test_coverage_gaps\.py''']
+  regexes = ['''"token":\s*"\*\*\*"''']
