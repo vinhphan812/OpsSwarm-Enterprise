@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import logging
 import os
+import time
+from typing import Any
 
 from fastapi import FastAPI, Request, Header, HTTPException, Security, Depends
 from fastapi.security import APIKeyHeader
@@ -14,10 +18,18 @@ from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
 from .webhook import verify_signature
 
+logger = logging.getLogger(__name__)
+
 cfg = load_config()
 
 API_KEY_NAME = "X-OpsSwarm-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+def generate_correlation_id() -> str:
+    """Generate a short correlation ID (first 8 chars of sha256 of timestamp+random)."""
+    data = f"{time.time()}{os.urandom(16)}"
+    return hashlib.sha256(data.encode()).hexdigest()[:8]
 
 
 async def verify_api_key(api_key: str = Security(api_key_header)):
@@ -26,7 +38,46 @@ async def verify_api_key(api_key: str = Security(api_key_header)):
     return api_key
 
 
-gh = GitHubClient(os.environ.get("GITHUB_TOKEN", ""), os.environ.get("GITHUB_REPO", cfg.get("repo", "")))
+def _get_github_token() -> str:
+    """Get GitHub token from environment, preferring explicit GITHUB_TOKEN over GH_TOKEN."""
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+
+
+_gh_token = _get_github_token()
+
+# Singleton placeholder — replaced lazily by _gh_client().
+_gh: GitHubClient | None = None
+
+
+class _LazyGitHubProxy:
+    """Proxy that creates the real GitHubClient on first method call.
+
+    Allows opsswarm.api to be imported without a GITHUB_TOKEN, deferring the
+    fail-closed check to request time (503 instead of 500).
+    """
+
+    __slots__ = ()
+
+    def _resolve(self) -> GitHubClient:
+        global _gh
+        if _gh is None:
+            if not _gh_token:
+                raise HTTPException(
+                    status_code=503,
+                    detail="GitHub token is not configured. Set GITHUB_TOKEN or GH_TOKEN.",
+                )
+            _gh = GitHubClient(_gh_token, os.environ.get("GITHUB_REPO", cfg.get("repo", "")))
+        return _gh
+
+    def __getattr__(self, name: str):
+        return getattr(self._resolve(), name)
+
+    async def __call__(self, *args, **kwargs):
+        # Allow `await gh(...)` to resolve lazily (matches old sync usage pattern).
+        return await self._resolve()
+
+
+gh: Any = _LazyGitHubProxy()
 oc = OpenClawClient(os.environ.get("OPSWARM_OPENCLAW_BIN", "openclaw"), int(os.environ.get("OPSWARM_OPENCLAW_TIMEOUT",
                                                                                            cfg.get("openclaw", {}).get(
                                                                                                "timeout_seconds",
@@ -114,13 +165,19 @@ async def github_webhook(request: Request, x_github_event: str | None = Header(N
         # Extract comment ID for idempotency
         comment_id = str(data["comment"].get("id", ""))
         permission = await gh.permission(actor)
+        cid = generate_correlation_id()
         try:
             await engine.handle_comment(number, actor, text, permission, parse_command(text), comment_id,
                                         x_github_delivery)
         except PermissionError as e:
-            await gh.comment(number, f"OpsSwarm command rejected: {e}")
+            # #29: log full details for operators; post sanitized message to GitHub.
+            logger.error(f"GitHub permission denied for {actor}: {e}, correlation_id={cid}")
+            await gh.comment(number, f"OpsSwarm command rejected (ref: {cid}). Contact your operator.")
         except Exception as e:
-            await gh.comment(number, "OpsSwarm could not process the command. Check server logs for details.")
+            cid_ex = cid or generate_correlation_id()
+            # #29: never propagate raw exception text to GitHub.
+            logger.exception(f"OpsSwarm could not process command for #{number}, correlation_id={cid_ex}")
+            await gh.comment(number, f"OpsSwarm encountered an internal error (ref: {cid_ex}). Contact your operator.")
         return {"accepted": True}
     return {"ignored": True}
 

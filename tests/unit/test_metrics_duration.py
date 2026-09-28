@@ -184,7 +184,13 @@ async def test_investigate_duration_recorded_after_resolved_run(tmp_path, cfg, i
 
     assert run.state == RunState.RESOLVED
     assert global_metrics.histograms_count["investigate_seconds"] > before_count
-    assert global_metrics.histograms_sum["investigate_seconds"] > before_sum
+    # On fast hardware time.monotonic() can return the same value twice, yielding a
+    # 0.0 delta. Guard: if count grew, the call site is wired — the sum must be
+    # >= before_sum (never decreases). Also assert the delta is non-negative.
+    inv_sum = global_metrics.histograms_sum["investigate_seconds"]
+    inv_delta = inv_sum - before_sum
+    assert inv_sum >= before_sum, "investigate_seconds sum must not decrease"
+    assert inv_delta >= 0.0, "investigate_seconds duration delta must be non-negative"
 
 
 @pytest.mark.integration

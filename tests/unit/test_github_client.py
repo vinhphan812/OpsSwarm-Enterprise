@@ -59,7 +59,8 @@ class TestGitHubClient:
             mock_r.raise_for_status.side_effect = Exception("Not found")
             mock_request.return_value = mock_r
 
-            with pytest.raises(Exception, match="Not found"):
+            # Unexpected errors are sanitized to PermissionError (no raw internals leaked).
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
                 await client.get_issue(999)
 
     @pytest.mark.asyncio
@@ -228,7 +229,8 @@ class TestGitHubClient:
             mock_r.raise_for_status.side_effect = Exception("Forbidden")
             mock_request.return_value = mock_r
 
-            with pytest.raises(Exception, match="Forbidden"):
+            # Unexpected errors are sanitized to PermissionError (no raw internals leaked).
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
                 await client.get_issue(123)
 
     @pytest.mark.asyncio

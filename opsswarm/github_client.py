@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class GitHubClient:
@@ -13,9 +16,21 @@ class GitHubClient:
             "X-GitHub-Api-Version": "2022-11-28"})
 
     async def _req(self, method: str, path: str, **kwargs) -> Any:
-        r = await self.client.request(method, path, **kwargs);
-        r.raise_for_status()
-        return r.json() if r.content else None
+        try:
+            r = await self.client.request(method, path, **kwargs)
+            r.raise_for_status()
+            return r.json() if r.content else None
+        except httpx.HTTPStatusError as e:
+            # HTTP error bodies can contain internal paths, tokens, or implementation details.
+            # Log the full response for operators; raise a sanitized PermissionError so callers
+            # can handle it uniformly without leaking internals to GitHub comments.
+            logger.error("GitHub API HTTP error: status=%s path=%s detail=%s", e.response.status_code, path, e.response.text[:500])
+            raise PermissionError(f"GitHub API returned {e.response.status_code} for {method} {path}") from None
+        except PermissionError:
+            raise  # already sanitized
+        except Exception as e:
+            logger.exception("GitHub API unexpected error: method=%s path=%s", method, path)
+            raise PermissionError(f"GitHub API request failed for {method} {path}") from None
 
     async def get_issue(self, number: int): return await self._req("GET", f"/repos/{self.repo}/issues/{number}")
 
