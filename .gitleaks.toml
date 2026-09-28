@@ -1,10 +1,7 @@
-[rules]
-  # Allow common placeholder strings used in test fixtures.
-  # These values are intentionally generic and carry no secret entropy.
-  [[rules.allowlist]]
-    regex = '(?i)("token":\s*"\*\*\*"|"session_id":\s*"[^a-zA-Z0-9]{3,}"|"api_key":\s*"test[^a-zA-Z0-9]*)'
-    file = 'test_coverage_gaps\.py'
-
-  [[rules.allowlist]]
-    regex = '(?i)\*\*\*|XXXX|PLEASE-FILL|REPLACE-ME|EXAMPLE'
-    file = 'test.*\.py$'
+# Allowlist for test fixture placeholders that trigger false-positive
+# gitleaks generic-api-key detections.
+# The value "***" in test data carries zero entropy and is not a secret.
+[rules.allowlist]
+  description = "Placeholder token values in test fixtures"
+  files = ['''tests/unit/test_coverage_gaps\.py''']
+  regex = '''"token":\s*"\*\*\*"'''
