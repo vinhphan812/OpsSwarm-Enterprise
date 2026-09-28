@@ -212,9 +212,19 @@ class EvidenceStore:
                 # signature does not match the stored one the chain is broken,
                 # which means the record was tampered or truncated; raise so the
                 # caller can treat the audit trail as untrusted.
-                stored_sig = rec.get("signature", "")
+                #
+                # STRICT validation: reject records where signature is missing,
+                # empty string, or non-string.  Never silently accept unverified
+                # records (C-01 fix).
+                stored_sig = rec.get("signature")
+                if not isinstance(stored_sig, str) or not stored_sig:
+                    raise MalformedEvidenceError(
+                        f"Evidence record missing or invalid signature for run {run_id} "
+                        f"at line {i + 1}: signature must be a non-empty string, "
+                        f"got {type(stored_sig).__name__ if stored_sig is not None else 'None'!r}"
+                    )
                 recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=last_sig)
-                if stored_sig and stored_sig != recomputed_sig:
+                if stored_sig != recomputed_sig:
                     logger.error(
                         "Evidence chain verification failed for run %s at line %d "
                         "(stored=%s, recomputed=%s)",
@@ -224,8 +234,7 @@ class EvidenceStore:
                         f"Evidence chain broken for run {run_id} at line {i + 1}: "
                         f"stored signature does not match recomputed value"
                     )
-                if stored_sig:
-                    last_sig = stored_sig
+                last_sig = stored_sig
         self._last_signature[run_id] = last_sig
 
     def get_duplicate_count(self) -> int:
@@ -233,25 +242,62 @@ class EvidenceStore:
         return self._duplicate_count
 
     def list(self, run_id: str) -> list[dict[str, Any]]:
-        p = self.path / f"{run_id}.jsonl"
-        if not p.exists(): return []
+        """Return evidence records for a run with full chain integrity verification.
 
-        records = []
+        C-02 fix: every record is re-derived and verified against the chained
+        signature before being returned.  This makes list() consistent with
+        _load_existing_signatures and prevents tampered records from being
+        served to API/reconciliation callers undetected.
+        """
+        p = self.path / f"{run_id}.jsonl"
+        if not p.exists():
+            return []
+
+        records: list[dict[str, Any]] = []
+        prev_sig = "GENESIS"
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
             if not line.strip():
                 continue
             try:
-                records.append(json.loads(line))
+                rec = json.loads(line)
             except json.JSONDecodeError as exc:
                 self._corrupt_count += 1
                 logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
-                # Move to corrupt file before raising so data is preserved
                 corrupt_path = self.path / f"{run_id}.corrupt"
                 with corrupt_path.open("a", encoding="utf-8") as cf:
                     cf.write(line + "\n")
                 raise MalformedEvidenceError(
                     f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
                 ) from exc
+
+            # C-02: re-derive chained signature and verify before returning
+            kind = rec.get("kind", "")
+            payload = rec.get("payload", {})
+            stored_sig = rec.get("signature")
+
+            # STRICT: reject missing / non-string signatures (consistent with C-01)
+            if not isinstance(stored_sig, str) or not stored_sig:
+                raise MalformedEvidenceError(
+                    f"Evidence record missing or invalid signature for run {run_id} "
+                    f"at line {i + 1}: signature must be a non-empty string, "
+                    f"got {type(stored_sig).__name__ if stored_sig is not None else 'None'!r}"
+                )
+
+            recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
+            if stored_sig != recomputed_sig:
+                logger.error(
+                    "Evidence chain verification failed for run %s at line %d "
+                    "(stored=%s, recomputed=%s)",
+                    run_id, i + 1, stored_sig, recomputed_sig,
+                )
+                raise MalformedEvidenceError(
+                    f"Evidence chain broken for run {run_id} at line {i + 1}: "
+                    f"stored signature does not match recomputed value"
+                )
+
+            records.append(rec)
+            prev_sig = stored_sig
+
         return records
 
     def checkpoint(self, run_id: str, checkpoint_type: str, payload: dict[str, Any]) -> str:

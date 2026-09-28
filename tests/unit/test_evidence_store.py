@@ -6,10 +6,18 @@ from opsswarm.evidence import EvidenceStore
 
 
 def _sig(kind, payload):
-    """Compute expected 16-char signature for a record."""
+    """Compute expected 16-char chained signature for a record."""
     stable = {k: v for k, v in payload.items()
               if k not in ("timestamp", "eid", "id", "run_id")}
     inp = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}"
+    return hashlib.sha256(inp.encode()).hexdigest()[:16]
+
+
+def _sig_chain(kind, payload, prev_sig):
+    """Compute expected 16-char CHAINED signature for a record."""
+    stable = {k: v for k, v in payload.items()
+              if k not in ("timestamp", "eid", "id", "run_id")}
+    inp = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}:{prev_sig}"
     return hashlib.sha256(inp.encode()).hexdigest()[:16]
 
 
@@ -43,10 +51,15 @@ class TestEvidenceStoreCore:
         run_id = "run-list-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Manually write JSONL with a malformed line
-        p.write_text('{"kind": "finding", "payload": {"msg": "good"}}\n'
-                     'invalid json here\n'
-                     '{"kind": "finding", "payload": {"msg": "also good"}}\n')
+        # Manually write JSONL with a valid record + corrupt line + valid record.
+        # Each record needs a correct CHAINED signature (C-02 fix requires this).
+        sig1 = _sig_chain("finding", {"msg": "good"}, "GENESIS")
+        sig2 = _sig_chain("finding", {"msg": "also good"}, sig1)
+        p.write_text(
+            json.dumps({"kind": "finding", "payload": {"msg": "good"}}) + f', "signature": "{sig1}"}}\n'
+            'invalid json here\n'
+            + json.dumps({"kind": "finding", "payload": {"msg": "also good"}}) + f', "signature": "{sig2}"}}\n',
+        )
 
         # Fail closed: corrupt line raises rather than silently returning partial results
         with _pytest.raises(MalformedEvidenceError):
@@ -206,10 +219,13 @@ class TestEvidenceIntegrityRegression:
         run_id = "partial-list"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
+        # Use correct CHAINED signatures for S4.finding records (C-02 fix).
+        sig1 = _sig_chain("S4.finding", {"task_id": "T1", "finding": "ok"}, "GENESIS")
+        sig2 = _sig_chain("S4.finding", {"task_id": "T2", "finding": "ok2"}, sig1)
         p.write_text(
-            '{"kind": "S4.finding", "payload": {"task_id": "T1", "finding": "ok"}, "signature": "aabbccddeeff0011"}\n'
+            json.dumps({"kind": "S4.finding", "payload": {"task_id": "T1", "finding": "ok"}, "signature": sig1}) + "\n"
             "not json at all\n"
-            '{"kind": "S4.finding", "payload": {"task_id": "T2", "finding": "ok2"}, "signature": "1122334455667788"}\n',
+            + json.dumps({"kind": "S4.finding", "payload": {"task_id": "T2", "finding": "ok2"}, "signature": sig2}) + "\n",
             encoding="utf-8",
         )
         with pytest.raises(MalformedEvidenceError):
