@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -175,14 +175,83 @@ class Task(BaseModel):
     status: Literal["PENDING", "RUNNING", "DONE", "FAILED", "SKIPPED"] = "PENDING"
 
 
+class EvidenceRef(BaseModel):
+    """Structured evidence reference (issue #31: OpenClaw JSON contract)."""
+
+    type: str = "generic"  # e.g. "file", "log", "link", "metric"
+    path: str | None = None
+    ref: str | None = None  # alternative URL/identifier
+    snippet: str | None = None
+    line_range: str | None = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _require_meaningful_fields(cls, v: Any, info: Any) -> str:
+        """Ensure at least one identifying field is present, otherwise fail validation."""
+        # We check in model_validate that at least path/ref/snippet is set
+        return v
+
+    @classmethod
+    def model_validate(cls, obj: Any, **kwargs) -> EvidenceRef:
+        """Validate that at least one meaningful field is present (beyond the defaults)."""
+        if isinstance(obj, dict):
+            # Check if at least one of the identifying fields is set to a non-None, non-empty value
+            if not any(
+                obj.get(f) not in (None, "")
+                for f in ("type", "path", "ref", "snippet", "line_range")
+            ):
+                raise ValueError(
+                    "EvidenceRef must have at least one of: type, path, ref, snippet, or line_range"
+                )
+        return super().model_validate(obj, **kwargs)
+
+
 class Finding(BaseModel):
     task_id: str
     finding: str
-    evidence: list[str] = Field(default_factory=list)
+    evidence: list[str | EvidenceRef] = Field(default_factory=list)
     hypothesis: str | None = None
     confidence: float = 0.0
     recommended_next_action: str | None = None
     raw: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("evidence", mode="before")
+    @classmethod
+    def _coerce_evidence(cls, v: Any) -> list[str | EvidenceRef]:
+        """Accept str, EvidenceRef dict, EvidenceRef instance, or list thereof."""
+        if isinstance(v, list):
+            result: list[str | EvidenceRef] = []
+            for item in v:
+                if isinstance(item, EvidenceRef):
+                    result.append(item)
+                elif isinstance(item, dict):
+                    try:
+                        result.append(EvidenceRef.model_validate(item))
+                    except Exception:
+                        # Fall back to string representation rather than dropping evidence
+                        result.append(str(item))
+                else:
+                    result.append(str(item))
+            return result
+        if isinstance(v, str):
+            return [v]
+        if isinstance(v, dict):
+            try:
+                return [EvidenceRef.model_validate(v)]
+            except Exception:
+                return [str(v)]
+        return []
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> float:
+        """Accept float, int, or string 'high'/'medium'/'low'."""
+        if isinstance(v, (float, int)):
+            return float(v)
+        if isinstance(v, str):
+            mapping = {"high": 0.9, "medium": 0.5, "low": 0.1}
+            return mapping.get(v.lower(), 0.0)
+        return 0.0
 
 
 class RootCauseArtifact(BaseModel):
@@ -192,9 +261,48 @@ class RootCauseArtifact(BaseModel):
     causal_chain: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     confidence: float = 0.0
-    remediation_options: list[str] = Field(default_factory=list)
+    remediation_options: list[str | RemediationOption] = Field(default_factory=list)
     human_input_question: str | None = None
     corrective_actions: list[str] = Field(default_factory=list)
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> float:
+        """Accept float, int, or string 'high'/'medium'/'low'."""
+        if isinstance(v, (float, int)):
+            return float(v)
+        if isinstance(v, str):
+            mapping = {"high": 0.9, "medium": 0.5, "low": 0.1}
+            return mapping.get(v.lower(), 0.0)
+        return 0.0
+
+    @field_validator("remediation_options", mode="before")
+    @classmethod
+    def _coerce_remediation_options(cls, v: Any) -> list[str | RemediationOption]:
+        """Accept RemediationOption, dict, or string, or list thereof."""
+        if isinstance(v, list):
+            result: list[str | RemediationOption] = []
+            for item in v:
+                if isinstance(item, RemediationOption):
+                    result.append(item)
+                elif isinstance(item, dict):
+                    try:
+                        result.append(RemediationOption.model_validate(item))
+                    except Exception:
+                        result.append(str(item))
+                else:
+                    result.append(str(item))
+            return result
+        if isinstance(v, RemediationOption):
+            return [v]
+        if isinstance(v, dict):
+            try:
+                return [RemediationOption.model_validate(v)]
+            except Exception:
+                return [str(v)]
+        if isinstance(v, str):
+            return [v]
+        return []
 
 
 class RemediationOption(BaseModel):
@@ -213,6 +321,17 @@ class RecoveryPlan(BaseModel):
     confidence: float = 0.0
     requires_business_input: bool = False
     business_input_question: str | None = None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _coerce_confidence(cls, v: Any) -> float:
+        """Accept float, int, or string 'high'/'medium'/'low'."""
+        if isinstance(v, (float, int)):
+            return float(v)
+        if isinstance(v, str):
+            mapping = {"high": 0.9, "medium": 0.5, "low": 0.1}
+            return mapping.get(v.lower(), 0.0)
+        return 0.0
 
 
 class DecisionRequest(BaseModel):
