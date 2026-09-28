@@ -1,0 +1,42 @@
+# Allowlist for test fixture placeholders that trigger false-positive
+# gitleaks generic-api-key detections.
+# All values are high-entropy mocks (ghp_/gho_/sk- prefixes) — not real secrets.
+[extend]
+  useDefault = true
+
+[allowlist]
+  description = "Placeholder token values in test fixtures — zero real entropy"
+  condition = "AND"
+  regexTarget = "line"
+  paths = [
+    '''tests/unit/test_coverage_gaps\.py''',
+    '''tests/security/test_error_sanitization\.py''',
+    '''tests/unit/test_openclaw\.py''',
+    '''tests/unit/test_github_client\.py''',
+    '''tests/unit/test_skill_logic_safety\.py''',
+    '''tests/unit/test_validate_artifacts\.py''',
+  ]
+  regexes = [
+    # ghp_ab...xyz / ghp_ABC... style mock tokens (test_coverage_gaps.py)
+    '"token":\s*"ghp_[a-z]{3}\.{5}[A-Z]{2,4}"',
+    '"Authorization":\s*"ghp_[a-z]{3}\.{5}[A-Z]{2,4}"',
+    'ghp_[a-z]{3}\.{5}[A-Z]{2,4}',
+    # gho_ab... style mock tokens
+    '"token":\s*"gho_[a-z]{3}\.{5}[A-Z]{2,4}"',
+    'gho_[a-z]{3}\.{5}[A-Z]{2,4}',
+    # sk-abc... style mock tokens
+    '"token":\s*"sk-[a-z]{3}\.{5}[0-9]{4}"',
+    'sk-[a-z]{3}\.{5}[0-9]{4}',
+    # ghp_AB...1234 (test_validate_artifacts.py)
+    'ghp_AB\.{5}\d{4}',
+    # ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA (test_validate_artifacts.py)
+    'ghp_[A-Z]{32}',
+    # ghp_REAL_SECRET_1234567890 (test_skill_logic_safety.py)
+    'ghp_REAL_SECRET_\d{10}',
+    # Bearer header style
+    '(?i)authorization:\s*bearer\s+ghp_[a-z]{3}\.{5}[A-Z]{2,4}',
+    # stderr output with mock tokens
+    'openclaw:\s+ghp_[a-z]{3}\.{5}\s+secret',
+    # Raw "***" placeholder in the historical nested token fixture
+    '"nested":\s*\{\s*"token":\s*"\*{3}"',
+  ]

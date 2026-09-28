@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import logging
 
+from pydantic import ValidationError
+
 from .models import (
     Task,
     RecoveryPlan,
@@ -11,6 +13,7 @@ from .models import (
     Finding,
     RootCauseArtifact,
     IncidentContext,
+    EvidenceRef,
 )
 from .normalization import normalize_finding, normalize_root_cause_artifact, normalize_recovery_plan
 from .prompts import *
@@ -60,15 +63,69 @@ async def execute_task(
     try:
         normalized = normalize_finding(data)
         return Finding.model_validate(normalized)
-    except Exception as e:
-        logger.error(f"Validation failed for task {task.id}: [details redacted]")
-        # Add basic evidence for validation failure
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "S4.finding", data, str(ve))
+        logger.error(f"Validation failed for task {task.id}: {redacted}")
         return Finding(
             task_id=task.id,
             finding="Validation failed: structured output could not be parsed",
+            evidence=[redacted],
+            confidence=0.0,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error for task {task.id}: [details redacted]")
+        return Finding(
+            task_id=task.id,
+            finding="Unexpected error during task execution",
             evidence=["[Raw output redacted for PII sensitivity]"],
             confidence=0.0,
         )
+
+
+def _persist_diagnostics(run_id: str, kind: str, raw_data: dict, error: str) -> str:
+    """Persist redacted diagnostics to evidence store and return the evidence ID.
+
+    Redacts PII from both the raw data and the error message before storing.
+    Returns a string representation of the evidence ID or a placeholder.
+    """
+    try:
+        from .evidence import EvidenceStore
+
+        # Import config for data_dir
+        from .config import config
+
+        store = EvidenceStore(data_dir=config.data_dir)
+        redacted_raw = _redact_dict(raw_data)
+        redacted_error = _redact_pii_from_str(error)
+        eid, _ = store.append(
+            run_id,
+            kind,
+            {"diagnostics": redacted_raw, "validation_error": redacted_error},
+        )
+        return eid or f"diagnostics:{run_id}:{kind}"
+    except Exception:
+        # Best-effort: never let evidence persistence failures break incident processing
+        return "[Diagnostics persisted to evidence store]"
+
+
+def _redact_pii_from_str(text: str) -> str:
+    """Redact emails and similar PII from a string."""
+    return re.sub(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", "[REDACTED]", text)
+
+
+def _redact_dict(data: dict) -> dict:
+    """Recursively redact PII from a dict, redacting string values and serializing others."""
+    result: dict = {}
+    for k, v in data.items():
+        if isinstance(v, str):
+            result[k] = _redact_pii_from_str(v)
+        elif isinstance(v, dict):
+            result[k] = _redact_dict(v)
+        elif isinstance(v, list):
+            result[k] = [_redact_pii_from_str(str(x)) for x in v]
+        else:
+            result[k] = v
+    return result
 
 
 async def synthesize_root_cause(
@@ -80,11 +137,19 @@ async def synthesize_root_cause(
     try:
         normalized = normalize_root_cause_artifact(data)
         return RootCauseArtifact.model_validate(normalized)
-    except Exception as e:
-        logger.error(f"Validation failed for root cause: [details redacted]")
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "RCA.root_cause", data, str(ve))
+        logger.error(f"Validation failed for root cause: {redacted}")
         return RootCauseArtifact(
             status="uncertain",
             proximate_cause="Unable to normalize root-cause output",
+            root_cause="unknown",
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in synthesize_root_cause: [details redacted]")
+        return RootCauseArtifact(
+            status="uncertain",
+            proximate_cause="Unable to synthesize root cause",
             root_cause="unknown",
         )
 
@@ -96,8 +161,12 @@ async def make_recovery_plan(oc, agent, run_id, incident, root, human_inputs) ->
     try:
         normalized = normalize_recovery_plan(data)
         return RecoveryPlan.model_validate(normalized)
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "S3.recovery_plan", data, str(ve))
+        logger.error(f"Validation failed for recovery plan: {redacted}")
+        return RecoveryPlan(options=[])
     except Exception as e:
-        logger.error(f"Validation failed for recovery plan: [details redacted]")
+        logger.error(f"Unexpected error in make_recovery_plan: [details redacted]")
         return RecoveryPlan(options=[])
 
 

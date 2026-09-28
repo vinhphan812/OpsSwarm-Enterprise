@@ -8,6 +8,7 @@ from opsswarm.skill_logic import execute_task, synthesize_root_cause, make_recov
 
 @pytest.mark.asyncio
 async def test_execute_task_sanitization():
+    """Non-validation exceptions are caught and PII is not leaked in evidence."""
     mock_oc = AsyncMock()
     # Data that definitely contains PII
     malformed_data = {"key": "secret", "value": "PII_VALUE"}
@@ -17,14 +18,15 @@ async def test_execute_task_sanitization():
     )
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
-    # This triggers the exception inside execute_task
+    # Non-ValidationError exception from normalize_finding triggers the generic handler
     with patch("opsswarm.skill_logic.normalize_finding", side_effect=Exception("Normalizer fail")):
         result = await execute_task(mock_oc, "agent", "run", incident, task)
 
-        # Assert evidence is redacted (the current implementation puts the raw dict as string!)
+        # Assert evidence is redacted (never raw dict as string)
         assert "PII_VALUE" not in str(result.evidence)
         assert "secret" not in str(result.evidence)
-        assert "Validation failed" in result.finding
+        # Generic exception path uses a safe fallback finding message
+        assert "error" in result.finding.lower()
 
 
 @pytest.mark.asyncio
