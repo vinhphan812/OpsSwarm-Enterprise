@@ -475,7 +475,7 @@ class TestSkillLogicPersistDiagnostics:
         data = {
             "user": "alice",
             "email": "alice@example.com",
-            "nested": {"token": "sk-secret-12345", "email": "bob@example.com"},
+            "nested": {"credential": "<redacted>", "email": "bob@example.com"},
             "tags": ["item1", "charlie@internal.corp"],
         }
         result = _redact_dict(data)
@@ -483,7 +483,7 @@ class TestSkillLogicPersistDiagnostics:
         assert "alice@example.com" not in str(result)
         # Nested email
         assert "bob@example.com" not in str(result)
-        # Nested token — not an email, not redacted by the email regex
+        # Nested credential is not an email and is preserved by the email-redaction helper
         # but nested tag email must be redacted
         assert "charlie@internal.corp" not in str(result)
 
