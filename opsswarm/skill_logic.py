@@ -15,6 +15,7 @@ from .models import (
     IncidentContext,
     EvidenceRef,
 )
+from .metrics import metrics
 from .normalization import normalize_finding, normalize_root_cause_artifact, normalize_recovery_plan
 from .prompts import *
 
@@ -50,6 +51,7 @@ def parse_issue(number: int, issue: dict) -> IncidentContext:
 
 
 async def build_tasks(oc, agent: str, run_id: str, incident: IncidentContext) -> list[Task]:
+    metrics.record_openclaw_call(agent)
     data = await oc.run_json(agent, f"{run_id}-s2", task_graph_prompt(incident))
     return [Task.model_validate(x) for x in data.get("tasks", [])]
 
@@ -57,6 +59,7 @@ async def build_tasks(oc, agent: str, run_id: str, incident: IncidentContext) ->
 async def execute_task(
     oc, profile_agent: str, run_id: str, incident: IncidentContext, task: Task
 ) -> Finding:
+    metrics.record_openclaw_call(profile_agent)
     data = await oc.run_json(
         profile_agent, f"{run_id}-{task.id}", specialist_prompt(incident, task.model_dump_json())
     )
@@ -131,6 +134,7 @@ def _redact_dict(data: dict) -> dict:
 async def synthesize_root_cause(
     oc, agent, run_id, incident, findings, human_inputs
 ) -> RootCauseArtifact:
+    metrics.record_openclaw_call(agent)
     data = await oc.run_json(
         agent, f"{run_id}-rca", root_cause_prompt(incident, findings, human_inputs)
     )
@@ -155,6 +159,7 @@ async def synthesize_root_cause(
 
 
 async def make_recovery_plan(oc, agent, run_id, incident, root, human_inputs) -> RecoveryPlan:
+    metrics.record_openclaw_call(agent)
     data = await oc.run_json(
         agent, f"{run_id}-plan", recovery_plan_prompt(incident, root, human_inputs)
     )
@@ -171,6 +176,7 @@ async def make_recovery_plan(oc, agent, run_id, incident, root, human_inputs) ->
 
 
 async def execute_recovery(oc, agent, run_id, incident, root, option) -> ExecutionResult:
+    metrics.record_openclaw_call(agent)
     return ExecutionResult.model_validate(
         await oc.run_json(
             agent, f"{run_id}-recover", recovery_prompt(incident, root, option.model_dump_json())
@@ -179,6 +185,7 @@ async def execute_recovery(oc, agent, run_id, incident, root, option) -> Executi
 
 
 async def verify_recovery(oc, agent, run_id, incident, execution) -> VerificationResult:
+    metrics.record_openclaw_call(agent)
     return VerificationResult.model_validate(
         await oc.run_json(
             agent, f"{run_id}-verify", verify_prompt(incident, execution.model_dump_json())
@@ -187,6 +194,7 @@ async def verify_recovery(oc, agent, run_id, incident, execution) -> Verificatio
 
 
 async def make_extra_task(oc, agent, run_id, incident, request) -> Task:
+    metrics.record_openclaw_call(agent)
     return Task.model_validate(
         await oc.run_json(agent, f"{run_id}-extra", extra_investigation_prompt(incident, request))
     )

@@ -10,6 +10,20 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Import metrics lazily to avoid circular dependency at module load time
+_metrics_module = None
+
+
+def _get_metrics():
+    global _metrics_module
+    if _metrics_module is None:
+        try:
+            from .metrics import metrics as _m
+            _metrics_module = _m
+        except Exception:
+            _metrics_module = None
+    return _metrics_module
+
 
 class MalformedEvidenceError(Exception):
     """Raised when evidence record is malformed in a way that breaks integrity."""
@@ -146,6 +160,9 @@ class EvidenceStore:
                 # Skip duplicate evidence
                 self._duplicate_count += 1
                 logger.debug(f"Skipping duplicate evidence (payload signature: {sig_payload})")
+                _m = _get_metrics()
+                if _m is not None:
+                    _m.record_evidence_failure("duplicate")
                 return None, True
 
             # Get previous signature (or Genesis)
@@ -180,6 +197,9 @@ class EvidenceStore:
                     f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
             except OSError:
                 # Write failed — leave indexes untouched so the caller can retry
+                _m = _get_metrics()
+                if _m is not None:
+                    _m.record_evidence_failure("write_error")
                 raise
 
             # Only update in-memory state after the durable write succeeds
@@ -206,6 +226,9 @@ class EvidenceStore:
                     logger.error(
                         f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
                     )
+                    _m = _get_metrics()
+                    if _m is not None:
+                        _m.record_evidence_failure("corrupt")
                     corrupt_path = self.path / f"{run_id}.corrupt"
                     with corrupt_path.open("a", encoding="utf-8") as cf:
                         cf.write(line + "\n")
@@ -279,6 +302,9 @@ class EvidenceStore:
             except json.JSONDecodeError as exc:
                 self._corrupt_count += 1
                 logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                _m = _get_metrics()
+                if _m is not None:
+                    _m.record_evidence_failure("corrupt")
                 corrupt_path = self.path / f"{run_id}.corrupt"
                 with corrupt_path.open("a", encoding="utf-8") as cf:
                     cf.write(line + "\n")
