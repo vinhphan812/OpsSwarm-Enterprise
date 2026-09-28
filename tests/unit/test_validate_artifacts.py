@@ -151,9 +151,7 @@ class TestBanditJsonFalsePositive:
     def test_bandit_json_rejects_credential_in_finding(self, tmp_path):
         """A credential embedded in Bandit evidence must not be hidden from scanning."""
         payload = self._make_bandit_payload()
-        payload["results"][0]["code"] = (
-            "token = '" + "ghp_" + "A" * 32 + "'\n"
-        )
+        payload["results"][0]["code"] = "token = '" + "ghp_" + "A" * 32 + "'\n"
         p = _write_json(tmp_path, payload)
         with pytest.raises(ValidationError, match="GitHub token"):
             validate(p)
@@ -262,8 +260,9 @@ class TestSensitivityNotLowered:
         """A 40-char high-entropy base64-like string in a JSON artifact is still flagged."""
         # Not a hex hash (40 hex chars would be SHA1 and get exempted), use mixed case+digits.
         # Value constructed at runtime to avoid gitleaks false-positive on test fixtures.
-        token = base64.b64decode("YUIzZEVmN2hJajJrTG05bk9wNHFSczZ0VXY4d1h5MXpBM2JDZD"
-                                 "VlRg==").decode()
+        token = base64.b64decode(
+            "YUIzZEVmN2hJajJrTG05bk9wNHFSczZ0VXY4d1h5MXpBM2JDZDVlRg=="
+        ).decode()
         assert len(token) == 40
         payload = {"some_field": token}
         p = _write_json(tmp_path, payload)

@@ -5,9 +5,7 @@
 
 import pytest
 
-from opsswarm.models import (
-    RecoveryPlan, RemediationOption, Risk, DecisionRequest
-)
+from opsswarm.models import RecoveryPlan, RemediationOption, Risk, DecisionRequest
 from opsswarm.policy import PolicyEngine
 
 
@@ -19,10 +17,7 @@ def make_config(policy: dict) -> dict:
 def make_option(risk: Risk = Risk.SAFE_WRITE, opt_id: str = "opt-1") -> RemediationOption:
     """Factory for test remediation option."""
     return RemediationOption(
-        id=opt_id,
-        description="Test option",
-        risk=risk,
-        estimated_recovery="5 minutes"
+        id=opt_id, description="Test option", risk=risk, estimated_recovery="5 minutes"
     )
 
 
@@ -33,11 +28,12 @@ def make_plan(options=None, requires_input: bool = False, question: str = None) 
         recommended_option="opt-1",
         confidence=0.9,
         requires_business_input=requires_input,
-        business_input_question=question
+        business_input_question=question,
     )
 
 
 # === NORMAL (8 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.normal
@@ -94,7 +90,9 @@ def test_s6_n5_waiting_approval_state():
     cfg = make_config({Risk.RISKY_WRITE.value: "HUMAN_APPROVAL"})
     engine = PolicyEngine(cfg)
 
-    action, reason = engine.classify_plan(make_plan(options=[make_option(Risk.RISKY_WRITE, "risky-opt")]))
+    action, reason = engine.classify_plan(
+        make_plan(options=[make_option(Risk.RISKY_WRITE, "risky-opt")])
+    )
 
     assert action == "APPROVAL"
     assert "approval" in reason.lower()
@@ -107,10 +105,7 @@ def test_s6_n6_waiting_decision_state():
     cfg = make_config({Risk.RISKY_WRITE.value: "HUMAN_APPROVAL"})
     engine = PolicyEngine(cfg)
 
-    options = [
-        make_option(Risk.SAFE_WRITE, "opt-1"),
-        make_option(Risk.RISKY_WRITE, "opt-2")
-    ]
+    options = [make_option(Risk.SAFE_WRITE, "opt-1"), make_option(Risk.RISKY_WRITE, "opt-2")]
     action, reason = engine.classify_plan(make_plan(options=options))
 
     assert action == "DECISION"
@@ -123,10 +118,9 @@ def test_s6_n7_waiting_input_state():
     cfg = make_config({})
     engine = PolicyEngine(cfg)
 
-    action, reason = engine.classify_plan(make_plan(
-        requires_input=True,
-        question="What is the business impact tolerance?"
-    ))
+    action, reason = engine.classify_plan(
+        make_plan(requires_input=True, question="What is the business impact tolerance?")
+    )
 
     assert action == "INPUT"
 
@@ -147,6 +141,7 @@ def test_s6_n8_ambiguous_triggers_decision():
 
 
 # === BOUNDARY (6 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.boundary
@@ -171,10 +166,7 @@ def test_s6_b2_multiple_risky_options():
     cfg = make_config({Risk.RISKY_WRITE.value: "HUMAN_APPROVAL", Risk.DESTRUCTIVE.value: "DENY"})
     engine = PolicyEngine(cfg)
 
-    options = [
-        make_option(Risk.RISKY_WRITE, "opt-1"),
-        make_option(Risk.RISKY_WRITE, "opt-2")
-    ]
+    options = [make_option(Risk.RISKY_WRITE, "opt-1"), make_option(Risk.RISKY_WRITE, "opt-2")]
     action, reason = engine.classify_plan(make_plan(options=options))
 
     # Multiple options triggers DECISION regardless of risk
@@ -188,10 +180,7 @@ def test_s6_b3_safe_risky_mix():
     cfg = make_config({Risk.RISKY_WRITE.value: "HUMAN_APPROVAL"})
     engine = PolicyEngine(cfg)
 
-    options = [
-        make_option(Risk.SAFE_WRITE, "safe-opt"),
-        make_option(Risk.RISKY_WRITE, "risky-opt")
-    ]
+    options = [make_option(Risk.SAFE_WRITE, "safe-opt"), make_option(Risk.RISKY_WRITE, "risky-opt")]
     action, reason = engine.classify_plan(make_plan(options=options))
 
     # Multiple options = DECISION
@@ -233,7 +222,7 @@ def test_s6_b6_approval_after_wait():
         kind="APPROVAL",
         reason="Risky option requires approval",
         options=[make_option(Risk.RISKY_WRITE)],
-        status="OPEN"
+        status="OPEN",
     )
 
     assert decision.kind == "APPROVAL"
@@ -241,6 +230,7 @@ def test_s6_b6_approval_after_wait():
 
 
 # === FAULT (8 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.fault
@@ -262,10 +252,7 @@ def test_s6_f2_free_text_not_approval():
     # This is a contract test - verifies approval requires specific command
     # The actual handling is in the GitHub integration
     decision = DecisionRequest(
-        id="dec-1",
-        kind="APPROVAL",
-        reason="User wrote 'looks good' in comment",
-        status="OPEN"
+        id="dec-1", kind="APPROVAL", reason="User wrote 'looks good' in comment", status="OPEN"
     )
 
     # Without explicit /opsswarm approve, this should remain OPEN
@@ -279,10 +266,7 @@ def test_s6_f3_insufficient_permission():
     # Contract: approval requires maintain/write permission
     # This is verified in GitHub permission check
     decision = DecisionRequest(
-        id="dec-1",
-        kind="APPROVAL",
-        reason="Read-only user attempted approval",
-        status="OPEN"
+        id="dec-1", kind="APPROVAL", reason="Read-only user attempted approval", status="OPEN"
     )
 
     # The decision model doesn't enforce permissions - that's GitHub's job
@@ -352,17 +336,12 @@ def test_s6_f7_missing_policy_entry():
 def test_s6_f8_concurrent_approvals():
     """S6-F8: Concurrent approvals - first approval wins"""
     # This is an integration test - verify decision state
-    decision1 = DecisionRequest(
-        id="dec-1",
-        kind="APPROVAL",
-        reason="First approval",
-        status="OPEN"
-    )
+    decision1 = DecisionRequest(id="dec-1", kind="APPROVAL", reason="First approval", status="OPEN")
     decision2 = DecisionRequest(
         id="dec-1",
         kind="APPROVAL",
         reason="Second approval",
-        status="ANSWERED"  # Already answered
+        status="ANSWERED",  # Already answered
     )
 
     # First one to process wins
@@ -371,6 +350,7 @@ def test_s6_f8_concurrent_approvals():
 
 
 # === CROSS-SKILL (2 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.cross_skill
@@ -385,10 +365,7 @@ def test_s6_c1_s3_to_s5_policy_gate():
 
     # S3 output: RecoveryPlan
     plan = make_plan(
-        options=[
-            make_option(Risk.SAFE_WRITE, "opt-1"),
-            make_option(Risk.RISKY_WRITE, "opt-2")
-        ]
+        options=[make_option(Risk.SAFE_WRITE, "opt-1"), make_option(Risk.RISKY_WRITE, "opt-2")]
     )
 
     # S6 gate: classify plan
@@ -410,7 +387,7 @@ def test_s6_c2_s5_to_s6_ambiguity():
         kind="DECISION",
         reason="The write outcome is ambiguous. Blind retry is prohibited.",
         options=[make_option(Risk.RISKY_WRITE)],
-        status="OPEN"
+        status="OPEN",
     )
 
     # S6 gates on ambiguity - creates decision request

@@ -8,16 +8,19 @@ from opsswarm.validators import (
 )
 
 
-@pytest.mark.parametrize("skill_id", [
-    "s1-intent-guard",
-    "s2-task-graph",
-    "s3-horizon-plan",
-    "s4-role-dispatch",
-    "s5-collab-exec",
-    "s6-resilience-guard",
-    "s7-observe-verify",
-    "s8-orchestration-hub",
-])
+@pytest.mark.parametrize(
+    "skill_id",
+    [
+        "s1-intent-guard",
+        "s2-task-graph",
+        "s3-horizon-plan",
+        "s4-role-dispatch",
+        "s5-collab-exec",
+        "s6-resilience-guard",
+        "s7-observe-verify",
+        "s8-orchestration-hub",
+    ],
+)
 def test_all_eight_skills_pass_validation(skill_id):
     assert validate_skill_artefact(skill_id) is True, f"{skill_id} failed validation"
 
@@ -29,6 +32,7 @@ class TestLoadSkillFrontmatterMalformed:
         """Returns empty dict when skill exists but has no frontmatter."""
         # Temporarily override _get_skills_dir
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-test"
@@ -43,6 +47,7 @@ class TestLoadSkillFrontmatterMalformed:
     def test_malformed_yaml_in_frontmatter_returns_none(self, tmp_path):
         """Returns None when YAML frontmatter is malformed/unparseable."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-malformed"
@@ -60,6 +65,7 @@ class TestLoadSkillFrontmatterMalformed:
     def test_missing_required_field_returns_false(self, tmp_path):
         """validate_skill_artefact returns False when required field is missing."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-missing-name"
@@ -76,13 +82,12 @@ class TestLoadSkillFrontmatterMalformed:
     def test_missing_required_description_returns_false(self, tmp_path):
         """validate_skill_artefact returns False when description field is missing."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-missing-desc"
             skill_dir.mkdir()
-            (skill_dir / "SKILL.md").write_text(
-                "---\nname: Test Skill\n---\n", encoding="utf-8"
-            )
+            (skill_dir / "SKILL.md").write_text("---\nname: Test Skill\n---\n", encoding="utf-8")
             v._get_skills_dir = lambda: tmp_path
             result = validate_skill_artefact("s99-missing-desc")
             assert result is False
@@ -144,13 +149,14 @@ class TestValidateSkillArtefactDependencies:
     def test_skill_with_missing_dependency_returns_false(self, tmp_path):
         """Returns False when a skill depends on a non-existent skill."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-missing-dep"
             skill_dir.mkdir()
             (skill_dir / "SKILL.md").write_text(
                 "---\nname: Test Skill\ndescription: A skill that depends on nothing\ndepends_on:\n  - s99-nonexistent\n---\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
             v._get_skills_dir = lambda: tmp_path
             result = validate_skill_artefact("s99-missing-dep")
@@ -161,6 +167,7 @@ class TestValidateSkillArtefactDependencies:
     def test_skill_with_valid_dependency_returns_true(self, tmp_path):
         """Returns True when all dependencies exist."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             # Create base skill (simulates s1-intent-guard)
@@ -174,7 +181,7 @@ class TestValidateSkillArtefactDependencies:
             dep_dir.mkdir()
             (dep_dir / "SKILL.md").write_text(
                 "---\nname: Dependent Skill\ndescription: A skill that depends on s1\ndepends_on:\n  - s1-intent-guard\n---\n",
-                encoding="utf-8"
+                encoding="utf-8",
             )
             v._get_skills_dir = lambda: tmp_path
             result = validate_skill_artefact("s99-with-dep")
@@ -185,12 +192,14 @@ class TestValidateSkillArtefactDependencies:
     def test_skill_with_empty_depends_on_returns_true(self, tmp_path):
         """Returns True when depends_on is present but empty."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             skill_dir = tmp_path / "s99-no-deps"
             skill_dir.mkdir()
             (skill_dir / "SKILL.md").write_text(
-                "---\nname: No Deps Skill\ndescription: Has empty depends_on\ndepends_on: []\n---\n", encoding="utf-8"
+                "---\nname: No Deps Skill\ndescription: Has empty depends_on\ndepends_on: []\n---\n",
+                encoding="utf-8",
             )
             v._get_skills_dir = lambda: tmp_path
             result = validate_skill_artefact("s99-no-deps")
@@ -201,6 +210,7 @@ class TestValidateSkillArtefactDependencies:
     def test_validate_skill_artefact_missing_skill_dir_returns_false(self, tmp_path):
         """validate_skill_artefact returns False when skill directory is missing."""
         import opsswarm.validators as v
+
         orig = v._get_skills_dir
         try:
             v._get_skills_dir = lambda: tmp_path
@@ -227,6 +237,7 @@ class TestRealShippedSkills:
     def test_all_real_skills_have_valid_frontmatter(self):
         """Every shipped skill directory must have a SKILL.md with name and description."""
         import opsswarm.validators as v
+
         for skill_id in self.REAL_SKILLS:
             fm = load_skill_frontmatter(skill_id)
             assert fm is not None, f"Skill {skill_id}: frontmatter could not be parsed"

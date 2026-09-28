@@ -12,7 +12,9 @@ async def test_execute_task_sanitization():
     # Data that definitely contains PII
     malformed_data = {"key": "secret", "value": "PII_VALUE"}
     mock_oc.run_json.return_value = malformed_data
-    task = Task(id="1", type=TaskType.INVESTIGATE, objective="test objective", profile="test-profile")
+    task = Task(
+        id="1", type=TaskType.INVESTIGATE, objective="test objective", profile="test-profile"
+    )
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
     # This triggers the exception inside execute_task
@@ -31,7 +33,10 @@ async def test_synthesize_root_cause_does_not_crash():
     mock_oc.run_json.return_value = {"bad": "data"}
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
-    with patch("opsswarm.skill_logic.normalize_root_cause_artifact", side_effect=Exception("Normalizer fail")):
+    with patch(
+        "opsswarm.skill_logic.normalize_root_cause_artifact",
+        side_effect=Exception("Normalizer fail"),
+    ):
         # This should not raise an exception if fixed
         await synthesize_root_cause(mock_oc, "agent", "run", incident, [], {})
 
@@ -43,7 +48,9 @@ async def test_make_recovery_plan_does_not_crash():
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
     mock_root = RootCauseArtifact(proximate_cause="test", root_cause="none")
 
-    with patch("opsswarm.skill_logic.normalize_recovery_plan", side_effect=Exception("Normalizer fail")):
+    with patch(
+        "opsswarm.skill_logic.normalize_recovery_plan", side_effect=Exception("Normalizer fail")
+    ):
         # This should not raise an exception if fixed
         await make_recovery_plan(mock_oc, "agent", "run", incident, mock_root, {})
 
@@ -76,24 +83,28 @@ async def test_execute_task_validation_error_no_raw_input_in_finding():
         raise pydantic.ValidationError.from_exception_data(
             title="Finding",
             input_type="python",
-            line_errors=[{
-                "type": "missing",
-                "loc": ("task_id",),
-                "msg": "Field required",
-                "input": sensitive_payload,
-                "url": "https://errors.pydantic.dev/2.0/v/missing",
-                "ctx": {},
-            }],
+            line_errors=[
+                {
+                    "type": "missing",
+                    "loc": ("task_id",),
+                    "msg": "Field required",
+                    "input": sensitive_payload,
+                    "url": "https://errors.pydantic.dev/2.0/v/missing",
+                    "ctx": {},
+                }
+            ],
         )
 
     with patch("opsswarm.skill_logic.Finding.model_validate", side_effect=bad_validate):
         result = await execute_task(mock_oc, "agent", "run", incident, task)
 
     evidence_str = str(result.evidence)
-    assert "ghp_REAL_SECRET_1234567890" not in evidence_str, \
+    assert "ghp_REAL_SECRET_1234567890" not in evidence_str, (
         "Raw secret must not appear in Finding.evidence"
-    assert "victim@internal.corp" not in evidence_str, \
+    )
+    assert "victim@internal.corp" not in evidence_str, (
         "Raw email must not appear in Finding.evidence"
+    )
     assert "Validation failed" in result.finding
 
 
@@ -103,6 +114,7 @@ async def test_execute_task_validation_error_not_in_log(caplog):
     exception message (which can contain raw agent output) into the log record.
     """
     import logging
+
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {"task_id": "t1", "finding": "x"}
     task = Task(id="t1", type=TaskType.INVESTIGATE, objective="obj", profile="p")
@@ -111,12 +123,15 @@ async def test_execute_task_validation_error_not_in_log(caplog):
     sensitive = "SUPER_SECRET_API_KEY=sk-1234"
 
     with caplog.at_level(logging.ERROR, logger="opsswarm.skill_logic"):
-        with patch("opsswarm.skill_logic.normalize_finding",
-                   side_effect=ValueError(f"bad input: {sensitive}")):
+        with patch(
+            "opsswarm.skill_logic.normalize_finding",
+            side_effect=ValueError(f"bad input: {sensitive}"),
+        ):
             await execute_task(mock_oc, "agent", "run", incident, task)
 
-    assert sensitive not in caplog.text, \
+    assert sensitive not in caplog.text, (
         "Exception detail (possibly containing sensitive input) must not appear in logs"
+    )
 
 
 @pytest.mark.asyncio
@@ -125,6 +140,7 @@ async def test_recovery_plan_validation_error_not_in_log(caplog):
     interpolate exception details into logs.
     """
     import logging
+
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {"options": []}
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
@@ -133,9 +149,12 @@ async def test_recovery_plan_validation_error_not_in_log(caplog):
     sensitive = "internal_host=db.prod.corp"
 
     with caplog.at_level(logging.ERROR, logger="opsswarm.skill_logic"):
-        with patch("opsswarm.skill_logic.normalize_recovery_plan",
-                   side_effect=ValueError(f"invalid plan: {sensitive}")):
+        with patch(
+            "opsswarm.skill_logic.normalize_recovery_plan",
+            side_effect=ValueError(f"invalid plan: {sensitive}"),
+        ):
             await make_recovery_plan(mock_oc, "agent", "run", incident, mock_root, {})
 
-    assert sensitive not in caplog.text, \
+    assert sensitive not in caplog.text, (
         "Exception detail must not appear in recovery-plan error logs"
+    )

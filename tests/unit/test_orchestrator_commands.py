@@ -1,4 +1,5 @@
 """Extended orchestrator tests covering command handling paths: abort, provide, reject."""
+
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -11,14 +12,15 @@ from tests.fakes import FakeGitHub, FakeOpenClaw
 @pytest.fixture
 def cfg():
     import yaml
-    return yaml.safe_load(open('config/test.yaml'))
+
+    return yaml.safe_load(open("config/test.yaml"))
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handle_command_abort(cfg, tmp_path):
     """handle_comment abort command sets ABORTED state."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -43,7 +45,7 @@ async def test_handle_command_abort(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_command_provide(cfg, tmp_path):
     """handle_comment provide command adds input and re-investigates."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -69,7 +71,7 @@ async def test_handle_command_provide(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_command_reject(cfg, tmp_path):
     """handle_comment reject command sets REJECTED status and WAITING_DECISION."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 

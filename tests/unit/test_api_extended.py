@@ -1,4 +1,5 @@
 """Extended tests for opsswarm.api module - covers uncovered endpoints."""
+
 import asyncio
 import os
 from unittest.mock import MagicMock, AsyncMock, patch
@@ -9,6 +10,7 @@ class TestRunEndpointWithData:
     def test_run_found(self):
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r1", issue_number=42, state=RunState.INVESTIGATING)
@@ -31,6 +33,7 @@ class TestEvidenceEndpointWithData:
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
         from opsswarm.evidence import EvidenceStore
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r2", issue_number=10, state=RunState.INVESTIGATING)
@@ -56,6 +59,7 @@ class TestCheckpointEndpointWithData:
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
         from opsswarm.evidence import EvidenceStore
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r3", issue_number=5, state=RunState.INVESTIGATING)
@@ -80,6 +84,7 @@ class TestCheckpointEndpointWithData:
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
         from opsswarm.evidence import EvidenceStore
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r4", issue_number=6, state=RunState.INVESTIGATING)
@@ -109,6 +114,7 @@ class TestResumeEndpointWithData:
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
         from opsswarm.evidence import EvidenceStore
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r5", issue_number=7, state=RunState.INVESTIGATING)
@@ -131,6 +137,7 @@ class TestResumeEndpointWithData:
         import opsswarm.api as api_module
         from opsswarm.models import RunRecord, RunState
         from opsswarm.evidence import EvidenceStore
+
         orig = api_module.engine
         try:
             mock_run = RunRecord(run_id="r6", issue_number=8, state=RunState.INVESTIGATING)
@@ -158,6 +165,7 @@ class TestResumeEndpointWithData:
 class TestMonitoringEndpoint:
     def test_monitoring_accepted(self):
         import opsswarm.api as api_module
+
         orig_engine = api_module.engine
         orig_gh = api_module.gh
         try:

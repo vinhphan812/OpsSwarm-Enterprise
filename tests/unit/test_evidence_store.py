@@ -1,4 +1,5 @@
 """Tests for EvidenceStore core functionality."""
+
 import hashlib
 import json
 
@@ -6,10 +7,16 @@ from opsswarm.evidence import EvidenceStore
 
 
 def _sig(kind, payload):
-    """Compute expected 16-char signature for a record."""
-    stable = {k: v for k, v in payload.items()
-              if k not in ("timestamp", "eid", "id", "run_id")}
+    """Compute expected 16-char chained signature for a record."""
+    stable = {k: v for k, v in payload.items() if k not in ("timestamp", "eid", "id", "run_id")}
     inp = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}"
+    return hashlib.sha256(inp.encode()).hexdigest()[:16]
+
+
+def _sig_chain(kind, payload, prev_sig):
+    """Compute expected 16-char CHAINED signature for a record."""
+    stable = {k: v for k, v in payload.items() if k not in ("timestamp", "eid", "id", "run_id")}
+    inp = f"{kind}:{json.dumps(stable, sort_keys=True, default=str)}:{prev_sig}"
     return hashlib.sha256(inp.encode()).hexdigest()[:16]
 
 
@@ -39,14 +46,22 @@ class TestEvidenceStoreCore:
         """list() now fails closed on corrupt JSONL: raises MalformedEvidenceError."""
         from opsswarm.evidence import MalformedEvidenceError
         import pytest as _pytest
+
         ev = EvidenceStore(data_dir=tmp_path)
         run_id = "run-list-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Manually write JSONL with a malformed line
-        p.write_text('{"kind": "finding", "payload": {"msg": "good"}}\n'
-                     'invalid json here\n'
-                     '{"kind": "finding", "payload": {"msg": "also good"}}\n')
+        # Manually write JSONL with a valid record + corrupt line + valid record.
+        # Each record needs a correct CHAINED signature (C-02 fix requires this).
+        sig1 = _sig_chain("S4.finding", {"task_id": "t1", "finding": "good"}, "GENESIS")
+        sig2 = _sig_chain("S4.finding", {"task_id": "t2", "finding": "also good"}, sig1)
+        p.write_text(
+            json.dumps({"kind": "S4.finding", "payload": {"task_id": "t1", "finding": "good"}})
+            + f', "signature": "{sig1}"}}\n'
+            "invalid json here\n"
+            + json.dumps({"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}})
+            + f', "signature": "{sig2}"}}\n',
+        )
 
         # Fail closed: corrupt line raises rather than silently returning partial results
         with _pytest.raises(MalformedEvidenceError):
@@ -83,16 +98,25 @@ class TestEvidenceStoreReload:
         """Corrupt lines are now observable by raising MalformedEvidenceError."""
         from opsswarm.evidence import MalformedEvidenceError
         import pytest
+
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
         run_id = "run-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
         # Write a valid record with plain sig
         sig1 = _sig("finding", {"msg": "good"})
-        p.write_text(json.dumps({
-            "id": "EV-1", "kind": "finding", "payload": {"msg": "good"},
-            "signature": sig1, "idempotency_key": "k1"
-        }) + "\n")
+        p.write_text(
+            json.dumps(
+                {
+                    "id": "EV-1",
+                    "kind": "finding",
+                    "payload": {"msg": "good"},
+                    "signature": sig1,
+                    "idempotency_key": "k1",
+                }
+            )
+            + "\n"
+        )
         # Append corrupt line
         with p.open("a") as f:
             f.write("totally invalid json\n")
@@ -191,10 +215,12 @@ class TestEvidenceIntegrityRegression:
                 ev.append(run_id, "S4.finding", {"task_id": "T2", "finding": "second"})
 
         # Index and chain head must be unchanged — retry is still possible
-        assert ev._index.get(run_id) == set(index_before), \
+        assert ev._index.get(run_id) == set(index_before), (
             "Index must not be updated after a failed write"
-        assert ev._last_signature.get(run_id) == chain_before, \
+        )
+        assert ev._last_signature.get(run_id) == chain_before, (
             "Chain head must not advance after a failed write"
+        )
 
     def test_malformed_jsonl_public_behavior(self, tmp_path):
         """list() must raise MalformedEvidenceError and not silently serve a
@@ -206,10 +232,27 @@ class TestEvidenceIntegrityRegression:
         run_id = "partial-list"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
+        # Use correct CHAINED signatures for S4.finding records (C-02 fix).
+        sig1 = _sig_chain("S4.finding", {"task_id": "T1", "finding": "ok"}, "GENESIS")
+        sig2 = _sig_chain("S4.finding", {"task_id": "T2", "finding": "ok2"}, sig1)
         p.write_text(
-            '{"kind": "S4.finding", "payload": {"task_id": "T1", "finding": "ok"}, "signature": "aabbccddeeff0011"}\n'
+            json.dumps(
+                {
+                    "kind": "S4.finding",
+                    "payload": {"task_id": "T1", "finding": "ok"},
+                    "signature": sig1,
+                }
+            )
+            + "\n"
             "not json at all\n"
-            '{"kind": "S4.finding", "payload": {"task_id": "T2", "finding": "ok2"}, "signature": "1122334455667788"}\n',
+            + json.dumps(
+                {
+                    "kind": "S4.finding",
+                    "payload": {"task_id": "T2", "finding": "ok2"},
+                    "signature": sig2,
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
         with pytest.raises(MalformedEvidenceError):

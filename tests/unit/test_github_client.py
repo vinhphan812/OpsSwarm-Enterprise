@@ -1,4 +1,5 @@
 """Unit tests for opsswarm.github_client module."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -59,7 +60,8 @@ class TestGitHubClient:
             mock_r.raise_for_status.side_effect = Exception("Not found")
             mock_request.return_value = mock_r
 
-            with pytest.raises(Exception, match="Not found"):
+            # Unexpected errors are sanitized to PermissionError (no raw internals leaked).
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
                 await client.get_issue(999)
 
     @pytest.mark.asyncio
@@ -137,9 +139,7 @@ class TestGitHubClient:
             mock_r.raise_for_status = MagicMock()
             mock_request.return_value = mock_r
 
-            result = await client.create_issue(
-                "New Issue", "Description", ["bug", "help wanted"]
-            )
+            result = await client.create_issue("New Issue", "Description", ["bug", "help wanted"])
 
             mock_request.assert_called_once_with(
                 "POST",
@@ -211,7 +211,7 @@ class TestGitHubClient:
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_r = MagicMock()
             mock_r.json.return_value = mock_response
-            mock_r.content = b'{}'
+            mock_r.content = b"{}"
             mock_r.raise_for_status = MagicMock()
             mock_request.return_value = mock_r
 
@@ -228,7 +228,8 @@ class TestGitHubClient:
             mock_r.raise_for_status.side_effect = Exception("Forbidden")
             mock_request.return_value = mock_r
 
-            with pytest.raises(Exception, match="Forbidden"):
+            # Unexpected errors are sanitized to PermissionError (no raw internals leaked).
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
                 await client.get_issue(123)
 
     @pytest.mark.asyncio

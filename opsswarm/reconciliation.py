@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ReconciliationReport:
     """Report of reconciliation analysis for a run."""
+
     run_id: str
     total_records: int
     unique_idempotency_keys: int
@@ -36,6 +37,7 @@ class ReconciliationReport:
 @dataclass
 class RecoveryResult:
     """Result of a recovery operation."""
+
     run_id: str
     recovered: bool
     resume_from_checkpoint: bool
@@ -54,17 +56,17 @@ class ReconciliationManager:
 
     def reconcile(self, run_id: str) -> ReconciliationReport:
         """Generate a reconciliation report for a run.
-        
+
         Compares the evidence log with expected sequence and reports:
         - Total evidence records
         - Unique idempotency keys
         - Duplicates found and skipped
         - Evidence kinds present
         - Gaps detected in the sequence
-        
+
         Args:
             run_id: The run identifier to reconcile.
-            
+
         Returns:
             ReconciliationReport with analysis results.
         """
@@ -79,7 +81,7 @@ class ReconciliationManager:
                 evidence_kinds=[],
                 gaps_detected=["No evidence records found"],
                 last_evidence_timestamp=None,
-                generated_at=datetime.now(timezone.utc)
+                generated_at=datetime.now(timezone.utc),
             )
 
         # Count records and unique idempotency keys
@@ -118,15 +120,15 @@ class ReconciliationManager:
             evidence_kinds=sorted(evidence_kinds),
             gaps_detected=gaps_detected,
             last_evidence_timestamp=last_timestamp,
-            generated_at=datetime.now(timezone.utc)
+            generated_at=datetime.now(timezone.utc),
         )
 
     def _detect_gaps(self, evidence_records: list[dict[str, Any]]) -> list[str]:
         """Detect gaps in the evidence sequence.
-        
+
         Args:
             evidence_records: List of evidence records to analyze.
-            
+
         Returns:
             List of gap descriptions.
         """
@@ -143,7 +145,7 @@ class ReconciliationManager:
             "RCA.root_cause",
             "S3.recovery_plan",
             "S5.execution",
-            "S7.verification"
+            "S7.verification",
         ]
 
         # Check for missing expected evidence
@@ -168,10 +170,10 @@ class ReconciliationManager:
 
     def load_non_terminal_runs(self) -> list[RunRecord]:
         """Load all non-terminal runs for recovery.
-        
+
         On startup, this loads all runs that are not in terminal states
         (RESOLVED, FAILED, ABORTED) and can be resumed.
-        
+
         Returns:
             List of RunRecord objects that can be recovered.
         """
@@ -189,10 +191,10 @@ class ReconciliationManager:
 
     def recover_run(self, run: RunRecord) -> RecoveryResult:
         """Attempt to recover a run from its checkpoint.
-        
+
         Args:
             run: The RunRecord to recover.
-            
+
         Returns:
             RecoveryResult with recovery status and details.
         """
@@ -208,7 +210,7 @@ class ReconciliationManager:
                     resume_from_checkpoint=True,
                     checkpoint_sequence=checkpoint.checkpoint_sequence,
                     state_at_recovery=checkpoint.state,
-                    message=f"Recovered from checkpoint sequence {checkpoint.checkpoint_sequence}"
+                    message=f"Recovered from checkpoint sequence {checkpoint.checkpoint_sequence}",
                 )
 
         # No checkpoint - check if we can resume from evidence
@@ -220,7 +222,7 @@ class ReconciliationManager:
                 resume_from_checkpoint=False,
                 checkpoint_sequence=None,
                 state_at_recovery=run.state,
-                message=f"Resuming from evidence log ({len(evidence_records)} records)"
+                message=f"Resuming from evidence log ({len(evidence_records)} records)",
             )
 
         # No checkpoint or evidence - but the run record exists
@@ -231,15 +233,15 @@ class ReconciliationManager:
             resume_from_checkpoint=False,
             checkpoint_sequence=None,
             state_at_recovery=run.state,
-            message="Resuming from saved run state"
+            message="Resuming from saved run state",
         )
 
     def get_recovery_plan(self, run: RunRecord) -> dict[str, Any]:
         """Generate a recovery plan for a run.
-        
+
         Args:
             run: The RunRecord to plan recovery for.
-            
+
         Returns:
             Dictionary with recovery plan details.
         """
@@ -270,10 +272,12 @@ class ReconciliationManager:
             "evidence_kinds": report.evidence_kinds,
             "gaps_detected": report.gaps_detected,
             "duplicates_skipped": report.duplicates_skipped,
-            "recommendation": self._get_recovery_recommendation(report, has_checkpoint)
+            "recommendation": self._get_recovery_recommendation(report, has_checkpoint),
         }
 
-    def _get_recovery_recommendation(self, report: ReconciliationReport, has_checkpoint: bool) -> str:
+    def _get_recovery_recommendation(
+        self, report: ReconciliationReport, has_checkpoint: bool
+    ) -> str:
         """Get recovery recommendation based on reconciliation report."""
         if has_checkpoint:
             return "Resume from checkpoint - most reliable recovery path"

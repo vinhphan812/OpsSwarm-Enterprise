@@ -10,6 +10,7 @@ from opsswarm.policy import PolicyEngine
 
 # === NORMAL (8 tests) ===
 
+
 @pytest.mark.unit
 def test_risk_read_value():
     """Risk-R1: Read enum value"""
@@ -41,48 +42,33 @@ def test_risk_destructive_value():
 @pytest.mark.unit
 def test_remediation_option_with_read_risk():
     """Risk-R5: RemediationOption with read risk"""
-    opt = RemediationOption(
-        id="opt1",
-        description="Monitor the system",
-        risk=Risk.READ
-    )
+    opt = RemediationOption(id="opt1", description="Monitor the system", risk=Risk.READ)
     assert opt.risk == Risk.READ
 
 
 @pytest.mark.unit
 def test_remediation_option_with_safe_write_risk():
     """Risk-R6: RemediationOption with safe_write risk"""
-    opt = RemediationOption(
-        id="opt1",
-        description="Update config",
-        risk=Risk.SAFE_WRITE
-    )
+    opt = RemediationOption(id="opt1", description="Update config", risk=Risk.SAFE_WRITE)
     assert opt.risk == Risk.SAFE_WRITE
 
 
 @pytest.mark.unit
 def test_remediation_option_with_risky_write_risk():
     """Risk-R7: RemediationOption with risky_write risk"""
-    opt = RemediationOption(
-        id="opt1",
-        description="Modify production code",
-        risk=Risk.RISKY_WRITE
-    )
+    opt = RemediationOption(id="opt1", description="Modify production code", risk=Risk.RISKY_WRITE)
     assert opt.risk == Risk.RISKY_WRITE
 
 
 @pytest.mark.unit
 def test_remediation_option_with_destructive_risk():
     """Risk-R8: RemediationOption with destructive risk"""
-    opt = RemediationOption(
-        id="opt1",
-        description="Drop database",
-        risk=Risk.DESTRUCTIVE
-    )
+    opt = RemediationOption(id="opt1", description="Drop database", risk=Risk.DESTRUCTIVE)
     assert opt.risk == Risk.DESTRUCTIVE
 
 
 # === BOUNDARY (6 tests) ===
+
 
 @pytest.mark.unit
 def test_risk_enum_is_string():
@@ -111,7 +97,14 @@ def test_remediation_option_risk_default():
 @pytest.mark.unit
 def test_risk_in_policy_engine():
     """Risk-B4: PolicyEngine action for each risk"""
-    cfg = {"policy": {"read": "AUTO", "safe_write": "AUTO", "risky_write": "HUMAN_APPROVAL", "destructive": "DENY"}}
+    cfg = {
+        "policy": {
+            "read": "AUTO",
+            "safe_write": "AUTO",
+            "risky_write": "HUMAN_APPROVAL",
+            "destructive": "DENY",
+        }
+    }
     engine = PolicyEngine(cfg)
 
     assert engine.action(Risk.READ) == "AUTO"
@@ -144,6 +137,7 @@ def test_risk_in_recovery_plan_options():
 
 
 # === FAULT (8 tests) ===
+
 
 @pytest.mark.unit
 def test_risk_invalid_string_value():
@@ -185,7 +179,9 @@ def test_remediation_option_missing_risk_field():
 def test_policy_classify_read_risk():
     """Risk-F5: PolicyEngine classifies read as AUTO"""
     engine = PolicyEngine({"policy": {"read": "AUTO"}})
-    plan = RecoveryPlan(options=[RemediationOption(id="opt1", description="Monitor", risk=Risk.READ)])
+    plan = RecoveryPlan(
+        options=[RemediationOption(id="opt1", description="Monitor", risk=Risk.READ)]
+    )
 
     result, _ = engine.classify_plan(plan)
     assert result == "AUTO"
@@ -195,7 +191,9 @@ def test_policy_classify_read_risk():
 def test_policy_classify_safe_write():
     """Risk-F6: PolicyEngine classifies safe_write as AUTO"""
     engine = PolicyEngine({"policy": {"safe_write": "AUTO"}})
-    plan = RecoveryPlan(options=[RemediationOption(id="opt1", description="Safe fix", risk=Risk.SAFE_WRITE)])
+    plan = RecoveryPlan(
+        options=[RemediationOption(id="opt1", description="Safe fix", risk=Risk.SAFE_WRITE)]
+    )
 
     result, _ = engine.classify_plan(plan)
     assert result == "AUTO"
@@ -205,7 +203,9 @@ def test_policy_classify_safe_write():
 def test_policy_classify_risky_write_requires_approval():
     """Risk-F7: PolicyEngine classifies risky_write as APPROVAL"""
     engine = PolicyEngine({"policy": {"risky_write": "HUMAN_APPROVAL"}})
-    plan = RecoveryPlan(options=[RemediationOption(id="opt1", description="Risky fix", risk=Risk.RISKY_WRITE)])
+    plan = RecoveryPlan(
+        options=[RemediationOption(id="opt1", description="Risky fix", risk=Risk.RISKY_WRITE)]
+    )
 
     result, _ = engine.classify_plan(plan)
     assert result == "APPROVAL"
@@ -215,13 +215,16 @@ def test_policy_classify_risky_write_requires_approval():
 def test_policy_classify_destructive_denied():
     """Risk-F8: PolicyEngine classifies destructive as DENY"""
     engine = PolicyEngine({"policy": {"destructive": "DENY"}})
-    plan = RecoveryPlan(options=[RemediationOption(id="opt1", description="Drop db", risk=Risk.DESTRUCTIVE)])
+    plan = RecoveryPlan(
+        options=[RemediationOption(id="opt1", description="Drop db", risk=Risk.DESTRUCTIVE)]
+    )
 
     result, _ = engine.classify_plan(plan)
     assert result == "DENY"
 
 
 # === CROSS-SKILL (2 tests) ===
+
 
 @pytest.mark.unit
 def test_risk_in_skill_s3_output():
@@ -232,7 +235,7 @@ def test_risk_in_skill_s3_output():
             RemediationOption(id="opt2", description="Code change", risk=Risk.RISKY_WRITE),
             RemediationOption(id="opt3", description="Drop table", risk=Risk.DESTRUCTIVE),
         ],
-        recommended_option="opt1"
+        recommended_option="opt1",
     )
 
     # Each option has proper risk classification
@@ -252,7 +255,7 @@ def test_risk_in_skill_s6_policy():
             "read": "AUTO",
             "safe_write": "AUTO",
             "risky_write": "HUMAN_APPROVAL",
-            "destructive": "DENY"
+            "destructive": "DENY",
         }
     }
     engine = PolicyEngine(cfg)

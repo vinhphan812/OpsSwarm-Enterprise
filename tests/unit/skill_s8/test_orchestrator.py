@@ -8,10 +8,19 @@ from unittest.mock import AsyncMock
 import pytest
 
 from opsswarm.models import (
-    RunState, RunRecord, IncidentContext, Task, Finding,
-    RootCauseArtifact, RecoveryPlan, RemediationOption,
-    ExecutionResult, VerificationResult, Risk, TaskType,
-    InvalidStateTransition
+    RunState,
+    RunRecord,
+    IncidentContext,
+    Task,
+    Finding,
+    RootCauseArtifact,
+    RecoveryPlan,
+    RemediationOption,
+    ExecutionResult,
+    VerificationResult,
+    Risk,
+    TaskType,
+    InvalidStateTransition,
 )
 from opsswarm.orchestrator import Orchestrator
 
@@ -25,7 +34,7 @@ def make_orchestrator(policy_config: dict = None) -> Orchestrator:
                 "incident-manager": "incident-manager",
                 "investigator": "investigator",
                 "recovery-responder": "recovery-responder",
-                "verifier": "verifier"
+                "verifier": "verifier",
             }
         },
         "labels": {
@@ -39,9 +48,9 @@ def make_orchestrator(policy_config: dict = None) -> Orchestrator:
                 "VERIFYING": "verifying",
                 "RESOLVED": "resolved",
                 "FAILED": "failed",
-                "ABORTED": "aborted"
+                "ABORTED": "aborted",
             }
-        }
+        },
     }
     github = AsyncMock()
     openclaw = AsyncMock()
@@ -58,21 +67,19 @@ def make_incident() -> IncidentContext:
         environment="production",
         severity="SEV2",
         symptoms=["symptom1"],
-        customer_impact="test impact"
+        customer_impact="test impact",
     )
 
 
 def make_run_record(state: RunState = RunState.OPEN) -> RunRecord:
     """Factory for test run record."""
     return RunRecord(
-        run_id="RUN-GH-1-abc12345",
-        issue_number=1,
-        state=state,
-        incident=make_incident()
+        run_id="RUN-GH-1-abc12345", issue_number=1, state=state, incident=make_incident()
     )
 
 
 # === NORMAL (8 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.normal
@@ -87,7 +94,7 @@ async def test_s8_n1_full_happy_path():
         summary="Service healthy",
         evidence=["health: OK"],
         confidence=0.95,
-        abort=False
+        abort=False,
     )
 
     # Verify transition to RESOLVED
@@ -105,7 +112,7 @@ async def test_s8_n2_requires_approval():
     plan = RecoveryPlan(
         options=[RemediationOption(id="opt-1", description="Risky fix", risk=Risk.RISKY_WRITE)],
         recommended_option="opt-1",
-        confidence=0.9
+        confidence=0.9,
     )
 
     action, reason = orch.policy.classify_plan(plan)
@@ -123,10 +130,10 @@ async def test_s8_n3_requires_decision():
     plan = RecoveryPlan(
         options=[
             RemediationOption(id="opt-1", description="Safe fix", risk=Risk.SAFE_WRITE),
-            RemediationOption(id="opt-2", description="Risky fix", risk=Risk.RISKY_WRITE)
+            RemediationOption(id="opt-2", description="Risky fix", risk=Risk.RISKY_WRITE),
         ],
         recommended_option="opt-1",
-        confidence=0.9
+        confidence=0.9,
     )
 
     action, reason = orch.policy.classify_plan(plan)
@@ -145,7 +152,7 @@ async def test_s8_n4_requires_input():
         options=[RemediationOption(id="opt-1", description="Fix", risk=Risk.SAFE_WRITE)],
         requires_business_input=True,
         business_input_question="What is the acceptable downtime?",
-        confidence=0.9
+        confidence=0.9,
     )
 
     action, reason = orch.policy.classify_plan(plan)
@@ -179,12 +186,19 @@ async def test_s8_n6_s2_to_s4_to_s3_flow():
 
     # S2 output: tasks
     run.tasks = [
-        Task(id="task-1", type=TaskType.INVESTIGATE, objective="Find root cause", profile="investigator")
+        Task(
+            id="task-1",
+            type=TaskType.INVESTIGATE,
+            objective="Find root cause",
+            profile="investigator",
+        )
     ]
 
     # S4 output: findings
     run.findings = [
-        Finding(task_id="task-1", finding="Root cause found", evidence=["log entry"], confidence=0.9)
+        Finding(
+            task_id="task-1", finding="Root cause found", evidence=["log entry"], confidence=0.9
+        )
     ]
 
     # S3 would take findings → root cause
@@ -192,7 +206,7 @@ async def test_s8_n6_s2_to_s4_to_s3_flow():
         status="confirmed",
         root_cause="Memory leak",
         confidence=0.9,
-        remediation_options=["restart", "scale up"]
+        remediation_options=["restart", "scale up"],
     )
 
     assert len(run.findings) > 0
@@ -212,7 +226,7 @@ async def test_s8_n7_s5_to_s7_to_s8_flow():
         success=True,
         summary="Recovery executed",
         evidence=["action completed"],
-        ambiguous=False
+        ambiguous=False,
     )
 
     # S7 output: verification result
@@ -221,7 +235,7 @@ async def test_s8_n7_s5_to_s7_to_s8_flow():
         summary="Verified healthy",
         evidence=["health check"],
         confidence=0.95,
-        abort=False
+        abort=False,
     )
 
     # S8 respects S7 result
@@ -255,6 +269,7 @@ async def test_s8_n8_state_transitions():
 
 # === BOUNDARY (6 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.boundary
 async def test_s8_b1_all_states_reachable():
@@ -270,7 +285,7 @@ async def test_s8_b1_all_states_reachable():
         RunState.PLANNING,
         RunState.EXECUTING,
         RunState.VERIFYING,
-        RunState.RESOLVED
+        RunState.RESOLVED,
     ]
 
     for state in states:
@@ -299,10 +314,20 @@ async def test_s8_b3_parallel_task_execution():
 
     # Multiple parallelizable tasks
     run.tasks = [
-        Task(id="task-1", type=TaskType.OBSERVE, objective="Check metrics", profile="investigator",
-             parallelizable=True),
-        Task(id="task-2", type=TaskType.INVESTIGATE, objective="Check logs", profile="investigator",
-             parallelizable=True),
+        Task(
+            id="task-1",
+            type=TaskType.OBSERVE,
+            objective="Check metrics",
+            profile="investigator",
+            parallelizable=True,
+        ),
+        Task(
+            id="task-2",
+            type=TaskType.INVESTIGATE,
+            objective="Check logs",
+            profile="investigator",
+            parallelizable=True,
+        ),
     ]
 
     # All should be able to run in parallel
@@ -332,7 +357,9 @@ async def test_s8_b5_maximum_tasks():
 
     # Create many tasks
     run.tasks = [
-        Task(id=f"task-{i}", type=TaskType.INVESTIGATE, objective=f"Task {i}", profile="investigator")
+        Task(
+            id=f"task-{i}", type=TaskType.INVESTIGATE, objective=f"Task {i}", profile="investigator"
+        )
         for i in range(100)
     ]
 
@@ -360,6 +387,7 @@ async def test_s8_b6_label_transitions():
 
 # === FAULT (8 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.fault
 async def test_s8_f1_s2_produces_no_tasks():
@@ -383,7 +411,13 @@ async def test_s8_f2_s4_task_fails():
     run = make_run_record(RunState.INVESTIGATING)
 
     run.tasks = [
-        Task(id="task-1", type=TaskType.INVESTIGATE, objective="Check", profile="investigator", status="FAILED")
+        Task(
+            id="task-1",
+            type=TaskType.INVESTIGATE,
+            objective="Check",
+            profile="investigator",
+            status="FAILED",
+        )
     ]
 
     failed_tasks = [t for t in run.tasks if t.status == "FAILED"]
@@ -399,8 +433,20 @@ async def test_s8_f3_task_graph_cycle():
 
     # Cyclic dependencies
     run.tasks = [
-        Task(id="task-1", type=TaskType.INVESTIGATE, objective="Task 1", profile="investigator", depends_on=["task-2"]),
-        Task(id="task-2", type=TaskType.INVESTIGATE, objective="Task 2", profile="investigator", depends_on=["task-1"]),
+        Task(
+            id="task-1",
+            type=TaskType.INVESTIGATE,
+            objective="Task 1",
+            profile="investigator",
+            depends_on=["task-2"],
+        ),
+        Task(
+            id="task-2",
+            type=TaskType.INVESTIGATE,
+            objective="Task 2",
+            profile="investigator",
+            depends_on=["task-1"],
+        ),
     ]
 
     # Check for cycle - should raise
@@ -427,7 +473,7 @@ async def test_s8_f4_rca_below_threshold():
     root_cause = RootCauseArtifact(
         status="uncertain",
         confidence=0.60,  # Below 0.80 threshold
-        human_input_question="Need more context"
+        human_input_question="Need more context",
     )
 
     # Low confidence RCA should require more input
@@ -447,7 +493,7 @@ async def test_s8_f5_verification_below_threshold():
         summary="Service not healthy",
         evidence=["health: 503"],
         confidence=0.70,  # Below 0.85 threshold
-        abort=False
+        abort=False,
     )
 
     # Verification failed - should go to FAILED
@@ -498,7 +544,7 @@ async def test_s8_f8_missing_required_label():
     issue = {
         "title": "Test",
         "body": "Body",
-        "labels": []  # Missing "opsswarm"
+        "labels": [],  # Missing "opsswarm"
     }
 
     required_label = "opsswarm"
@@ -512,6 +558,7 @@ async def test_s8_f8_missing_required_label():
 
 # === CROSS-SKILL (2 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.cross_skill
 async def test_s8_c1_full_pipeline():
@@ -524,7 +571,9 @@ async def test_s8_c1_full_pipeline():
     assert run.incident is not None
 
     # S2: Build tasks
-    run.tasks = [Task(id="t1", type=TaskType.INVESTIGATE, objective="Investigate", profile="investigator")]
+    run.tasks = [
+        Task(id="t1", type=TaskType.INVESTIGATE, objective="Investigate", profile="investigator")
+    ]
 
     # S3: Root cause
     run.root_cause = RootCauseArtifact(status="confirmed", confidence=0.9)

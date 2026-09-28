@@ -1,4 +1,5 @@
 """Unit tests for opsswarm.openclaw module."""
+
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -45,10 +46,7 @@ class TestOpenClawClient:
     @pytest.mark.asyncio
     async def test_run_text_from_payloads(self, client):
         """run_text returns text from payloads array."""
-        envelope = {
-            "ok": True,
-            "payloads": [{"text": "Payload text"}]
-        }
+        envelope = {"ok": True, "payloads": [{"text": "Payload text"}]}
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
@@ -63,12 +61,7 @@ class TestOpenClawClient:
     @pytest.mark.asyncio
     async def test_run_text_from_result_payloads(self, client):
         """run_text returns text from result.payloads."""
-        envelope = {
-            "ok": True,
-            "result": {
-                "payloads": [{"text": "Result payload text"}]
-            }
-        }
+        envelope = {"ok": True, "result": {"payloads": [{"text": "Result payload text"}]}}
 
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
@@ -125,7 +118,7 @@ class TestOpenClawClient:
         """run_text handles invalid elements in payloads."""
         envelope = {
             "ok": True,
-            "payloads": ["not a dict", {"text": 123}]  # Not dict, and not a string
+            "payloads": ["not a dict", {"text": 123}],  # Not dict, and not a string
         }
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
@@ -139,10 +132,7 @@ class TestOpenClawClient:
     @pytest.mark.asyncio
     async def test_run_text_from_result_payloads_not_dict(self, client):
         """run_text handles result that is not a dict."""
-        envelope = {
-            "ok": True,
-            "result": "not a dict"
-        }
+        envelope = {"ok": True, "result": "not a dict"}
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
             mock_proc.returncode = 0
@@ -171,9 +161,9 @@ class TestOpenClawClient:
     @pytest.mark.asyncio
     async def test_run_json_with_fenced_json(self, client):
         """run_json parses fenced JSON blocks."""
-        response_text = '''```json
+        response_text = """```json
 {"key": "value", "number": 42}
-```'''
+```"""
 
         result = client._extract_json(response_text)
 
@@ -206,7 +196,7 @@ class TestExtractJson:
 
     def test_plain_json_array(self):
         """Parses plain JSON array."""
-        text = '[1, 2, 3]'
+        text = "[1, 2, 3]"
         result = OpenClawClient._extract_json(text)
         assert result == [1, 2, 3]
 
@@ -237,7 +227,7 @@ class TestExtractJson:
 
     def test_malformed_array_salvage(self):
         """Salvages array from malformed input - valid array passes through."""
-        text = '[1, 2, 3]'
+        text = "[1, 2, 3]"
         result = OpenClawClient._extract_json(text)
         assert result == [1, 2, 3]
 

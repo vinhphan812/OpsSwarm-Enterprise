@@ -10,7 +10,8 @@ from tests.fakes import FakeGitHub, FakeOpenClaw
 @pytest.fixture
 def cfg():
     import yaml
-    return yaml.safe_load(open('config/test.yaml'))
+
+    return yaml.safe_load(open("config/test.yaml"))
 
 
 @pytest.mark.unit
@@ -28,7 +29,9 @@ async def test_recover_runs_executing_command_to_unknown(cfg, tmp_path):
 
     # Mock reconciliation manager
     eng.reconciliation.load_non_terminal_runs = MagicMock(return_value=[run])
-    eng.reconciliation.recover_run = MagicMock(return_value=MagicMock(recovered=True, message="Recovered"))
+    eng.reconciliation.recover_run = MagicMock(
+        return_value=MagicMock(recovered=True, message="Recovered")
+    )
 
     eng._recover_runs()
 

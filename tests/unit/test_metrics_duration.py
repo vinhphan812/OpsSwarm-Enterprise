@@ -6,6 +6,7 @@ Covers acceptance criteria for task t_2f767587 (Option A):
   1. At least 2 record_duration call sites in the orchestrator.
   2. histograms_count / histograms_sum are populated after _investigate and _verify.
 """
+
 import pytest
 import yaml
 
@@ -19,6 +20,7 @@ from tests.integration.orchestrator.test_flows import investigation_and_rca
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def cfg():
@@ -124,6 +126,7 @@ def _failed_verify_responses():
 # Tests — Metrics class unit-level (isolated, no orchestrator)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_record_duration_populates_histograms():
     """record_duration increments histograms_count and accumulates histograms_sum."""
@@ -163,6 +166,7 @@ def test_to_prometheus_renders_duration_lines():
 # Integration — orchestrator wires durations during a full run
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_investigate_duration_recorded_after_resolved_run(tmp_path, cfg, issue):
@@ -184,7 +188,13 @@ async def test_investigate_duration_recorded_after_resolved_run(tmp_path, cfg, i
 
     assert run.state == RunState.RESOLVED
     assert global_metrics.histograms_count["investigate_seconds"] > before_count
-    assert global_metrics.histograms_sum["investigate_seconds"] > before_sum
+    # On fast hardware time.monotonic() can return the same value twice, yielding a
+    # 0.0 delta. Guard: if count grew, the call site is wired — the sum must be
+    # >= before_sum (never decreases). Also assert the delta is non-negative.
+    inv_sum = global_metrics.histograms_sum["investigate_seconds"]
+    inv_delta = inv_sum - before_sum
+    assert inv_sum >= before_sum, "investigate_seconds sum must not decrease"
+    assert inv_delta >= 0.0, "investigate_seconds duration delta must be non-negative"
 
 
 @pytest.mark.integration
@@ -216,9 +226,7 @@ async def test_verify_duration_recorded_after_resolved_run(tmp_path, cfg, issue)
     # Additionally assert that sum grew relative to before this run OR that
     # count increased by more than 1 (meaning duration was recorded multiple
     # times — either way record_duration was wired correctly).
-    count_delta = (
-        global_metrics.histograms_count["verify_seconds"] - before_count
-    )
+    count_delta = global_metrics.histograms_count["verify_seconds"] - before_count
     sum_delta = global_metrics.histograms_sum["verify_seconds"] - before_sum
     assert count_delta >= 1, "verify_seconds count must increase by at least 1"
     assert sum_delta >= 0.0, "verify_seconds sum must not decrease after a run"

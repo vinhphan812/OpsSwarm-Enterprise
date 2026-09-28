@@ -14,6 +14,6 @@ async def test_github_api_error_handling():
         response.request = httpx.Request("GET", "https://api.github.com/repos/owner/repo/issues/1")
         mock_req.return_value = response
         
-        # httpx.Response.raise_for_status() raises HTTPStatusError
-        with pytest.raises(httpx.HTTPStatusError):
+        # _req() sanitizes HTTPStatusError into PermissionError (C-11 fix)
+        with pytest.raises(PermissionError):
             await client.get_issue(1)

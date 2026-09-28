@@ -1,4 +1,5 @@
 """Unit tests for evidence deduplication."""
+
 import tempfile
 
 from opsswarm.evidence import EvidenceStore
@@ -68,7 +69,9 @@ class TestEvidenceDeduplication:
             store = EvidenceStore(tmpdir)
 
             eid1, is_dup1 = store.append("run1", "finding", {"text": "test"}, event_id="evt-001")
-            eid2, is_dup2 = store.append("run1", "verification", {"text": "test"}, event_id="evt-001")
+            eid2, is_dup2 = store.append(
+                "run1", "verification", {"text": "test"}, event_id="evt-001"
+            )
 
             assert eid1 is not None
             assert eid2 is not None

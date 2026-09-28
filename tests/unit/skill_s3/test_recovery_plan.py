@@ -16,6 +16,7 @@ def make_fake_oc(plan_data):
 
 # === NORMAL (8 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.normal
@@ -23,13 +24,16 @@ async def test_s3_n1_single_safe_option():
     """S3-N1: Single safe option - one option with safe_write"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Config error",
-        root_cause="Wrong timeout setting"
+        status="confirmed", proximate_cause="Config error", root_cause="Wrong timeout setting"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Update timeout", "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": "Update timeout",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -47,14 +51,22 @@ async def test_s3_n2_multiple_options():
     """S3-N2: Multiple options - 2+ options with different risks"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Memory leak",
-        root_cause="Unclosed connections"
+        status="confirmed", proximate_cause="Memory leak", root_cause="Unclosed connections"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Restart service", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt2", "description": "Update code", "profile": "developer", "risk": "risky_write"}
+            {
+                "id": "opt1",
+                "description": "Restart service",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt2",
+                "description": "Update code",
+                "profile": "developer",
+                "risk": "risky_write",
+            },
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -73,16 +85,24 @@ async def test_s3_n3_recommended_option_set():
     """S3-N3: Recommended option set - recommended_option populated"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Issue",
-        root_cause="Root cause"
+        status="confirmed", proximate_cause="Issue", root_cause="Root cause"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Option A", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt2", "description": "Option B", "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": "Option A",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt2",
+                "description": "Option B",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
         ],
-        "recommended_option": "opt1"
+        "recommended_option": "opt1",
     }
     oc = make_fake_oc(fake_response)
 
@@ -98,16 +118,19 @@ async def test_s3_n4_business_input_required():
     """S3-N4: Business input required - requires_business_input = true"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="uncertain",
-        proximate_cause="Unknown",
-        root_cause="Need more info"
+        status="uncertain", proximate_cause="Unknown", root_cause="Need more info"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Option A", "profile": "recovery-responder", "risk": "risky_write"}
+            {
+                "id": "opt1",
+                "description": "Option A",
+                "profile": "recovery-responder",
+                "risk": "risky_write",
+            }
         ],
         "requires_business_input": True,
-        "business_input_question": "What is the impact tolerance?"
+        "business_input_question": "What is the impact tolerance?",
     }
     oc = make_fake_oc(fake_response)
 
@@ -123,13 +146,16 @@ async def test_s3_n5_read_only_option():
     """S3-N5: Read-only option only - risk = read option"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Cache miss",
-        root_cause="Warming needed"
+        status="confirmed", proximate_cause="Cache miss", root_cause="Warming needed"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Monitor for now", "profile": "recovery-responder", "risk": "read"}
+            {
+                "id": "opt1",
+                "description": "Monitor for now",
+                "profile": "recovery-responder",
+                "risk": "read",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -146,13 +172,16 @@ async def test_s3_n6_destructive_option_classified():
     """S3-N6: Destructive option classified - risk = destructive"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Data corruption",
-        root_cause="Schema mismatch"
+        status="confirmed", proximate_cause="Data corruption", root_cause="Schema mismatch"
     )
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Drop and recreate database", "profile": "dba", "risk": "destructive"}
+            {
+                "id": "opt1",
+                "description": "Drop and recreate database",
+                "profile": "dba",
+                "risk": "destructive",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -168,14 +197,17 @@ async def test_s3_n6_destructive_option_classified():
 async def test_s3_n7_confidence_score():
     """S3-N7: Confidence score - 0.0-1.0 confidence"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
-    root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Issue",
-        root_cause="Root"
-    )
+    root_cause = RootCauseArtifact(status="confirmed", proximate_cause="Issue", root_cause="Root")
     fake_response = {
-        "options": [{"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write"}],
-        "confidence": 0.85
+        "options": [
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
+        ],
+        "confidence": 0.85,
     }
     oc = make_fake_oc(fake_response)
 
@@ -190,13 +222,16 @@ async def test_s3_n7_confidence_score():
 async def test_s3_n8_empty_human_inputs():
     """S3-N8: Empty human_inputs - works with empty list"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
-    root_cause = RootCauseArtifact(
-        status="confirmed",
-        proximate_cause="Issue",
-        root_cause="Root"
-    )
+    root_cause = RootCauseArtifact(status="confirmed", proximate_cause="Issue", root_cause="Root")
     fake_response = {
-        "options": [{"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write"}]
+        "options": [
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
+        ]
     }
     oc = make_fake_oc(fake_response)
 
@@ -207,6 +242,7 @@ async def test_s3_n8_empty_human_inputs():
 
 # === BOUNDARY (6 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.boundary
@@ -214,8 +250,15 @@ async def test_s3_b1_maximum_10_options():
     """S3-B1: Maximum 10 options - current impl allows any"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
-    options = [{"id": f"opt{i}", "description": f"Option {i}", "profile": "recovery-responder", "risk": "safe_write"}
-               for i in range(15)]
+    options = [
+        {
+            "id": f"opt{i}",
+            "description": f"Option {i}",
+            "profile": "recovery-responder",
+            "risk": "safe_write",
+        }
+        for i in range(15)
+    ]
     fake_response = {"options": options}
     oc = make_fake_oc(fake_response)
 
@@ -234,9 +277,24 @@ async def test_s3_b2_all_same_risk():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "A", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt2", "description": "B", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt3", "description": "C", "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": "A",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt2",
+                "description": "B",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt3",
+                "description": "C",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -253,9 +311,7 @@ async def test_s3_b3_zero_options():
     """S3-B3: Zero options - empty options list allowed"""
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(
-        status="uncertain",
-        proximate_cause="Unknown",
-        root_cause="Cannot determine fix"
+        status="uncertain", proximate_cause="Unknown", root_cause="Cannot determine fix"
     )
     fake_response = {"options": []}
     oc = make_fake_oc(fake_response)
@@ -274,7 +330,13 @@ async def test_s3_b4_missing_rationale():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write", "rationale": ""}
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+                "rationale": "",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -294,7 +356,12 @@ async def test_s3_b5_very_long_description():
     long_desc = "x" * 5000
     fake_response = {
         "options": [
-            {"id": "opt1", "description": long_desc, "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": long_desc,
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -313,8 +380,13 @@ async def test_s3_b6_capability_list_empty():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write",
-             "capabilities": []}
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+                "capabilities": [],
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -325,6 +397,7 @@ async def test_s3_b6_capability_list_empty():
 
 
 # === FAULT (8 tests) ===
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
@@ -371,7 +444,13 @@ async def test_s3_f3_destructive_without_justification():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Drop table", "profile": "dba", "risk": "destructive", "rationale": ""}
+            {
+                "id": "opt1",
+                "description": "Drop table",
+                "profile": "dba",
+                "risk": "destructive",
+                "rationale": "",
+            }
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -414,8 +493,15 @@ async def test_s3_f6_confidence_over_1():
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
-        "options": [{"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write"}],
-        "confidence": 1.5
+        "options": [
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
+        ],
+        "confidence": 1.5,
     }
     oc = make_fake_oc(fake_response)
 
@@ -432,8 +518,15 @@ async def test_s3_f7_negative_confidence():
     incident = IncidentContext(issue_number=1, title="Test", service="api")
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
-        "options": [{"id": "opt1", "description": "Fix", "profile": "recovery-responder", "risk": "safe_write"}],
-        "confidence": -0.1
+        "options": [
+            {
+                "id": "opt1",
+                "description": "Fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
+        ],
+        "confidence": -0.1,
     }
     oc = make_fake_oc(fake_response)
 
@@ -451,8 +544,18 @@ async def test_s3_f8_option_id_collision():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Fix A", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt1", "description": "Fix B", "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": "Fix A",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt1",
+                "description": "Fix B",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
         ]
     }
     oc = make_fake_oc(fake_response)
@@ -464,6 +567,7 @@ async def test_s3_f8_option_id_collision():
 
 # === CROSS-SKILL (2 tests) ===
 
+
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.cross_skill
@@ -473,9 +577,14 @@ async def test_s3_c1_output_feeds_s5():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Restart", "profile": "recovery-responder", "risk": "safe_write"}
+            {
+                "id": "opt1",
+                "description": "Restart",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            }
         ],
-        "recommended_option": "opt1"
+        "recommended_option": "opt1",
     }
     oc = make_fake_oc(fake_response)
 
@@ -495,9 +604,19 @@ async def test_s3_c2_policy_gates_applied():
     root_cause = RootCauseArtifact(status="confirmed", proximate_cause="x", root_cause="x")
     fake_response = {
         "options": [
-            {"id": "opt1", "description": "Safe fix", "profile": "recovery-responder", "risk": "safe_write"},
-            {"id": "opt2", "description": "Risky fix", "profile": "recovery-responder", "risk": "risky_write"},
-            {"id": "opt3", "description": "Destructive", "profile": "dba", "risk": "destructive"}
+            {
+                "id": "opt1",
+                "description": "Safe fix",
+                "profile": "recovery-responder",
+                "risk": "safe_write",
+            },
+            {
+                "id": "opt2",
+                "description": "Risky fix",
+                "profile": "recovery-responder",
+                "risk": "risky_write",
+            },
+            {"id": "opt3", "description": "Destructive", "profile": "dba", "risk": "destructive"},
         ]
     }
     oc = make_fake_oc(fake_response)

@@ -14,5 +14,6 @@ async def test_github_rate_limit_handling():
         response.request = httpx.Request("GET", "https://api.github.com/repos/owner/repo/issues/1")
         mock_req.return_value = response
         
-        with pytest.raises(httpx.HTTPStatusError):
+        # _req() sanitizes HTTPStatusError (including 429) into PermissionError
+        with pytest.raises(PermissionError):
             await client.get_issue(1)

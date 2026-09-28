@@ -1,4 +1,5 @@
 """Extended orchestrator tests covering previously-uncovered code paths."""
+
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
@@ -11,7 +12,8 @@ from tests.fakes import FakeGitHub, FakeOpenClaw
 @pytest.fixture
 def cfg():
     import yaml
-    return yaml.safe_load(open('config/test.yaml'))
+
+    return yaml.safe_load(open("config/test.yaml"))
 
 
 @pytest.mark.unit
@@ -28,7 +30,7 @@ async def test_get_recovery_plan_returns_none_when_run_not_found(cfg):
 @pytest.mark.asyncio
 async def test_start_issue_raises_runtime_error_when_missing_label(cfg):
     """start_issue raises RuntimeError when issue lacks required opsswarm label."""
-    issue = {'number': 1, 'labels': [{'name': 'wrong-label'}]}
+    issue = {"number": 1, "labels": [{"name": "wrong-label"}]}
     gh = FakeGitHub(issue)
     gh.get_issue = AsyncMock(return_value=issue)
     oc = FakeOpenClaw([])
@@ -41,9 +43,9 @@ async def test_start_issue_raises_runtime_error_when_missing_label(cfg):
 @pytest.mark.asyncio
 async def test_execute_option_ambiguous_path(cfg, tmp_path):
     """_execute_option with ambiguous=True transitions to WAITING_DECISION."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
 
-    with patch('opsswarm.skill_logic.execute_recovery', new_callable=AsyncMock) as mock_exec:
+    with patch("opsswarm.skill_logic.execute_recovery", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = MagicMock(ambiguous=True, success=True)
 
         oc = FakeOpenClaw([])
@@ -51,7 +53,7 @@ async def test_execute_option_ambiguous_path(cfg, tmp_path):
 
         run = RunRecord(run_id="test-run", issue_number=1)
 
-        await eng._execute_option(run, MagicMock(id='opt1', risk='safe_write'))
+        await eng._execute_option(run, MagicMock(id="opt1", risk="safe_write"))
         assert run.state == RunState.WAITING_DECISION
 
 
@@ -59,9 +61,9 @@ async def test_execute_option_ambiguous_path(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_execute_option_failure_path(cfg, tmp_path):
     """_execute_option with success=False transitions to FAILED."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
 
-    with patch('opsswarm.skill_logic.execute_recovery', new_callable=AsyncMock) as mock_exec:
+    with patch("opsswarm.skill_logic.execute_recovery", new_callable=AsyncMock) as mock_exec:
         mock_exec.return_value = MagicMock(ambiguous=False, success=False, summary="Failure")
 
         oc = FakeOpenClaw([])
@@ -69,7 +71,7 @@ async def test_execute_option_failure_path(cfg, tmp_path):
 
         run = RunRecord(run_id="test-run", issue_number=1)
 
-        await eng._execute_option(run, MagicMock(id='opt1', risk='safe_write'))
+        await eng._execute_option(run, MagicMock(id="opt1", risk="safe_write"))
         assert run.state == RunState.FAILED
         assert run.error == "Failure"
 
@@ -78,9 +80,9 @@ async def test_execute_option_failure_path(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_verify_threshold_fail(cfg, tmp_path):
     """_verify with low confidence transitions to FAILED."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
 
-    with patch('opsswarm.skill_logic.verify_recovery', new_callable=AsyncMock) as mock_verify:
+    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = VerificationResult(
             verified=True,
             confidence=0.5,
@@ -104,9 +106,9 @@ async def test_verify_threshold_fail(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_verify_abort_veto(cfg, tmp_path):
     """_verify with abort=True transitions to ABORTED (S7 veto)."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
 
-    with patch('opsswarm.skill_logic.verify_recovery', new_callable=AsyncMock) as mock_verify:
+    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify:
         # Use the real VerificationResult model so attribute access works correctly
         mock_verify.return_value = VerificationResult(
             verified=False,  # False triggers the verification-failed block
@@ -131,9 +133,9 @@ async def test_verify_abort_veto(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_verify_pass(cfg, tmp_path):
     """_verify with high confidence transitions to RESOLVED."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
 
-    with patch('opsswarm.skill_logic.verify_recovery', new_callable=AsyncMock) as mock_verify:
+    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify:
         mock_verify.return_value = VerificationResult(
             verified=True,
             confidence=0.99,
@@ -157,10 +159,10 @@ async def test_verify_pass(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_comment_permission_error_approve(cfg, tmp_path):
     """handle_comment raises PermissionError when approving a DENY-risky option."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
 
-    with patch('opsswarm.skill_logic.verify_recovery', new_callable=AsyncMock):
+    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock):
         eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
     # Add a run with a recovery plan containing a DENY-risky option
@@ -170,6 +172,7 @@ async def test_handle_comment_permission_error_approve(cfg, tmp_path):
     # Policy denies 'risky_write' (from policy.py: self.cfg.get(risk.value, "DENY"))
     # So approving a risky_write option should raise PermissionError
     from opsswarm.models import RecoveryPlan, RemediationOption
+
     option = RemediationOption(id="opt-risky", risk="risky_write", description="Risky option")
     run.recovery_plan = RecoveryPlan(options=[option])
 
@@ -188,7 +191,7 @@ async def test_handle_comment_permission_error_approve(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_comment_resume_no_checkpoint(cfg, tmp_path):
     """handle_comment resume with no checkpoint warns the user."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -215,16 +218,18 @@ async def test_handle_comment_resume_no_checkpoint(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_resume_checkpoint_human_gate(cfg, tmp_path):
     """handle_comment resume with HUMAN_GATE checkpoint comments user."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
-    eng.ev.get_last_checkpoint = MagicMock(return_value={
-        "payload": {
-            "checkpoint_type": CheckpointType.HUMAN_GATE.value,
-            "state": "waiting_decision"
+    eng.ev.get_last_checkpoint = MagicMock(
+        return_value={
+            "payload": {
+                "checkpoint_type": CheckpointType.HUMAN_GATE.value,
+                "state": "waiting_decision",
+            }
         }
-    })
+    )
 
     run = RunRecord(run_id="test-run", issue_number=1)
     run.state = RunState.PLANNING
@@ -244,16 +249,18 @@ async def test_resume_checkpoint_human_gate(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_resume_checkpoint_execution_success(cfg, tmp_path):
     """handle_comment resume with EXECUTION (post_execution) checkpoint verifies."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
-    eng.ev.get_last_checkpoint = MagicMock(return_value={
-        "payload": {
-            "checkpoint_type": CheckpointType.EXECUTION.value,
-            "phase": "post_execution"
+    eng.ev.get_last_checkpoint = MagicMock(
+        return_value={
+            "payload": {
+                "checkpoint_type": CheckpointType.EXECUTION.value,
+                "phase": "post_execution",
+            }
         }
-    })
+    )
 
     run = RunRecord(run_id="test-run", issue_number=1)
     run.state = RunState.EXECUTING
@@ -275,7 +282,7 @@ async def test_resume_checkpoint_execution_success(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_comment_investigate(cfg, tmp_path):
     """handle_comment investigate command triggers investigation."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -285,7 +292,7 @@ async def test_handle_comment_investigate(cfg, tmp_path):
 
     eng._investigate = AsyncMock()
     # Mock make_extra_task
-    with patch('opsswarm.orchestrator.S.make_extra_task', new_callable=AsyncMock) as mock_make:
+    with patch("opsswarm.orchestrator.S.make_extra_task", new_callable=AsyncMock) as mock_make:
         mock_make.return_value = MagicMock(id="HX1")
 
         cmd = MagicMock()
@@ -301,7 +308,7 @@ async def test_handle_comment_investigate(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_comment_command_confirmed(cfg, tmp_path):
     """handle_comment command confirmation marks command as confirmed."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -313,6 +320,7 @@ async def test_handle_comment_command_confirmed(cfg, tmp_path):
     eng.github.comment = AsyncMock()
     eng.store.save = MagicMock()
     from opsswarm.models import RecoveryPlan, RemediationOption
+
     option = RemediationOption(id="opt1", risk="read", description="Safe")
     run.recovery_plan = RecoveryPlan(options=[option])
 
@@ -335,16 +343,15 @@ async def test_handle_comment_command_confirmed(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_resume_checkpoint_execution_pre(cfg, tmp_path):
     """handle_comment resume with EXECUTION (pre_execution) checkpoint comments user."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
-    eng.ev.get_last_checkpoint = MagicMock(return_value={
-        "payload": {
-            "checkpoint_type": CheckpointType.EXECUTION.value,
-            "phase": "pre_execution"
+    eng.ev.get_last_checkpoint = MagicMock(
+        return_value={
+            "payload": {"checkpoint_type": CheckpointType.EXECUTION.value, "phase": "pre_execution"}
         }
-    })
+    )
 
     run = RunRecord(run_id="test-run", issue_number=1)
     run.state = RunState.PLANNING
@@ -356,15 +363,17 @@ async def test_resume_checkpoint_execution_pre(cfg, tmp_path):
 
     await eng.handle_comment(1, "reader", "resume", "read", cmd)
 
-    eng.github.comment.assert_called_with(1,
-                                          "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.")
+    eng.github.comment.assert_called_with(
+        1,
+        "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.",
+    )
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resume_fallback_failed_success(cfg, tmp_path):
     """handle_comment resume with FAILED state and success=True verifies."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -391,7 +400,7 @@ async def test_resume_fallback_failed_success(cfg, tmp_path):
 @pytest.mark.asyncio
 async def test_handle_comment_investigate_duplicate(cfg, tmp_path):
     """handle_comment investigate command triggers investigation (second path via PLANNING)."""
-    gh = FakeGitHub({'number': 1})
+    gh = FakeGitHub({"number": 1})
     oc = FakeOpenClaw([])
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
@@ -401,7 +410,7 @@ async def test_handle_comment_investigate_duplicate(cfg, tmp_path):
 
     eng._investigate = AsyncMock()
     # Mock make_extra_task
-    with patch('opsswarm.orchestrator.S.make_extra_task', new_callable=AsyncMock) as mock_make:
+    with patch("opsswarm.orchestrator.S.make_extra_task", new_callable=AsyncMock) as mock_make:
         mock_make.return_value = MagicMock(id="HX1")
 
         cmd = MagicMock()

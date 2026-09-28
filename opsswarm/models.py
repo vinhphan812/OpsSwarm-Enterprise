@@ -45,18 +45,49 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
     None: {RunState.OPEN, RunState.TRIAGE},
     RunState.OPEN: {RunState.TRIAGE},
     RunState.TRIAGE: {RunState.INVESTIGATING, RunState.FAILED, RunState.ABORTED},
-    RunState.INVESTIGATING: {RunState.DIAGNOSED, RunState.WAITING_INPUT, RunState.FAILED, RunState.ABORTED},
-    RunState.DIAGNOSED: {RunState.PLANNING, RunState.WAITING_INPUT, RunState.FAILED, RunState.ABORTED},
-    RunState.PLANNING: {RunState.EXECUTING, RunState.WAITING_APPROVAL, RunState.WAITING_DECISION,
-                        RunState.WAITING_INPUT, RunState.FAILED, RunState.ABORTED},
-    RunState.EXECUTING: {RunState.VERIFYING, RunState.WAITING_DECISION, RunState.FAILED, RunState.ABORTED},
+    RunState.INVESTIGATING: {
+        RunState.DIAGNOSED,
+        RunState.WAITING_INPUT,
+        RunState.FAILED,
+        RunState.ABORTED,
+    },
+    RunState.DIAGNOSED: {
+        RunState.PLANNING,
+        RunState.WAITING_INPUT,
+        RunState.FAILED,
+        RunState.ABORTED,
+    },
+    RunState.PLANNING: {
+        RunState.EXECUTING,
+        RunState.WAITING_APPROVAL,
+        RunState.WAITING_DECISION,
+        RunState.WAITING_INPUT,
+        RunState.FAILED,
+        RunState.ABORTED,
+    },
+    RunState.EXECUTING: {
+        RunState.VERIFYING,
+        RunState.WAITING_DECISION,
+        RunState.FAILED,
+        RunState.ABORTED,
+    },
     RunState.VERIFYING: {RunState.RESOLVED, RunState.FAILED, RunState.ABORTED},
     RunState.WAITING_APPROVAL: {RunState.PLANNING, RunState.EXECUTING, RunState.ABORTED},
-    RunState.WAITING_DECISION: {RunState.PLANNING, RunState.EXECUTING, RunState.INVESTIGATING, RunState.ABORTED},
+    RunState.WAITING_DECISION: {
+        RunState.PLANNING,
+        RunState.EXECUTING,
+        RunState.INVESTIGATING,
+        RunState.ABORTED,
+    },
     RunState.WAITING_INPUT: {RunState.DIAGNOSED, RunState.INVESTIGATING, RunState.ABORTED},
     RunState.RESOLVED: set(),  # Terminal - no transitions out
-    RunState.FAILED: {RunState.WAITING_APPROVAL, RunState.WAITING_DECISION, RunState.WAITING_INPUT,
-                      RunState.INVESTIGATING, RunState.ABORTED},
+    RunState.FAILED: {
+        RunState.WAITING_APPROVAL,
+        RunState.WAITING_DECISION,
+        RunState.WAITING_INPUT,
+        RunState.INVESTIGATING,
+        RunState.ABORTED,
+    },
     RunState.ABORTED: set(),  # Terminal - no transitions out
 }
 
@@ -73,6 +104,7 @@ class Risk(str, Enum):
 
 class CheckpointType(str, Enum):
     """Checkpoint types for crash recovery (ADR-009-3)."""
+
     STATE_TRANSITION = "state_transition"
     HUMAN_GATE = "human_gate"
     EXECUTION = "execution"
@@ -88,6 +120,7 @@ class CommandOutcome(str, Enum):
     - ABSENT: Command provably not executed or failed
     - UNKNOWN: Command may have executed but outcome unconfirmed (requires reconciliation)
     """
+
     RECEIVED = "received"
     EXECUTING = "executing"
     CONFIRMED = "confirmed"
@@ -282,7 +315,8 @@ class RunRecord(BaseModel):
     def get_pending_commands(self) -> list[str]:
         """Get list of commands that are received but not yet executed."""
         return [
-            cmd_id for cmd_id, outcome in self.command_outcomes.items()
+            cmd_id
+            for cmd_id, outcome in self.command_outcomes.items()
             if outcome in (CommandOutcome.RECEIVED.value, CommandOutcome.EXECUTING.value)
         ]
 
