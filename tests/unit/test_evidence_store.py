@@ -53,13 +53,13 @@ class TestEvidenceStoreCore:
         p.parent.mkdir(parents=True, exist_ok=True)
         # Manually write JSONL with a valid record + corrupt line + valid record.
         # Each record needs a correct CHAINED signature (C-02 fix requires this).
-        sig1 = _sig_chain("finding", {"msg": "good"}, "GENESIS")
-        sig2 = _sig_chain("finding", {"msg": "also good"}, sig1)
+        sig1 = _sig_chain("S4.finding", {"task_id": "t1", "finding": "good"}, "GENESIS")
+        sig2 = _sig_chain("S4.finding", {"task_id": "t2", "finding": "also good"}, sig1)
         p.write_text(
-            json.dumps({"kind": "finding", "payload": {"msg": "good"}})
+            json.dumps({"kind": "S4.finding", "payload": {"task_id": "t1", "finding": "good"}})
             + f', "signature": "{sig1}"}}\n'
             "invalid json here\n"
-            + json.dumps({"kind": "finding", "payload": {"msg": "also good"}})
+            + json.dumps({"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}})
             + f', "signature": "{sig2}"}}\n',
         )
 
