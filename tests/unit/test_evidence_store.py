@@ -259,3 +259,37 @@ class TestEvidenceIntegrityRegression:
             ev.list(run_id)
         assert ev._corrupt_count == 1
         assert (tmp_path / "evidence" / f"{run_id}.corrupt").exists()
+
+
+class TestEvidenceVerify:
+    """Tests for EvidenceStore.verify() — independent chain verification."""
+
+    def test_verify_returns_valid_for_clean_chain(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "run-verify-clean"
+        # Append two records
+        ev.append(run_id, "checkpoint", {"phase": "start"})
+        ev.append(run_id, "checkpoint", {"phase": "end"})
+        valid, errors = ev.verify(run_id)
+        assert valid is True
+        assert errors == []
+
+    def test_verify_returns_errors_for_tampered_chain(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "run-verify-tampered"
+        ev.append(run_id, "checkpoint", {"phase": "start"})
+        # Tamper the file: change payload after signature was computed
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        lines = p.read_text(encoding="utf-8").splitlines()
+        lines[0] = lines[0].replace('"phase": "start"', '"phase": "HACKED"')
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        valid, errors = ev.verify(run_id)
+        assert valid is False
+        assert len(errors) == 1
+        assert "chain broken" in errors[0]
+
+    def test_verify_returns_errors_for_missing_file(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        valid, errors = ev.verify("nonexistent-run")
+        assert valid is False
+        assert "No evidence file" in errors[0]
