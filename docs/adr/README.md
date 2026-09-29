@@ -23,6 +23,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [011](ADR-011_SKILL_ARTEFACT_CONTRACT.md) | Skill Artifact Contract        | Approved | #2, #6                                     |
 | [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Approved | #9 reliability (CONFIRMED/ABSENT/UNKNOWN) |
 | [013](ADR-013_CAPABILITY_REGISTRY.md)  | Trusted Capability Registry    | Proposed | #24 deterministic approval                 |
+| [014](ADR-014_RUNTIME_API_AUTHENTICATION.md) | Runtime API Authentication, Scopes, and Ingress Controls | Accepted | #21 authn/authz for Runtime API and monitoring ingress |
 
 ## ADR Lifecycle Statuses
 

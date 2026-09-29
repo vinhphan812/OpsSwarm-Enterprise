@@ -16,6 +16,9 @@ dependencies = [
     "PyYAML>=6.0,<7",
 ]
 
+[project.scripts]
+opsswarm = "opsswarm.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "mypy>=1.11,<2",

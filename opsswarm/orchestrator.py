@@ -589,18 +589,51 @@ class Orchestrator:
             if not run.recovery_plan: raise RuntimeError("No recovery plan exists")
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
             if not option: raise ValueError(f"Unknown option id: {command.argument}")
-            # classify_operation supplements option.risk: use the more restrictive of
-            # the declared risk and the runtime classification of the command argument.
-            _RISK_ORDER = {Risk.SAFE_WRITE: 0, Risk.RISKY_WRITE: 1, Risk.DESTRUCTIVE: 2}
-            classified_risk = self.policy.classify_operation(command.argument)
-            effective_risk = (
-                classified_risk
-                if _RISK_ORDER.get(classified_risk, 0) > _RISK_ORDER.get(option.risk, 0)
-                else option.risk
+
+            # ADR-013: resolve effective risk via trusted registry first.
+            # Precedence: registry match (always wins) → classify_operation (escalation only)
+            #   → model-supplied label (fallback).
+            effective_risk, registry_result, classified_risk = (
+                self.policy.resolve_effective_risk_for_option(
+                    option.id, option.description, option.risk
+                )
             )
-            if self.policy.action(effective_risk) == "DENY": raise PermissionError(
-                "Policy denies this option regardless of human approval")
-            if run.decision: run.decision.status = "ANSWERED"
+
+            # Record S6.capability_override evidence whenever the registry was consulted.
+            # Even when no rule matched, recording the lookup provides an audit trail of
+            # what the system considered. We record it only when there was a meaningful
+            # override or a non-trivial fallback path.
+            if registry_result is not None or classified_risk is not None:
+                evidence_payload: dict[str, Any] = {
+                    "option_id": option.id,
+                    "model_risk": option.risk.value,
+                    "effective_risk": effective_risk.value,
+                    "option_description": option.description,
+                }
+                if registry_result is not None:
+                    evidence_payload.update({
+                        "canonical_operation": registry_result.canonical_operation,
+                        "rule_id": registry_result.rule_id,
+                        "registry_risk": registry_result.registry_risk.value
+                        if registry_result.registry_risk
+                        else None,
+                        "pattern_matched": registry_result.pattern_matched,
+                        "pattern_mode": registry_result.pattern_mode,
+                        "approved_by": registry_result.approved_by,
+                    })
+                else:
+                    evidence_payload["classified_risk"] = (
+                        classified_risk.value if classified_risk else None
+                    )
+                await self._save(run, "S6.capability_override", evidence_payload)
+
+            if self.policy.action(effective_risk) == "DENY":
+                raise PermissionError(
+                    "Policy denies this option regardless of human approval "
+                    f"(effective risk: {effective_risk.value})"
+                )
+            if run.decision:
+                run.decision.status = "ANSWERED"
             await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
             metrics.record_command("approve")
             await self._execute_option(run, option)

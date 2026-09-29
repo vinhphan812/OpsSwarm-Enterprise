@@ -5,7 +5,15 @@ import json
 import logging
 import os
 import threading
+import time
 from collections.abc import Mapping
+from contextlib import contextmanager
+from typing import Iterator
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -76,6 +84,11 @@ class EvidenceStore:
         self._last_signature: dict[str, str] = {}
         # Concurrency lock
         self._lock = threading.Lock()
+        # Cross-process lock files serialize the complete append transaction for
+        # each run, including reload, chain calculation, durable write, and index
+        # update.  The lock file is intentionally retained; its contents are
+        # never part of the evidence audit trail.
+        self._lock_timeout = float(self.persistence_config.get("lock_timeout_seconds", 30.0))
 
         # Duplicate counter for logging
         self._duplicate_count: int = 0
@@ -128,6 +141,42 @@ class EvidenceStore:
         key_input = f"{event_id}:{run_id}:{kind}"
         return hashlib.sha256(key_input.encode("utf-8")).hexdigest()
 
+    @contextmanager
+    def _process_lock(self, run_id: str) -> Iterator[None]:
+        """Acquire an advisory lock shared by all EvidenceStore processes."""
+        lock_path = self.path / f"{run_id}.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with lock_path.open("a+b") as lock_file:
+            # msvcrt.locking requires an existing byte; keep the sentinel
+            # outside the JSONL audit file so it cannot affect verification.
+            if lock_path.stat().st_size == 0:
+                lock_file.write(b"0")
+                lock_file.flush()
+            deadline = time.monotonic() + self._lock_timeout
+            while True:
+                try:
+                    if os.name == "nt":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except (OSError, BlockingIOError):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out acquiring evidence lock for run {run_id}")
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                try:
+                    if os.name == "nt":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    logger.exception("Failed to release evidence lock for run %s", run_id)
+
     def append(
         self, run_id: str, kind: str, payload: dict[str, Any], event_id: str | None = None
     ) -> tuple[str | None, bool]:
@@ -148,71 +197,78 @@ class EvidenceStore:
             - True if this was a duplicate (skipped), False if new evidence
         """
         with self._lock:
-            # Initialize run in index if needed
-            if run_id not in self._index:
-                self._index[run_id] = set()
-                # Load existing signatures and last signature from disk for this run
-                self._load_existing_signatures(run_id)
+            with self._process_lock(run_id):
+                return self._append_locked(run_id, kind, payload, event_id)
 
-            # Calculate signature for duplicate detection (payload-only)
-            sig_payload = self._signature(kind, payload)
+    def _append_locked(
+        self, run_id: str, kind: str, payload: dict[str, Any], event_id: str | None = None
+    ) -> tuple[str | None, bool]:
+        """Append while the caller owns both the thread and process locks."""
+        # Always refresh from disk while holding the process lock. Another
+        # process may have appended since this store instance last used the run.
+        self._index[run_id] = set()
+        self._last_signature.pop(run_id, None)
+        self._load_existing_signatures(run_id)
 
-            # Check for duplicate using in-memory index
-            if self.enable_idempotency and sig_payload in self._index[run_id]:
-                # Skip duplicate evidence
-                self._duplicate_count += 1
-                logger.debug(f"Skipping duplicate evidence (payload signature: {sig_payload})")
-                _m = _get_metrics()
-                if _m is not None:
-                    _m.record_evidence_failure("duplicate")
-                return None, True
+        # Calculate signature for duplicate detection (payload-only)
+        sig_payload = self._signature(kind, payload)
 
-            # Get previous signature (or Genesis)
-            prev_sig = self._last_signature.get(run_id, "GENESIS")
+        # Check for duplicate using in-memory index
+        if self.enable_idempotency and sig_payload in self._index[run_id]:
+            # Skip duplicate evidence
+            self._duplicate_count += 1
+            logger.debug(f"Skipping duplicate evidence (payload signature: {sig_payload})")
+            _m = _get_metrics()
+            if _m is not None:
+                _m.record_evidence_failure("duplicate")
+            return None, True
 
-            # Calculate signature for audit (chained)
-            sig_chain = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
+        # Get previous signature (or Genesis)
+        prev_sig = self._last_signature.get(run_id, "GENESIS")
 
-            # Compute idempotency key if event_id is provided
-            idempotency_key = ""
-            if self.enable_idempotency and event_id is not None:
-                idempotency_key = self._compute_idempotency_key(event_id, run_id, kind)
+        # Calculate signature for audit (chained)
+        sig_chain = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
 
-            eid = f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-            rec = {
-                "id": eid,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "run_id": run_id,
-                "kind": kind,
-                "payload": payload,
-                "signature": sig_chain,  # Store signature for audit
-            }
-            # Add idempotency_key to record if computed
-            if idempotency_key:
-                rec["idempotency_key"] = idempotency_key
+        # Compute idempotency key if event_id is provided
+        idempotency_key = ""
+        if self.enable_idempotency and event_id is not None:
+            idempotency_key = self._compute_idempotency_key(event_id, run_id, kind)
 
-            # Durable write FIRST; update in-memory indexes only after success.
-            # This prevents the index from diverging from persisted state when
-            # the write fails (e.g. disk full, I/O error).
-            file_path = self.path / f"{run_id}.jsonl"
-            try:
-                with file_path.open("a", encoding="utf-8") as f:
-                    f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
-                    # Ensure data hits disk before we update in-memory state.
-                    # On POSIX: flush + fsync; on Windows: FlushFileBuffers.
-                    f.flush()
-                    os.fsync(f.fileno())
-            except OSError:
-                # Write failed — leave indexes untouched so the caller can retry
-                _m = _get_metrics()
-                if _m is not None:
-                    _m.record_evidence_failure("write_error")
-                raise
+        eid = f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+        rec = {
+            "id": eid,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "run_id": run_id,
+            "kind": kind,
+            "payload": payload,
+            "signature": sig_chain,  # Store signature for audit
+        }
+        # Add idempotency_key to record if computed
+        if idempotency_key:
+            rec["idempotency_key"] = idempotency_key
 
-            # Only update in-memory state after the durable write succeeds
-            self._index[run_id].add(sig_payload)
-            self._last_signature[run_id] = sig_chain
-            return eid, False
+        # Durable write FIRST; update in-memory indexes only after success.
+        # This prevents the index from diverging from persisted state when
+        # the write fails (e.g. disk full, I/O error).
+        file_path = self.path / f"{run_id}.jsonl"
+        try:
+            with file_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+                # Ensure data hits disk before we update in-memory state.
+                # On POSIX: flush + fsync; on Windows: FlushFileBuffers.
+                f.flush()
+                os.fsync(f.fileno())
+        except OSError:
+            # Write failed — leave indexes untouched so the caller can retry
+            _m = _get_metrics()
+            if _m is not None:
+                _m.record_evidence_failure("write_error")
+            raise
+
+        # Only update in-memory state after the durable write succeeds
+        self._index[run_id].add(sig_payload)
+        self._last_signature[run_id] = sig_chain
+        return eid, False
 
     def _load_existing_signatures(self, run_id: str) -> None:
         """Load all existing signatures for a run into the in-memory index and update last_signature."""

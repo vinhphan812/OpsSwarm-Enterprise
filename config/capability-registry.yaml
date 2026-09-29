@@ -1,0 +1,108 @@
+# ADR-013 Capability Registry
+# Operator-maintained allow-list and block-list for known-safe and known-risky operations.
+# The registry overrides LLM-supplied risk labels. Entries are evaluated in order
+# of declaration (most-specific match wins).
+#
+# Schema version: "1" — increment on breaking schema changes.
+# Path is configured via: capability_registry.path in config/production.yaml / test.yaml
+#
+# Decisions (ADR-013):
+#   D1: Standalone YAML file at config/capability-registry.yaml
+#   D2: version + ordered rules with pattern / pattern_mode / risk fields
+#   D3: Registry always wins on match; classify_operation() preserved as escalation layer
+#   D4: Git-tracked, startup validation, no hot reload
+#   D5: Missing file → warning + model label; invalid YAML → ValueError (blocks startup)
+#
+# NOTE: Rule order matters. More-specific rules must come BEFORE less-specific ones.
+#       Regex patterns (for destructive) are used BEFORE prefix/contains patterns
+#       to prevent a broader rule from matching first.
+#       When in doubt, put destructive rules first, then risky_write, then safe_write.
+
+version: "1"
+description: |
+  Operator-maintained registry of known-safe and known-risky operations.
+  The registry overrides LLM-supplied risk labels. Entries are evaluated
+  in order of specificity (most-specific match wins).
+
+rules:
+
+  # ── Destructive block-list ────────────────────────────────────────────────
+  # These must come BEFORE generic risky rules so the destructive regex matches first.
+
+  - id: "deny-flush-redis"
+    canonical_operation: "redis_flush"
+    description: "FLUSHALL or FLUSHDB on any Redis host"
+    # Double-quoted YAML preserves backslash so regex .* works; also case-insensitive.
+    pattern: "redis-cli.*flush"
+    pattern_mode: "regex"
+    risk: destructive
+    rationale: "Data loss risk; never auto-execute"
+    approved_by: "dba-team"
+    approved_at: "2026-09-01"
+
+  - id: "deny-drop-database"
+    canonical_operation: "database_drop"
+    description: "DROP DATABASE or DROP SCHEMA on any database"
+    pattern: "drop database"
+    pattern_mode: "contains"
+    risk: destructive
+    rationale: "Irreversible data loss; never auto-execute"
+    approved_by: "dba-team"
+    approved_at: "2026-09-02"
+
+  - id: "deny-kubectl-delete-all"
+    canonical_operation: "kubectl_delete_all"
+    description: "kubectl delete --all on any resource type"
+    # Must come BEFORE the generic kubectl delete rule.
+    pattern: "kubectl delete.*--all"
+    pattern_mode: "regex"
+    risk: destructive
+    rationale: "Bulk deletion of all resources is catastrophic; never auto-execute"
+    approved_by: "security-team"
+    approved_at: "2026-09-05"
+
+  # ── Risky-write demotions ────────────────────────────────────────────────
+  # The LLM may label these as safe_write; operator corrects to risky_write.
+
+  - id: "risky-patch-admin"
+    canonical_operation: "admin_patch"
+    description: "Any PATCH request to /admin/ namespace"
+    pattern: "patch /admin/"
+    pattern_mode: "contains"
+    risk: risky_write
+    rationale: "Admin namespace contains elevated privileges; require human approval"
+    approved_by: "security-team"
+    approved_at: "2026-09-10"
+
+  - id: "risky-kubectl-delete"
+    canonical_operation: "kubectl_delete"
+    description: "Any kubectl delete operation (non-bulk; see deny-kubectl-delete-all for --all)"
+    pattern: "kubectl delete"
+    pattern_mode: "prefix"
+    risk: risky_write
+    rationale: "Deletion operations should always require human review"
+    approved_by: "platform-team"
+    approved_at: "2026-09-12"
+
+  # ── Safe-write allow-list ────────────────────────────────────────────────
+  # The LLM may label these as risky_write; operator declares them safe.
+
+  - id: "allow-kubectl-scale"
+    canonical_operation: "kubectl_scale_replicas"
+    description: "Scale deployment replicas via kubectl scale --replicas=N"
+    pattern: "kubectl scale"
+    pattern_mode: "prefix"
+    risk: safe_write
+    rationale: "Horizontal scaling is a routine and safe operation"
+    approved_by: "platform-team"
+    approved_at: "2026-09-15"
+
+  - id: "allow-kubectl-set-image"
+    canonical_operation: "kubectl_set_image"
+    description: "Update container image via kubectl set image"
+    pattern: "kubectl set image"
+    pattern_mode: "prefix"
+    risk: safe_write
+    rationale: "Image updates via set image are low-risk and easily reversible"
+    approved_by: "platform-team"
+    approved_at: "2026-09-16"
