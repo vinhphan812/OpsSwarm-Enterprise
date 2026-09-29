@@ -293,3 +293,51 @@ class TestEvidenceVerify:
         valid, errors = ev.verify("nonexistent-run")
         assert valid is False
         assert "No evidence file" in errors[0]
+
+    def test_verify_rejects_non_mapping_json_records(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "run-verify-shape"
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        p.write_text("[]\n42\n\"record\"\n", encoding="utf-8")
+
+        valid, errors = ev.verify(run_id)
+
+        assert valid is False
+        assert len(errors) == 3
+        assert all("mapping" in error for error in errors)
+
+    def test_verify_rejects_non_mapping_payload(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "run-verify-payload-shape"
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        p.write_text(
+            json.dumps({"kind": "checkpoint", "payload": [], "signature": "bad"})
+            + "\n"
+            + json.dumps({"kind": "checkpoint", "payload": "bad", "signature": "bad"})
+            + "\n",
+            encoding="utf-8",
+        )
+
+        valid, errors = ev.verify(run_id)
+
+        assert valid is False
+        assert len(errors) == 2
+        assert all("payload" in error and "mapping" in error for error in errors)
+
+    def test_verify_continues_after_malformed_rows(self, tmp_path):
+        ev = EvidenceStore(data_dir=tmp_path)
+        run_id = "run-verify-malformed"
+        p = tmp_path / "evidence" / f"{run_id}.jsonl"
+        p.write_text(
+            "not json\n"
+            + json.dumps({"kind": "checkpoint", "payload": {}, "signature": ""})
+            + "\n",
+            encoding="utf-8",
+        )
+
+        valid, errors = ev.verify(run_id)
+
+        assert valid is False
+        assert len(errors) == 2
+        assert "Malformed JSONL" in errors[0]
+        assert "invalid signature" in errors[1]

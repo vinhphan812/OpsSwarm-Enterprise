@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import threading
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -372,9 +373,22 @@ class EvidenceStore:
             except json.JSONDecodeError as exc:
                 errors.append(f"Malformed JSONL at line {i + 1}: {exc}")
                 continue
+            if not isinstance(rec, Mapping):
+                errors.append(
+                    f"Line {i + 1}: JSON record must be a mapping "
+                    f"(got {type(rec).__name__})"
+                )
+                continue
 
             kind = rec.get("kind", "")
             payload = rec.get("payload", {})
+            if not isinstance(payload, Mapping):
+                errors.append(
+                    f"Line {i + 1}: payload must be a mapping "
+                    f"(got {type(payload).__name__})"
+                )
+                continue
+
             stored_sig = rec.get("signature")
             if not isinstance(stored_sig, str) or not stored_sig:
                 errors.append(
