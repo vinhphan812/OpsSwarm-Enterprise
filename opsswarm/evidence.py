@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import threading
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -192,9 +194,14 @@ class EvidenceStore:
             # Durable write FIRST; update in-memory indexes only after success.
             # This prevents the index from diverging from persisted state when
             # the write fails (e.g. disk full, I/O error).
+            file_path = self.path / f"{run_id}.jsonl"
             try:
-                with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
+                with file_path.open("a", encoding="utf-8") as f:
                     f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+                    # Ensure data hits disk before we update in-memory state.
+                    # On POSIX: flush + fsync; on Windows: FlushFileBuffers.
+                    f.flush()
+                    os.fsync(f.fileno())
             except OSError:
                 # Write failed — leave indexes untouched so the caller can retry
                 _m = _get_metrics()
@@ -344,6 +351,61 @@ class EvidenceStore:
             prev_sig = stored_sig
 
         return records
+
+    def verify(self, run_id: str) -> tuple[bool, list[str]]:
+        """Verify the full evidence chain for a run.
+
+        Returns (is_valid, list_of_errors).  An empty errors list means the chain
+        is intact.  This does NOT modify any in-memory state.
+        """
+        errors: list[str] = []
+        p = self.path / f"{run_id}.jsonl"
+        if not p.exists():
+            errors.append(f"No evidence file for run {run_id}")
+            return False, errors
+
+        prev_sig = "GENESIS"
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                errors.append(f"Malformed JSONL at line {i + 1}: {exc}")
+                continue
+            if not isinstance(rec, Mapping):
+                errors.append(
+                    f"Line {i + 1}: JSON record must be a mapping "
+                    f"(got {type(rec).__name__})"
+                )
+                continue
+
+            kind = rec.get("kind", "")
+            payload = rec.get("payload", {})
+            if not isinstance(payload, Mapping):
+                errors.append(
+                    f"Line {i + 1}: payload must be a mapping "
+                    f"(got {type(payload).__name__})"
+                )
+                continue
+
+            stored_sig = rec.get("signature")
+            if not isinstance(stored_sig, str) or not stored_sig:
+                errors.append(
+                    f"Line {i + 1}: missing or invalid signature "
+                    f"({type(stored_sig).__name__ if stored_sig is not None else 'None'!r})"
+                )
+                continue
+
+            recomputed = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
+            if stored_sig != recomputed:
+                errors.append(
+                    f"Line {i + 1}: chain broken "
+                    f"(stored={stored_sig}, recomputed={recomputed})"
+                )
+            prev_sig = stored_sig
+
+        return len(errors) == 0, errors
 
     def checkpoint(self, run_id: str, checkpoint_type: str, payload: dict[str, Any]) -> str:
         """Record a checkpoint event for recovery (ADR-009-3).
