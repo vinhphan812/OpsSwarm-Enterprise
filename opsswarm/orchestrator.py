@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 
 from . import skill_logic as S
+from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log
 from .evidence import EvidenceStore
 from .markdown import (
     decision_request,
@@ -24,14 +26,12 @@ logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
-    def __init__(
-        self, cfg: dict, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True
-    ):
-        self.cfg = cfg
-        self.github = github
-        self.oc = openclaw
-        self.store = RunStore(data_dir)
-        self.ev = EvidenceStore(data_dir)
+    def __init__(self, cfg: dict, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True):
+        self.cfg = cfg;
+        self.github = github;
+        self.oc = openclaw;
+        self.store = RunStore(data_dir);
+        self.ev = EvidenceStore(data_dir);
         self.policy = PolicyEngine(cfg)
         self.reconciliation = ReconciliationManager(data_dir)
         self.runs = {r.issue_number: r for r in self.store.load_all()}
@@ -62,16 +62,14 @@ class Orchestrator:
         for nr in non_terminal_runs:
             # Get the exact instance from self.runs
             run = self.runs.get(nr.issue_number)
-            if not run:  # Should not happen
+            if not run: # Should not happen
                 run = nr
 
             # Check for commands in crash window (EXECUTING -> UNKNOWN)
             changed = False
             for cmd_id, outcome in run.command_outcomes.items():
                 if outcome == CommandOutcome.EXECUTING.value:
-                    logger.warning(
-                        f"Run {run.run_id}: found command {cmd_id} in EXECUTING state. Marking UNKNOWN (crash window)."
-                    )
+                    logger.warning(f"Run {run.run_id}: found command {cmd_id} in EXECUTING state. Marking UNKNOWN (crash window).")
                     run.mark_command_unknown(cmd_id)
                     changed = True
             if changed:
@@ -80,14 +78,16 @@ class Orchestrator:
             recovery_result = self.reconciliation.recover_run(run)
 
             if recovery_result.recovered:
-                logger.info(f"Recovered run {run.run_id}: {recovery_result.message}")
+                logger.info(
+                    f"Recovered run {run.run_id}: {recovery_result.message}"
+                )
                 recovered_count += 1
             else:
-                logger.warning(f"Could not recover run {run.run_id}: {recovery_result.message}")
+                logger.warning(
+                    f"Could not recover run {run.run_id}: {recovery_result.message}"
+                )
 
-        logger.info(
-            f"Run recovery complete: {recovered_count}/{len(non_terminal_runs)} runs recovered"
-        )
+        logger.info(f"Run recovery complete: {recovered_count}/{len(non_terminal_runs)} runs recovered")
 
     def get_reconciliation_report(self, issue_number: int) -> dict | None:
         """Get a reconciliation report for a run.
@@ -116,18 +116,15 @@ class Orchestrator:
         self.store.save(run)
 
     async def _set_state(self, run: RunRecord, state: RunState):
-        prev_state = run.state
-        _t0_transition = time.monotonic()
         run.transition(state, enforcement=self.state_enforcement)
-        metrics.record_transition(prev_state, state, time.monotonic() - _t0_transition)
         self.store.save(run)
         # Checkpoint state transition
         self.ev.checkpoint(run.run_id, CheckpointType.STATE_TRANSITION, {"state": state.value})
 
-        cfg = self.cfg.get("labels", {})
-        lifecycle = list((cfg.get("lifecycle") or {}).values())
+        cfg = self.cfg.get("labels", {});
+        lifecycle = list((cfg.get("lifecycle") or {}).values());
         current = (cfg.get("lifecycle") or {}).get(state.value)
-        base = cfg.get("base", ["opsswarm", "incident"])
+        base = cfg.get("base", ["opsswarm", "incident"]);
         labels = base + ([current] if current else [])
         if run.incident and run.incident.severity.startswith("SEV"):
             labels.append("sev:" + run.incident.severity[3:])
@@ -139,25 +136,21 @@ class Orchestrator:
             existing = self.runs.get(number)
             # Check idempotency: skip if this delivery was already processed
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
-                logger.info(
-                    f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}"
-                )
+                logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
                 return existing
-            if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}:
-                return existing
+            if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
             issue = await self.github.get_issue(number)
             req = self.cfg.get("required_issue_label", "opsswarm")
             names = [x.get("name", "") for x in issue.get("labels", []) if isinstance(x, dict)]
-            if req and req not in names:
-                raise RuntimeError(f"Issue #{number} lacks required label {req}")
+            if req and req not in names: raise RuntimeError(f"Issue #{number} lacks required label {req}")
             run = RunRecord(run_id=f"RUN-GH-{number}-{uuid.uuid4().hex[:8]}", issue_number=number)
             # Store delivery ID for idempotency if provided
             if delivery_id:
                 run.idempotency_keys.add(delivery_id)
-            self.runs[number] = run
+            self.runs[number] = run;
             metrics.record_run("started")
             await self._set_state(run, RunState.TRIAGE)
-            run.incident = S.parse_issue(number, issue)
+            run.incident = S.parse_issue(number, issue);
             await self._save(run, "S1.incident", run.incident.model_dump())
             await self._investigate(run)
             return run
@@ -170,8 +163,7 @@ class Orchestrator:
             run.tasks.append(extra_task)
         elif not run.tasks:
             run.tasks = await S.build_tasks(self.oc, main, run.run_id, run.incident)
-            if not run.tasks:
-                raise RuntimeError("S2 produced no investigation tasks")
+            if not run.tasks: raise RuntimeError("S2 produced no investigation tasks")
             await self.github.comment(run.issue_number, investigation_started(run))
             await self._save(run, "S2.task_graph", {"tasks": [t.model_dump() for t in run.tasks]})
 
@@ -180,49 +172,41 @@ class Orchestrator:
         # Execute dependency-ready tasks in waves.
         while pending:
             ready = [t for t in pending if all(dep in done for dep in t.depends_on)]
-            if not ready:
-                raise RuntimeError("Task graph has unsatisfied/cyclic dependencies")
+            if not ready: raise RuntimeError("Task graph has unsatisfied/cyclic dependencies")
 
             async def one(t):
-                agent = self.profile(t.profile)
-                t.status = "RUNNING"
+                agent = self.profile(t.profile);
+                t.status = "RUNNING";
                 self.store.save(run)
                 try:
-                    f = await S.execute_task(self.oc, agent, run.run_id, run.incident, t)
-                    t.status = "DONE"
+                    f = await S.execute_task(self.oc, agent, run.run_id, run.incident, t);
+                    t.status = "DONE";
                     return f
                 except Exception:
-                    t.status = "FAILED"
+                    t.status = "FAILED";
                     raise
 
             results = await asyncio.gather(*(one(t) for t in ready))
             for f in results:
-                run.findings.append(f)
-                done.add(f.task_id)
+                run.findings.append(f);
+                done.add(f.task_id);
                 await self._save(run, "S4.finding", f.model_dump())
             pending = [t for t in pending if t.id not in done]
 
-        run.root_cause = await S.synthesize_root_cause(
-            self.oc, main, run.run_id, run.incident, run.findings, run.human_inputs
-        )
-        await self._set_state(run, RunState.DIAGNOSED)
+        run.root_cause = await S.synthesize_root_cause(self.oc, main, run.run_id, run.incident, run.findings,
+                                                       run.human_inputs)
+        await self._set_state(run, RunState.DIAGNOSED);
         await self._save(run, "RCA.root_cause", run.root_cause.model_dump())
         await self.github.comment(run.issue_number, diagnosis(run))
         rca_threshold = float(self.cfg.get("root_cause_confidence_threshold", 0.80))
         if run.root_cause.status == "uncertain" or run.root_cause.confidence < rca_threshold:
-            question = (
-                run.root_cause.human_input_question
-                or "Root-cause confidence is below the autonomous threshold. Provide relevant operational/business context, or use `/opsswarm investigate <request>` to request more read-only evidence."
-            )
-            run.decision = DecisionRequest(
-                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
-                kind="INPUT",
-                reason="Root-cause analysis is not sufficiently certain for autonomous remediation",
-                question=question,
-            )
+            question = run.root_cause.human_input_question or "Root-cause confidence is below the autonomous threshold. Provide relevant operational/business context, or use `/opsswarm investigate <request>` to request more read-only evidence."
+            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="INPUT",
+                                           reason="Root-cause analysis is not sufficiently certain for autonomous remediation",
+                                           question=question)
             metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
-            await self._set_state(run, RunState.WAITING_INPUT)
-            await self.github.comment(run.issue_number, decision_request(run))
+            await self._set_state(run, RunState.WAITING_INPUT);
+            await self.github.comment(run.issue_number, decision_request(run));
             return
         metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
         await self._plan(run)
@@ -230,112 +214,84 @@ class Orchestrator:
     async def _plan(self, run: RunRecord):
         await self._set_state(run, RunState.PLANNING)
         main = self.profile("incident-manager")
-        run.recovery_plan = await S.make_recovery_plan(
-            self.oc, main, run.run_id, run.incident, run.root_cause, run.human_inputs
-        )
+        run.recovery_plan = await S.make_recovery_plan(self.oc, main, run.run_id, run.incident, run.root_cause,
+                                                       run.human_inputs)
         await self._save(run, "S3.recovery_plan", run.recovery_plan.model_dump())
         action, reason = self.policy.classify_plan(run.recovery_plan)
-        metrics.record_policy_action(action)
         if action == "AUTO":
-            option = run.recovery_plan.options[0]
-            await self._execute_option(run, option)
+            option = run.recovery_plan.options[0];
+            await self._execute_option(run, option);
             return
         if action in {"APPROVAL", "DECISION", "INPUT"}:
             kind = {"APPROVAL": "APPROVAL", "DECISION": "DECISION", "INPUT": "INPUT"}[action]
-            run.decision = DecisionRequest(
-                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
-                kind=kind,
-                reason=reason,
-                options=run.recovery_plan.options if action != "INPUT" else [],
-                recommended_option=run.recovery_plan.recommended_option,
-                question=run.recovery_plan.business_input_question,
-            )
+            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind=kind,
+                                           reason=reason,
+                                           options=run.recovery_plan.options if action != "INPUT" else [],
+                                           recommended_option=run.recovery_plan.recommended_option,
+                                           question=run.recovery_plan.business_input_question)
             # Checkpoint before human gate
-            target_state = {
-                "APPROVAL": RunState.WAITING_APPROVAL,
-                "DECISION": RunState.WAITING_DECISION,
-                "INPUT": RunState.WAITING_INPUT,
-            }[action]
-            self.ev.checkpoint(
-                run.run_id,
-                CheckpointType.HUMAN_GATE,
-                {
-                    "state": target_state.value,
-                    "decision_id": run.decision.id,
-                    "kind": kind,
-                },
-            )
+            target_state = {"APPROVAL": RunState.WAITING_APPROVAL, "DECISION": RunState.WAITING_DECISION,
+                            "INPUT": RunState.WAITING_INPUT}[action]
+            self.ev.checkpoint(run.run_id, CheckpointType.HUMAN_GATE, {
+                "state": target_state.value,
+                "decision_id": run.decision.id,
+                "kind": kind,
+            })
             await self._set_state(run, target_state)
-            await self._save(run, "S6.human_gate", run.decision.model_dump())
-            await self.github.comment(run.issue_number, decision_request(run))
+            await self._save(run, "S6.human_gate", run.decision.model_dump());
+            await self.github.comment(run.issue_number, decision_request(run));
             return
-        run.error = reason
-        await self._set_state(run, RunState.FAILED)
-        await self.github.comment(run.issue_number, f"## OpsSwarm — Failed\n\n{reason}")
+        run.error = reason;
+        await self._set_state(run, RunState.FAILED);
+        corr_id = new_correlation_id()
+        safe_reason = sanitize_for_comment(reason)
+        logger.error(f"Plan failed [{corr_id}]: {sanitize_for_log(reason)}")
+        await self.github.comment(run.issue_number,
+                                 f"## OpsSwarm — Failed\n\n{safe_reason}\n\nRef: {corr_id}")
 
     async def _execute_option(self, run: RunRecord, option: RemediationOption):
         # Checkpoint before execution
-        self.ev.checkpoint(
-            run.run_id,
-            CheckpointType.EXECUTION,
-            {
-                "phase": "pre_execution",
-                "option_id": option.id,
-                "state": RunState.EXECUTING.value,
-            },
-        )
+        self.ev.checkpoint(run.run_id, CheckpointType.EXECUTION, {
+            "phase": "pre_execution",
+            "option_id": option.id,
+            "state": RunState.EXECUTING.value,
+        })
         await self._set_state(run, RunState.EXECUTING)
-        run.execution = await S.execute_recovery(
-            self.oc,
-            self.profile("recovery-responder"),
-            run.run_id,
-            run.incident,
-            run.root_cause,
-            option,
-        )
+        run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
+                                                 run.root_cause, option)
         await self._save(run, "S5.execution", run.execution.model_dump())
         # Checkpoint after execution
-        self.ev.checkpoint(
-            run.run_id,
-            CheckpointType.EXECUTION,
-            {
-                "phase": "post_execution",
-                "option_id": option.id,
-                "success": run.execution.success,
-                "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
-            },
-        )
+        self.ev.checkpoint(run.run_id, CheckpointType.EXECUTION, {
+            "phase": "post_execution",
+            "option_id": option.id,
+            "success": run.execution.success,
+            "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
+        })
         if run.execution.ambiguous:
-            run.decision = DecisionRequest(
-                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
-                kind="DECISION",
-                reason="The write outcome is ambiguous. Blind retry is prohibited.",
-                options=[],
-                question="Use /opsswarm investigate <read-only verification request>, /opsswarm abort, or /opsswarm resume after external confirmation.",
-            )
-            await self._set_state(run, RunState.WAITING_DECISION)
-            await self.github.comment(run.issue_number, decision_request(run))
+            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
+                                           reason="The write outcome is ambiguous. Blind retry is prohibited.",
+                                           options=[],
+                                           question="Use /opsswarm investigate <read-only verification request>, /opsswarm abort, or /opsswarm resume after external confirmation.")
+            await self._set_state(run, RunState.WAITING_DECISION);
+            await self.github.comment(run.issue_number, decision_request(run));
             return
         if not run.execution.success:
-            run.error = run.execution.summary
+            run.error = run.execution.summary;
             metrics.record_run("failed")
-            await self._set_state(run, RunState.FAILED)
-            await self.github.comment(
-                run.issue_number, f"## OpsSwarm — Recovery failed\n\n{run.execution.summary}"
-            )
+            await self._set_state(run, RunState.FAILED);
+            corr_id = new_correlation_id()
+            safe_summary = sanitize_for_comment(run.execution.summary)
+            logger.error(f"Recovery failed [{corr_id}]: {sanitize_for_log(run.execution.summary)}")
+            await self.github.comment(run.issue_number,
+                                     f"## OpsSwarm — Recovery failed\n\n{safe_summary}\n\nRef: {corr_id}");
             return
         await self._verify(run)
 
     async def _verify(self, run: RunRecord):
         _t0_verify = time.monotonic()
         await self._set_state(run, RunState.VERIFYING)
-        run.verification = await S.verify_recovery(
-            self.oc,
-            self.profile("observability-investigator"),
-            run.run_id,
-            run.incident,
-            run.execution,
-        )
+        run.verification = await S.verify_recovery(self.oc, self.profile("observability-investigator"), run.run_id,
+                                                   run.incident, run.execution)
         await self._save(run, "S7.verification", run.verification.model_dump())
         metrics.record_verification(run.verification.verified)
         threshold = float(self.cfg.get("verification_confidence_threshold", 0.85))
@@ -345,71 +301,42 @@ class Orchestrator:
                 run.error = "Verification failed; aborted by S7"
                 metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
                 await self._set_state(run, RunState.ABORTED)
-                await self.github.comment(
-                    run.issue_number,
-                    f"## OpsSwarm — Verification failed\n\n{run.verification.summary}\n\nAborted by S7 (veto).",
-                )
+                corr_id = new_correlation_id()
+                safe_summary = sanitize_for_comment(run.verification.summary)
+                logger.error(f"Verification aborted by S7 [{corr_id}]: {sanitize_for_log(run.verification.summary)}")
+                await self.github.comment(run.issue_number,
+                                          f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nAborted by S7 (veto).");
                 return
-            run.error = "Independent recovery verification failed or confidence below threshold"
+            run.error = "Independent recovery verification failed or confidence below threshold";
             metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
             await self._set_state(run, RunState.FAILED)
-            await self.github.comment(
-                run.issue_number,
-                f"## OpsSwarm — Verification failed\n\n{run.verification.summary}\n\nIssue remains open.",
-            )
+            corr_id = new_correlation_id()
+            safe_summary = sanitize_for_comment(run.verification.summary)
+            logger.error(f"Verification failed [{corr_id}]: {sanitize_for_log(run.verification.summary)}")
+            await self.github.comment(run.issue_number,
+                                      f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nIssue remains open.");
             return
         metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
-        await self._set_state(run, RunState.RESOLVED)
+        await self._set_state(run, RunState.RESOLVED);
         metrics.record_run("resolved")
-        await self.github.comment(run.issue_number, resolved(run))
+        await self.github.comment(run.issue_number, resolved(run));
         await self.github.comment(run.issue_number, postmortem(run))
         if self.cfg.get("create_corrective_issues", True) and run.root_cause:
             for action in run.root_cause.corrective_actions:
-                await self.github.create_issue(
-                    f"[OpsSwarm corrective] {action[:100]}",
-                    f"Parent incident: #{run.issue_number}\n\n{action}",
-                    ["opsswarm:corrective-action"],
-                )
+                await self.github.create_issue(f"[OpsSwarm corrective] {action[:100]}",
+                                               f"Parent incident: #{run.issue_number}\n\n{action}",
+                                               ["opsswarm:corrective-action"])
         await self.github.close_issue(run.issue_number)
 
-    async def handle_comment(
-        self,
-        number: int,
-        actor: str,
-        body: str,
-        permission: str,
-        command,
-        comment_id: str | None = None,
-        delivery_id: str | None = None,
-    ):
-        lock = self._locks.setdefault(number, asyncio.Lock())
-        async with lock:
-            return await self._handle_comment_locked(
-                number, actor, body, permission, command, comment_id, delivery_id
-            )
-
-    async def _handle_comment_locked(
-        self,
-        number: int,
-        actor: str,
-        body: str,
-        permission: str,
-        command,
-        comment_id: str | None = None,
-        delivery_id: str | None = None,
-    ):
+    async def handle_comment(self, number: int, actor: str, body: str, permission: str, command,
+                             comment_id: str | None = None, delivery_id: str | None = None):
         run = self.runs.get(number)
-        if not run:
-            return
+        if not run: return
         # Check terminal state: reject all commands if run is in terminal state
         if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
-            logger.info(
-                f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}"
-            )
-            await self.github.comment(
-                number,
-                f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.",
-            )
+            logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
+            await self.github.comment(number,
+                                      f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
             return
 
         # Migrate legacy executed_commands to command_outcomes for backward compatibility
@@ -425,15 +352,9 @@ class Orchestrator:
             if outcome == CommandOutcome.CONFIRMED.value:
                 logger.info(f"Skipping already executed comment {comment_id} for issue #{number}")
                 return
-            elif (
-                outcome == CommandOutcome.RECEIVED.value
-                or outcome == CommandOutcome.EXECUTING.value
-                or outcome == CommandOutcome.UNKNOWN.value
-            ):
+            elif outcome == CommandOutcome.RECEIVED.value or outcome == CommandOutcome.EXECUTING.value or outcome == CommandOutcome.UNKNOWN.value:
                 # Command was received but not confirmed - can retry safely
-                logger.info(
-                    f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}"
-                )
+                logger.info(f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}")
 
         if delivery_id and delivery_id in run.idempotency_keys:
             logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
@@ -450,21 +371,17 @@ class Orchestrator:
         if comment_id or delivery_id:
             self.store.save(run)
         if not command:
-            run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"})
-            await self._save(run, "human.free_text", run.human_inputs[-1])
+            run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"});
+            await self._save(run, "human.free_text", run.human_inputs[-1]);
             return
         rank = {"none": 0, "read": 1, "triage": 2, "write": 3, "maintain": 4, "admin": 5}
         min_input = self.cfg.get("human_authority", {}).get("minimum_permission_for_input", "read")
-        min_approval = self.cfg.get("human_authority", {}).get(
-            "minimum_permission_for_approval", "maintain"
-        )
-        min_abort = self.cfg.get("human_authority", {}).get(
-            "minimum_permission_for_abort", "maintain"
-        )
+        min_approval = self.cfg.get("human_authority", {}).get("minimum_permission_for_approval", "maintain")
+        min_abort = self.cfg.get("human_authority", {}).get("minimum_permission_for_abort", "maintain")
 
         def require(level):
-            if rank.get(permission, 0) < rank.get(level, 99):
-                raise PermissionError(f"@{actor} has {permission}; requires {level}")
+            if rank.get(permission, 0) < rank.get(level, 99): raise PermissionError(
+                f"@{actor} has {permission}; requires {level}")
 
         if command.name in {"provide", "investigate", "resume"}:
             require(min_input)
@@ -477,8 +394,8 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            run.error = f"Aborted by @{actor}"
-            await self._set_state(run, RunState.ABORTED)
+            run.error = f"Aborted by @{actor}";
+            await self._set_state(run, RunState.ABORTED);
             metrics.record_command("abort")
             await self.github.comment(number, f"## OpsSwarm — Aborted\n\nBy `@{actor}`.")
             # Mark command as executed
@@ -491,10 +408,8 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            run.human_inputs.append(
-                {"actor": actor, "text": command.argument, "authority": "provided-input"}
-            )
-            run.decision = None
+            run.human_inputs.append({"actor": actor, "text": command.argument, "authority": "provided-input"});
+            run.decision = None;
             await self._save(run, "human.input", run.human_inputs[-1])
             metrics.record_command("provide")
             # Re-synthesize root cause then plan.
@@ -509,16 +424,11 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            extra = await S.make_extra_task(
-                self.oc,
-                self.profile("incident-manager"),
-                run.run_id,
-                run.incident,
-                command.argument,
-            )
+            extra = await S.make_extra_task(self.oc, self.profile("incident-manager"), run.run_id, run.incident,
+                                            command.argument)
             # Unique task ID for repeated investigations.
             extra.id = f"HX{len([t for t in run.tasks if t.id.startswith('HX')]) + 1}"
-            run.decision = None
+            run.decision = None;
             metrics.record_command("investigate")
             await self._investigate(run, extra_task=extra)
             # Mark command as executed
@@ -531,15 +441,12 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            if run.decision:
-                run.decision.status = "REJECTED"
-            run.error = f"Proposed remediation rejected by @{actor}"
-            await self._set_state(run, RunState.WAITING_DECISION)
+            if run.decision: run.decision.status = "REJECTED"
+            run.error = f"Proposed remediation rejected by @{actor}";
+            await self._set_state(run, RunState.WAITING_DECISION);
             metrics.record_command("reject")
-            await self.github.comment(
-                number,
-                "OpsSwarm recorded the rejection. Use `/opsswarm investigate ...`, `/opsswarm provide ...`, or `/opsswarm abort`.",
-            )
+            await self.github.comment(number,
+                                      "OpsSwarm recorded the rejection. Use `/opsswarm investigate ...`, `/opsswarm provide ...`, or `/opsswarm abort`.")
             # Mark command as executed
             if comment_id:
                 run.mark_command_confirmed(comment_id)
@@ -550,34 +457,22 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            if not run.recovery_plan:
-                raise RuntimeError("No recovery plan exists")
+            if not run.recovery_plan: raise RuntimeError("No recovery plan exists")
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
-            if not option:
-                raise ValueError(f"Unknown option id: {command.argument}")
-            # Use the option's own risk field as the primary classification;
-            # classify_operation supplements it by checking the option description
-            # for admin-specific operations that escalate risk.
-            _RISK_ORDER = {
-                Risk.READ: -1,
-                Risk.SAFE_WRITE: 0,
-                Risk.RISKY_WRITE: 1,
-                Risk.DESTRUCTIVE: 2,
-            }
-            effective_risk = option.risk
-            if command.argument:
-                classified_risk = self.policy.classify_operation(option.description)
-                if _RISK_ORDER.get(classified_risk, 0) > _RISK_ORDER.get(effective_risk, 0):
-                    effective_risk = classified_risk
-            if self.policy.action(effective_risk) == "DENY":
-                raise PermissionError("Policy denies this option regardless of human approval")
-            if run.decision:
-                run.decision.status = "ANSWERED"
-            await self._save(
-                run,
-                "human.approval",
-                {"actor": actor, "option": option.id, "permission": permission},
+            if not option: raise ValueError(f"Unknown option id: {command.argument}")
+            # classify_operation supplements option.risk: use the more restrictive of
+            # the declared risk and the runtime classification of the command argument.
+            _RISK_ORDER = {Risk.SAFE_WRITE: 0, Risk.RISKY_WRITE: 1, Risk.DESTRUCTIVE: 2}
+            classified_risk = self.policy.classify_operation(command.argument)
+            effective_risk = (
+                classified_risk
+                if _RISK_ORDER.get(classified_risk, 0) > _RISK_ORDER.get(option.risk, 0)
+                else option.risk
             )
+            if self.policy.action(effective_risk) == "DENY": raise PermissionError(
+                "Policy denies this option regardless of human approval")
+            if run.decision: run.decision.status = "ANSWERED"
+            await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
             metrics.record_command("approve")
             await self._execute_option(run, option)
             # Mark command as executed (after execution completes)
@@ -591,16 +486,12 @@ class Orchestrator:
             if checkpoint:
                 checkpoint_type = checkpoint.get("payload", {}).get("checkpoint_type", "unknown")
                 checkpoint_state = checkpoint.get("payload", {}).get("state", "unknown")
-                logger.info(
-                    f"Resuming from checkpoint: type={checkpoint_type}, state={checkpoint_state}"
-                )
+                logger.info(f"Resuming from checkpoint: type={checkpoint_type}, state={checkpoint_state}")
 
                 # Resume from human gate checkpoint
                 if checkpoint_type == CheckpointType.HUMAN_GATE.value:
-                    await self.github.comment(
-                        number,
-                        f"Resuming from checkpoint (type: {checkpoint_type}, state: {checkpoint_state}). Use `/opsswarm approve <option>` or `/opsswarm provide <input>` to continue.",
-                    )
+                    await self.github.comment(number,
+                                              f"Resuming from checkpoint (type: {checkpoint_type}, state: {checkpoint_state}). Use `/opsswarm approve <option>` or `/opsswarm provide <input>` to continue.")
                     return
 
                 # Resume from execution checkpoint - verify or retry
@@ -610,10 +501,8 @@ class Orchestrator:
                         await self._verify(run)
                         return
                     elif phase == "pre_execution":
-                        await self.github.comment(
-                            number,
-                            "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.",
-                        )
+                        await self.github.comment(number,
+                                                  "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.")
                         return
 
                 # Resume from state transition checkpoint - continue workflow
@@ -632,7 +521,5 @@ class Orchestrator:
             if run.state == RunState.FAILED and run.execution and run.execution.success:
                 await self._verify(run)
             else:
-                await self.github.comment(
-                    number,
-                    "`/opsswarm resume` is only accepted when a safe checkpoint exists. Use an explicit approve/investigate/provide command.",
-                )
+                await self.github.comment(number,
+                                          "`/opsswarm resume` is only accepted when a safe checkpoint exists. Use an explicit approve/investigate/provide command.")

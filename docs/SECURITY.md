@@ -1,5 +1,47 @@
 # Security model
 
+## Error handling and sanitisation
+
+OpsSwarm follows a **fail-closed, sanitize-always** policy for all operator-facing
+output.
+
+### Correlation IDs
+Every exception that surfaces at the API or orchestrator layer is assigned a short
+correlation ID (12-character hex). The ID appears in both:
+- Operator logs (at ERROR level, with the redacted error detail)
+- GitHub comments (at the end of the failure message, preceded by "Ref: ")
+
+Operators can grep server-side logs by the correlation ID to retrieve the full
+redacted trace without secrets appearing in the GitHub issue.
+
+### GitHub comment sanitisation
+Raw exception text, OpenClaw stderr, Pydantic validation error details, file
+paths, and any token (GitHub PAT, Bearer token, AWS key, `secret=`/`password=`
+values in JSON) are stripped before text reaches a GitHub comment. The only
+content that ever appears in a comment is:
+
+- A fixed failure banner ("OpsSwarm — Failed / Recovery failed / Verification failed")
+- A sanitised summary (category, not raw content)
+- The correlation ID
+
+Specifically:
+- `api.py` webhook handler: `PermissionError` and generic `Exception` are caught;
+  the raw message is never posted — only a correlation ID + fixed string.
+- `orchestrator.py` failure paths: `run.error` reason and `run.execution.summary`
+  are passed through `sanitize_for_comment()` before being embedded in a comment.
+- `openclaw.py` `run_text()`: non-zero exit code raises `OpenClawErrorSanitized`
+  with sanitised stderr. The raw stderr is logged at ERROR level (redacted for
+  tokens only; paths are preserved for operator use).
+
+### Log redaction
+Operator logs use `sanitize_for_log()`, which redacts tokens and auth headers but
+preserves file paths so operators can still correlate errors. Logs are the only
+place where file paths from OpenClaw subprocesses are retained.
+
+### Secret pre-flight
+`verify_api_key()` uses `hmac.compare_digest()` for constant-time comparison to
+mitigate timing attacks.
+
 ## Application security model
 
 - GitHub webhook bodies are validated with HMAC-SHA256.
