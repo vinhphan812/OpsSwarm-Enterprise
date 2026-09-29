@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -135,8 +136,7 @@ class TestCorrelationIds:
     def test_correlation_id_format(self) -> None:
         corr_id = new_correlation_id()
         assert len(corr_id) == 12
-        assert corr_id.isalnum()
-        assert corr_id.islower() or corr_id.isupper()
+        assert re.fullmatch(r"[0-9a-f]{12}", corr_id)
 
     def test_openclaw_error_sanitized_has_correlation_id(self) -> None:
         err = OpenClawErrorSanitized("some stderr", "abc123def456", is_stderr=True)
