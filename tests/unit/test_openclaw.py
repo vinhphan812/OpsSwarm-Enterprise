@@ -75,15 +75,51 @@ class TestOpenClawClient:
 
     @pytest.mark.asyncio
     async def test_run_text_non_zero_exit_code(self, client):
-        """run_text raises OpenClawError on non-zero exit code."""
+        """run_text raises OpenClawErrorSanitized on non-zero exit code."""
+        from opsswarm.errors import OpenClawErrorSanitized
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
             mock_proc.returncode = 1
             mock_proc.communicate = AsyncMock(return_value=(b"", b"Error: something went wrong"))
             mock_exec.return_value = mock_proc
 
-            with pytest.raises(OpenClawError, match="OpenClaw failed rc=1"):
+            with pytest.raises(OpenClawErrorSanitized) as exc_info:
                 await client.run_text("agent", "session", "prompt")
+            # Correlation ID is embedded in the error
+            assert len(exc_info.value.correlation_id) == 12
+            # for_comment() is safe to post to GitHub
+            assert "something went wrong" not in exc_info.value.for_comment()
+            assert exc_info.value.correlation_id in exc_info.value.for_comment()
+
+    @pytest.mark.asyncio
+    async def test_run_text_stderr_token_is_sanitized(self, client):
+        """Stderr containing tokens/paths is sanitised before reaching the error."""
+        from opsswarm.errors import OpenClawErrorSanitized
+        with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+            mock_proc = MagicMock()
+            mock_proc.returncode = 1
+            # Raw stderr with a GitHub token and a path
+            raw_stderr = (
+                "openclaw: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx secret\n"
+                "/home/user/.ssh/id_rsa: Permission denied\n"
+                "C:\\Users\\Admin\\secrets\\config.json: not found"
+            )
+            mock_proc.communicate = AsyncMock(return_value=(b"{}", raw_stderr.encode()))
+            mock_exec.return_value = mock_proc
+
+            with pytest.raises(OpenClawErrorSanitized) as exc_info:
+                await client.run_text("agent", "session", "prompt")
+
+            err_msg = exc_info.value.args[0]
+            # Token is redacted
+            assert "ghp_" not in err_msg
+            # Paths are redacted
+            assert "/home/user/.ssh/id_rsa" not in err_msg
+            assert "C:\\Users\\Admin" not in err_msg
+            # Message is truncated (1200 chars)
+            assert len(err_msg) < len(raw_stderr)
+            # Correlation ID is accessible via the attribute
+            assert len(exc_info.value.correlation_id) == 12
 
     @pytest.mark.asyncio
     async def test_run_text_error_envelope(self, client):
