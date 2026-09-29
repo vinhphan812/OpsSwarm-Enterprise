@@ -6,6 +6,7 @@ import time
 import uuid
 
 from . import skill_logic as S
+from .config import get_budget, get_concurrency
 from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log
 from .evidence import EvidenceStore
 from .markdown import (
@@ -25,6 +26,76 @@ from .store import RunStore
 logger = logging.getLogger(__name__)
 
 
+class RunBudget:
+    """Per-run counters with fail-closed limits."""
+
+    def __init__(self, run_id: str, max_tasks: int, max_openclaw_calls: int,
+                 max_wall_clock_seconds: float, max_corrective_actions: int,
+                 max_depth: int):
+        self.run_id = run_id
+        self.max_tasks = max_tasks
+        self.max_openclaw_calls = max_openclaw_calls
+        self.max_wall_clock_seconds = max_wall_clock_seconds
+        self.max_corrective_actions = max_corrective_actions
+        self.max_depth = max_depth
+        self.tasks_executed = 0
+        self.openclaw_calls = 0
+        self.wall_clock_seconds = 0.0
+        self.corrective_actions = 0
+        self._start_time = time.monotonic()
+
+    def mark_task(self):
+        self.tasks_executed += 1
+
+    def mark_openclaw_call(self):
+        self.openclaw_calls += 1
+
+    def mark_corrective_action(self):
+        self.corrective_actions += 1
+
+    def snapshot(self) -> dict:
+        return {
+            "run_id": self.run_id, "tasks_executed": self.tasks_executed,
+            "max_tasks": self.max_tasks, "openclaw_calls": self.openclaw_calls,
+            "max_openclaw_calls": self.max_openclaw_calls,
+            "wall_clock_seconds": round(self.wall_clock_seconds, 2),
+            "max_wall_clock_seconds": self.max_wall_clock_seconds,
+            "corrective_actions": self.corrective_actions,
+            "max_corrective_actions": self.max_corrective_actions,
+        }
+
+    def check(self) -> tuple[bool, str | None]:
+        checks = ((self.tasks_executed, self.max_tasks, "max_tasks"),
+                  (self.openclaw_calls, self.max_openclaw_calls, "max_openclaw_calls"),
+                  (self.wall_clock_seconds, self.max_wall_clock_seconds, "max_wall_clock_seconds"),
+                  (self.corrective_actions, self.max_corrective_actions, "max_corrective_actions"))
+        for current, limit, name in checks:
+            if current >= limit:
+                return True, f"{name} ({limit}) exceeded"
+        return False, None
+
+    def elapsed_seconds(self) -> float:
+        return time.monotonic() - self._start_time
+
+
+class ConcurrencyLimiter:
+    """Run-scoped semaphore for specialist calls."""
+
+    def __init__(self, run_id: str, max_parallel: int):
+        self.run_id = run_id
+        self._semaphore = asyncio.Semaphore(max(1, max_parallel))
+
+    async def acquire(self):
+        await self._semaphore.acquire()
+
+    def release(self):
+        self._semaphore.release()
+
+    @property
+    def available(self) -> int:
+        return self._semaphore._value  # type: ignore[attr-defined]
+
+
 class Orchestrator:
     def __init__(self, cfg: dict, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True):
         self.cfg = cfg;
@@ -38,6 +109,12 @@ class Orchestrator:
         self._locks: dict[int, asyncio.Lock] = {}
         # Get state enforcement mode from config (default: audit)
         self.state_enforcement = cfg.get("state_enforcement", "audit")
+        budget_cfg = get_budget(cfg)
+        self.budget = RunBudget("", budget_cfg["max_tasks_per_run"], budget_cfg["max_openclaw_calls"],
+                                budget_cfg["max_wall_clock_seconds"], budget_cfg["max_corrective_actions"],
+                                budget_cfg["max_dependency_depth"])
+        self._max_parallel = get_concurrency(cfg)["max_parallel_specialists"]
+        self._active_budgets: dict[str, RunBudget] = {}
 
         # Run crash recovery on startup if enabled
         if enable_recovery:
@@ -130,6 +207,26 @@ class Orchestrator:
             labels.append("sev:" + run.incident.severity[3:])
         await self.github.set_labels(run.issue_number, labels)
 
+    async def _budget_preflight(self, run: RunRecord, budget: RunBudget) -> bool:
+        budget.wall_clock_seconds = budget.elapsed_seconds()
+        exceeded, reason = budget.check()
+        if not exceeded:
+            return True
+        run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
+                                       reason=f"Execution budget exceeded: {reason}",
+                                       question="The investigation consumed its full execution budget.")
+        await self._set_state(run, RunState.WAITING_DECISION)
+        await self.github.comment(run.issue_number, decision_request(run))
+        return False
+
+    def _budget_for(self, run: RunRecord) -> RunBudget:
+        if run.run_id not in self._active_budgets:
+            self._active_budgets[run.run_id] = RunBudget(
+                run.run_id, self.budget.max_tasks, self.budget.max_openclaw_calls,
+                self.budget.max_wall_clock_seconds, self.budget.max_corrective_actions,
+                self.budget.max_depth)
+        return self._active_budgets[run.run_id]
+
     async def start_issue(self, number: int, delivery_id: str | None = None) -> RunRecord:
         lock = self._locks.setdefault(number, asyncio.Lock())
         async with lock:
@@ -167,6 +264,9 @@ class Orchestrator:
             await self.github.comment(run.issue_number, investigation_started(run))
             await self._save(run, "S2.task_graph", {"tasks": [t.model_dump() for t in run.tasks]})
 
+        budget = self._budget_for(run)
+        budget._start_time = _t0_investigate
+        limiter = ConcurrencyLimiter(run.run_id, self._max_parallel)
         done = {f.task_id for f in run.findings}
         pending = [t for t in run.tasks if t.id not in done]
         # Execute dependency-ready tasks in waves.
@@ -175,24 +275,37 @@ class Orchestrator:
             if not ready: raise RuntimeError("Task graph has unsatisfied/cyclic dependencies")
 
             async def one(t):
-                agent = self.profile(t.profile);
-                t.status = "RUNNING";
-                self.store.save(run)
+                if not await self._budget_preflight(run, budget):
+                    return None
+                budget.mark_task()
+                await limiter.acquire()
                 try:
-                    f = await S.execute_task(self.oc, agent, run.run_id, run.incident, t);
-                    t.status = "DONE";
+                    agent = self.profile(t.profile)
+                    t.status = "RUNNING"
+                    self.store.save(run)
+                    f = await S.execute_task(self.oc, agent, run.run_id, run.incident, t)
+                    budget.mark_openclaw_call()
+                    t.status = "DONE"
                     return f
                 except Exception:
-                    t.status = "FAILED";
+                    t.status = "FAILED"
                     raise
+                finally:
+                    limiter.release()
 
+            available = max(0, budget.max_tasks - budget.tasks_executed)
+            ready = ready[:available]
             results = await asyncio.gather(*(one(t) for t in ready))
             for f in results:
-                run.findings.append(f);
-                done.add(f.task_id);
-                await self._save(run, "S4.finding", f.model_dump())
+                if f is not None:
+                    run.findings.append(f)
+                    done.add(f.task_id)
+                    await self._save(run, "S4.finding", f.model_dump())
             pending = [t for t in pending if t.id not in done]
 
+        if not await self._budget_preflight(run, budget):
+            return
+        budget.mark_openclaw_call()
         run.root_cause = await S.synthesize_root_cause(self.oc, main, run.run_id, run.incident, run.findings,
                                                        run.human_inputs)
         await self._set_state(run, RunState.DIAGNOSED);
@@ -214,6 +327,10 @@ class Orchestrator:
     async def _plan(self, run: RunRecord):
         await self._set_state(run, RunState.PLANNING)
         main = self.profile("incident-manager")
+        budget = self._budget_for(run)
+        if not await self._budget_preflight(run, budget):
+            return
+        budget.mark_openclaw_call()
         run.recovery_plan = await S.make_recovery_plan(self.oc, main, run.run_id, run.incident, run.root_cause,
                                                        run.human_inputs)
         await self._save(run, "S3.recovery_plan", run.recovery_plan.model_dump())
@@ -257,6 +374,10 @@ class Orchestrator:
             "state": RunState.EXECUTING.value,
         })
         await self._set_state(run, RunState.EXECUTING)
+        budget = self._budget_for(run)
+        if not await self._budget_preflight(run, budget):
+            return
+        budget.mark_openclaw_call()
         run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
                                                  run.root_cause, option)
         await self._save(run, "S5.execution", run.execution.model_dump())
@@ -290,6 +411,10 @@ class Orchestrator:
     async def _verify(self, run: RunRecord):
         _t0_verify = time.monotonic()
         await self._set_state(run, RunState.VERIFYING)
+        budget = self._budget_for(run)
+        if not await self._budget_preflight(run, budget):
+            return
+        budget.mark_openclaw_call()
         run.verification = await S.verify_recovery(self.oc, self.profile("observability-investigator"), run.run_id,
                                                    run.incident, run.execution)
         await self._save(run, "S7.verification", run.verification.model_dump())
@@ -322,7 +447,11 @@ class Orchestrator:
         await self.github.comment(run.issue_number, resolved(run));
         await self.github.comment(run.issue_number, postmortem(run))
         if self.cfg.get("create_corrective_issues", True) and run.root_cause:
+            budget = self._budget_for(run)
             for action in run.root_cause.corrective_actions:
+                if not await self._budget_preflight(run, budget):
+                    return
+                budget.mark_corrective_action()
                 await self.github.create_issue(f"[OpsSwarm corrective] {action[:100]}",
                                                f"Parent incident: #{run.issue_number}\n\n{action}",
                                                ["opsswarm:corrective-action"])
