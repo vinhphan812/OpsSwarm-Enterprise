@@ -116,7 +116,10 @@ class Orchestrator:
         self.store.save(run)
 
     async def _set_state(self, run: RunRecord, state: RunState):
+        prev_state = run.state
+        _t0_transition = time.monotonic()
         run.transition(state, enforcement=self.state_enforcement)
+        metrics.record_transition(prev_state, state, time.monotonic() - _t0_transition)
         self.store.save(run)
         # Checkpoint state transition
         self.ev.checkpoint(run.run_id, CheckpointType.STATE_TRANSITION, {"state": state.value})
@@ -232,6 +235,7 @@ class Orchestrator:
         )
         await self._save(run, "S3.recovery_plan", run.recovery_plan.model_dump())
         action, reason = self.policy.classify_plan(run.recovery_plan)
+        metrics.record_policy_action(action)
         if action == "AUTO":
             option = run.recovery_plan.options[0]
             await self._execute_option(run, option)

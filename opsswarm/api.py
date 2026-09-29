@@ -97,7 +97,19 @@ async def health():
 
 @app.get("/metrics")
 async def get_metrics():
+    from collections import Counter
     from starlette.responses import PlainTextResponse
+
+    # Populate active-runs gauge from current orchestrator state
+    state_counts: Counter[str] = Counter()
+    for run in engine.runs.values():
+        state_counts[run.state.value] += 1
+    metrics.set_active_runs(dict(state_counts))
+
+    # Budget utilisation — tasks: ratio of active tasks vs. max_tasks_per_run (50)
+    max_tasks = 50
+    active_tasks = sum(len(r.tasks) for r in engine.runs.values())
+    metrics.set_budget_utilization("tasks", active_tasks / max_tasks)
 
     return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
 
