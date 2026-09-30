@@ -1,0 +1,250 @@
+# ADR-027 / Issue #27: Per-profile OpenClaw tool allowlists
+# Operator-maintained least-privilege tool allowlists per agent profile.
+#
+# Schema version: "1" — increment on breaking schema changes.
+# Path is configured via: tool_allowlist.path in config/production.yaml / test.yaml
+#
+# Design (ADR-027):
+#   D1: Standalone YAML file at config/tool-allowlist.yaml
+#   D2: Per-profile allowlists as sets of tool names
+#   D3: Default-deny: any tool not explicitly allowlisted is blocked
+#   D4: Capability grouping: profiles declare capabilities, tools grouped by tag
+#   D7: Absent/empty config → warn + permit all (backward-compatible)
+#
+# NOTE: Resolution order: capabilities → explicit allowed_tools → deny_tools (subtract)
+#       More-specific deny_tools rules take precedence.
+
+version: "1"
+description: |
+  Per-profile OpenClaw tool allowlists enforcing least-privilege.
+  Each agent profile (s1-s8) is granted only the tools it needs.
+  Any tool not explicitly allowlisted is blocked by default (D3).
+
+# ----------------------------------------------------------------------
+# Capability definitions
+# Each capability groups semantically related tools.
+# Profiles declare which capabilities they need; tools are granted
+# through the capability mapping.
+# ----------------------------------------------------------------------
+capabilities:
+
+  read-only:
+    description: "Read-only introspection tools (logs, metrics, describe)"
+    tools:
+      - read_logs
+      - describe_pods
+      - describe_services
+      - describe_deployments
+      - describe_configmaps
+      - describe_secrets
+      - get_metrics
+      - describe_pvc
+      - describe_ingress
+      - describe_serviceaccounts
+      - describe_roles
+      - describe_rolebindings
+      - describe_events
+      - describe_nodes
+      - describe_persistentvolumes
+      - describe_storageclasses
+      - describe_endpoints
+      - describe_cronjobs
+      - describe_jobs
+      - describe_horizontalpodautoscalers
+      - describe_resourcequotas
+      - describe_limitranges
+      - describe_poddisruptionbudgets
+      - describe_networkpolicies
+      - describe_ingresses
+      - describe_horizontalpodautoscalers_v2
+
+  read-investigation:
+    description: "Read tools specific to investigation and diagnosis"
+    tools:
+      - read_events
+      - read_pod_logs
+      - read_config_map
+      - read_deployment
+      - read_service
+      - read_ingress
+      - read_node_metrics
+      - read_pod_metrics
+      - read_namespace
+      - read_replicaset
+      - read_statefulset
+      - read_daemonset
+      - read_endpoints
+      - read_configmaps
+      - read_secrets
+      - get_deployment_status
+      - get_pod_status
+      - describe_pod_status
+
+  write-scaling:
+    description: "Horizontal/vertical scaling operations"
+    tools:
+      - scale_deployment
+      - kubectl_scale
+
+  write-patch:
+    description: "Patch operations for configuration changes"
+    tools:
+      - patch_deployment
+      - patch_configmap
+      - patch_service
+      - kubectl_patch
+
+  write-apply:
+    description: "Apply/create operations for declarative changes"
+    tools:
+      - apply_manifest
+      - kubectl_apply
+      - kubectl_create
+
+  write-rollout:
+    description: "Rollout and deployment control operations"
+    tools:
+      - rollout_restart
+      - rollout_undo
+      - kubectl_rollout
+
+  write-exec:
+    description: "Container exec and debugging operations"
+    tools:
+      - exec_in_pod
+      - kubectl_exec
+      - kubectl_top_pod
+      - kubectl_top_node
+
+  write-db:
+    description: "Database operations (schema, data migration)"
+    tools:
+      - psql_query
+      - mysql_query
+      - redis_cli
+      - run_migration
+      - db_backup
+      - db_restore
+
+  write-alerting:
+    description: "Alerting and notification operations"
+    tools:
+      - create_alert
+      - silence_alert
+      - resolve_alert
+      - pagerduty_trigger
+
+  write-incident:
+    description: "Incident management operations (GitHub issues, comments)"
+    tools:
+      - github_create_issue
+      - github_add_comment
+      - github_set_labels
+      - github_close_issue
+      - create_incident
+
+  write-dns:
+    description: "DNS and network operations"
+    tools:
+      - patch_ingress
+      - create_ingress
+      - patch_service
+      - dns_lookup
+      - check_network_policy
+
+  observability:
+    description: "Observability and monitoring tools"
+    tools:
+      - get_metrics
+      - read_dashboard
+      - query_prometheus
+      - get_alerts
+      - read_slo_report
+
+  evidence-collection:
+    description: "Evidence collection for root-cause analysis"
+    tools:
+      - collect_evidence
+      - store_evidence
+      - attach_evidence
+      - verify_evidence
+
+# ----------------------------------------------------------------------
+# Profile allowlists
+# Each profile (mapped from S1-S8 skill gates) declares the capabilities
+# and tools it needs. Default-deny applies: any tool not listed here
+# or in a declared capability is blocked.
+# ----------------------------------------------------------------------
+profiles:
+
+  # ── S1: IntentGuard (triage) ──────────────────────────────────────
+  # S1 only does classification and routing — read-only + incident creation.
+  incident-manager:
+    capabilities:
+      - read-only
+      - write-incident
+      - observability
+
+  # ── S2: TaskGraph (planning) ───────────────────────────────────────
+  # S2 builds task graphs — read-only + evidence collection.
+  observability-investigator:
+    capabilities:
+      - read-only
+      - read-investigation
+      - observability
+      - evidence-collection
+
+  # ── S3: HorizonPlan (planning) ─────────────────────────────────────
+  # S3 synthesises remediation plans — read-only + evidence + alerting.
+  application-investigator:
+    capabilities:
+      - read-only
+      - read-investigation
+      - evidence-collection
+
+  # ── S4: RoleDispatch (execution) ──────────────────────────────────
+  # S4 dispatches specialist tasks — inherits capabilities from S5/S6.
+  infrastructure-investigator:
+    capabilities:
+      - read-only
+      - read-investigation
+
+  # ── S5: CollabExec (execution) ─────────────────────────────────────
+  # S5 executes remediation actions — write permissions for the domain.
+  database-investigator:
+    capabilities:
+      - read-only
+      - read-investigation
+      - write-db
+
+  # ── S6: ResilienceGuard (execution) ────────────────────────────────
+  # S6 enforces safety guardrails — write for safety operations.
+  recovery-responder:
+    capabilities:
+      - read-only
+      - write-scaling
+      - write-patch
+      - write-apply
+      - write-rollout
+      - write-exec
+      - write-db
+      - write-alerting
+      - write-incident
+      - write-dns
+    deny_tools:
+      # S6 explicitly blocks the most destructive operations even if they
+      # appear in a broad capability. These require admin-gate override.
+      - kubectl_delete_pod
+      - kubectl_delete_deployment
+      - kubectl_delete_namespace
+      - drop_database
+      - redis_flushall
+
+  # ── S7: ObserveVerify (verification) ─────────────────────────────
+  # S7 verifies recovery — read-only + observability.
+  communications-postmortem:
+    capabilities:
+      - read-only
+      - observability
+      - evidence-collection
+      - write-incident

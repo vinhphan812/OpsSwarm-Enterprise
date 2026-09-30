@@ -7,6 +7,8 @@ verification_confidence_threshold: 0.85
 openclaw:
   main_agent: opsswarm-incident-manager
   timeout_seconds: 600
+  # Issue #27: tool allowlist enforcement
+  check_tools: true
   profiles:
     incident-manager: opsswarm-incident-manager
     observability-investigator: opsswarm-observability-investigator
@@ -48,3 +50,22 @@ persistence:
   enable_state_enforcement: false  # audit mode first
   enable_checkpoints: true
   enable_atomic_writes: true
+
+# Issue #26 — Execution budgets (overrides DEFAULT_BUDGET in config.py)
+budget:
+  max_tasks_per_run: 50        # Max tasks in a single incident's task graph
+  max_openclaw_calls: 200       # Total LLM calls per incident
+  max_wall_clock_seconds: 3600  # 1 hour wall-clock time
+  max_corrective_actions: 10     # Max corrective issues created
+  max_dependency_depth: 20      # Max depth of task dependency DAG
+  max_token_budget: 1000000     # 1M tokens per incident (input + output)
+  max_steps_per_agent: 50       # Max agentic steps per individual specialist agent
+
+# Issue #26 — Concurrency limits
+concurrency:
+  max_parallel_specialists: 4   # Max parallel specialist agents per incident
+
+# Issue #27 — Tool allowlist (ADR-027)
+tool_allowlist:
+  path: config/tool-allowlist.yaml
+  enabled: true

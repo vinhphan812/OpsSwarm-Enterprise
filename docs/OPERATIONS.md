@@ -46,8 +46,17 @@ The GitHub Issue remains the user-visible system of record; local evidence provi
 ## Telemetry
 
 ```bash
-curl http://localhost:8088/metrics
+curl -H "Authorization: Bearer $OPSWARM_RUNTIME_TOKEN" http://localhost:8088/metrics
 ```
+
+`GET /metrics` returns Prometheus text-format metrics. It requires `opsswarm:admin`
+bearer authentication. Expose only behind a reverse proxy or network policy; the
+endpoint exposes internal operational state and must not be world-readable in
+production.
+
+The `/health` endpoint (`GET /health`) requires no authentication and always
+returns `{"ok": true, "version": "2.1.0"}` — safe for liveness probes and load
+balancers.
 
 For the production integration boundary, Prometheus scrape configuration, metric definitions, and
 external operations ownership (dashboards, alerts, tracing, persistence), see the

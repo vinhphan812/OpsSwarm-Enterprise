@@ -19,6 +19,8 @@ policy:
   safe_write: AUTO
   risky_write: HUMAN_APPROVAL
   destructive: DENY
+capability_registry:
+  path: "config/capability-registry.yaml"
 human_authority:
   minimum_permission_for_input: read
   minimum_permission_for_approval: maintain

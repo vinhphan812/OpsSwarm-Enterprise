@@ -9,6 +9,7 @@ Design goals
 - All operator-facing log output must be passed through the redaction
   pipeline before it is written.
 """
+
 from __future__ import annotations
 
 import logging
@@ -49,12 +50,17 @@ _TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # OpenAI / generic API keys (sk- or AI prefix + 20+ chars)
     (re.compile(r"(?:^|(?<=[^\w]))(sk-[A-Za-z0-9]{20,})(?:(?=[^\w])|$)"), "[API_KEY]"),
     (re.compile(r"(?:^|(?<=[^\w]))(AI[a-zA-Z0-9_-]{20,})(?:(?=[^\w])|$)"), "[API_KEY]"),
+    # AWS Secret Access Key (40-char base64: mixed-case + digits + / + =, no fixed prefix)
+    # Match only when surrounded by word boundaries to avoid false positives on random text.
+    (re.compile(r"(?:^|(?<=[^\w/+=]))([A-Za-z0-9/+=]{40,})(?:(?=[^\w/+=])|$)"), "[AWS_SECRET]"),
     # Generic secret= / token= / password= in JSON
     (re.compile(r'("secret"\s*:\s*")[^"]+(")'), r"\1[REDACTED]\2"),
     (re.compile(r'("token"\s*:\s*")[^"]+(")'), r"\1[REDACTED]\2"),
     (re.compile(r'("password"\s*:\s*")[^"]+(")'), r"\1[REDACTED]\2"),
     # AWS access keys (AKIA prefix + 16 chars)
     (re.compile(r"(?:^|(?<=[^\w]))(AKIA[A-Z0-9]{16})(?:(?=[^\w])|$)"), "[AWS_KEY]"),
+    # Email addresses — no prefix/suffix needed, always a leak
+    (re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"), "[EMAIL]"),
 ]
 
 # File-path patterns — these appear in OpenClaw stderr and Python tracebacks.
@@ -95,7 +101,8 @@ def sanitize_for_log(text: str) -> str:
     """Remove tokens and auth headers from text destined for operator logs.
 
     File paths are intentionally preserved in logs so operators can
-    correlate errors with specific files/sessions.
+    correlate errors with specific files/sessions.  Emails are also
+    redacted since they are PII.
     """
     result = text
     for pattern, replacement in _TOKEN_PATTERNS:

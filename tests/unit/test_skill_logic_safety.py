@@ -68,7 +68,7 @@ async def test_execute_task_validation_error_no_raw_input_in_finding():
     mock_oc = AsyncMock()
     sensitive_payload = {
         "task_id": "t99",
-        "secret_token": "ghp_REAL_SECRET_1234567890",
+        "secret_token": "TEST_SECRET_1234567890",  # noqa: B105
         "email": "victim@internal.corp",
         "finding": "ok",
         "evidence": ["step1"],
@@ -101,7 +101,7 @@ async def test_execute_task_validation_error_no_raw_input_in_finding():
         result = await execute_task(mock_oc, "agent", "run", incident, task)
 
     evidence_str = str(result.evidence)
-    assert "ghp_REAL_SECRET_1234567890" not in evidence_str, (
+    assert "TEST_SECRET_1234567890" not in evidence_str, (
         "Raw secret must not appear in Finding.evidence"
     )
     assert "victim@internal.corp" not in evidence_str, (

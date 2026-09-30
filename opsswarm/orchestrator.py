@@ -4,9 +4,11 @@ import asyncio
 import logging
 import time
 import uuid
+from typing import Any
 
 from . import skill_logic as S
-from .config import get_budget, get_concurrency
+from .config import get_budget, get_concurrency, get_tool_allowlist, get_openclaw
+from .tool_allowlist import ToolAllowlist
 from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log
 from .evidence import EvidenceStore
 from .markdown import (
@@ -22,6 +24,7 @@ from .policy import PolicyEngine
 from .metrics import metrics
 from .reconciliation import ReconciliationManager
 from .store import RunStore
+from .validators import validate_task_graph, TaskGraphError
 
 logger = logging.getLogger(__name__)
 
@@ -31,17 +34,22 @@ class RunBudget:
 
     def __init__(self, run_id: str, max_tasks: int, max_openclaw_calls: int,
                  max_wall_clock_seconds: float, max_corrective_actions: int,
-                 max_depth: int):
+                 max_depth: int, max_token_budget: int = 1_000_000,
+                 max_steps_per_agent: int = 50):
         self.run_id = run_id
         self.max_tasks = max_tasks
         self.max_openclaw_calls = max_openclaw_calls
         self.max_wall_clock_seconds = max_wall_clock_seconds
         self.max_corrective_actions = max_corrective_actions
         self.max_depth = max_depth
+        self.max_token_budget = max_token_budget
+        self.max_steps_per_agent = max_steps_per_agent
         self.tasks_executed = 0
         self.openclaw_calls = 0
         self.wall_clock_seconds = 0.0
         self.corrective_actions = 0
+        self.tokens_used = 0
+        self._agent_steps: dict[str, int] = {}  # agent -> steps
         self._start_time = time.monotonic()
 
     def mark_task(self):
@@ -53,6 +61,18 @@ class RunBudget:
     def mark_corrective_action(self):
         self.corrective_actions += 1
 
+    def mark_tokens(self, tokens: int):
+        """Record token usage (input + output combined)."""
+        self.tokens_used += tokens
+
+    def mark_agent_step(self, agent: str):
+        """Record an agentic step for a specific agent."""
+        self._agent_steps[agent] = self._agent_steps.get(agent, 0) + 1
+
+    def agent_steps(self, agent: str) -> int:
+        """Return step count for a specific agent."""
+        return self._agent_steps.get(agent, 0)
+
     def snapshot(self) -> dict:
         return {
             "run_id": self.run_id, "tasks_executed": self.tasks_executed,
@@ -62,16 +82,32 @@ class RunBudget:
             "max_wall_clock_seconds": self.max_wall_clock_seconds,
             "corrective_actions": self.corrective_actions,
             "max_corrective_actions": self.max_corrective_actions,
+            "tokens_used": self.tokens_used,
+            "max_token_budget": self.max_token_budget,
+            "agent_steps": dict(self._agent_steps),
+            "max_steps_per_agent": self.max_steps_per_agent,
         }
 
     def check(self) -> tuple[bool, str | None]:
         checks = ((self.tasks_executed, self.max_tasks, "max_tasks"),
                   (self.openclaw_calls, self.max_openclaw_calls, "max_openclaw_calls"),
                   (self.wall_clock_seconds, self.max_wall_clock_seconds, "max_wall_clock_seconds"),
-                  (self.corrective_actions, self.max_corrective_actions, "max_corrective_actions"))
+                  (self.corrective_actions, self.max_corrective_actions, "max_corrective_actions"),
+                  (self.tokens_used, self.max_token_budget, "max_token_budget"))
         for current, limit, name in checks:
             if current >= limit:
                 return True, f"{name} ({limit}) exceeded"
+        # Check per-agent step budget
+        for agent, steps in self._agent_steps.items():
+            if steps >= self.max_steps_per_agent:
+                return True, f"max_steps_per_agent ({self.max_steps_per_agent}) exceeded for {agent}"
+        return False, None
+
+    def check_agent_steps(self, agent: str) -> tuple[bool, str | None]:
+        """Check step budget for a specific agent."""
+        steps = self.agent_steps(agent)
+        if steps >= self.max_steps_per_agent:
+            return True, f"max_steps_per_agent ({self.max_steps_per_agent}) exceeded for {agent}"
         return False, None
 
     def elapsed_seconds(self) -> float:
@@ -109,10 +145,32 @@ class Orchestrator:
         self._locks: dict[int, asyncio.Lock] = {}
         # Get state enforcement mode from config (default: audit)
         self.state_enforcement = cfg.get("state_enforcement", "audit")
+
+        # Issue #27: load and inject tool allowlist into the OpenClaw client
+        self._tool_allowlist: ToolAllowlist | None = None
+        allowlist_cfg = get_tool_allowlist(cfg)
+        if allowlist_cfg.get("enabled", False):
+            self._tool_allowlist = ToolAllowlist.from_config(cfg)
+            check_tools = get_openclaw(cfg).get("check_tools", False)
+            if self._tool_allowlist is not None:
+                self._tool_allowlist = self._tool_allowlist
+                self.oc.set_tool_allowlist(self._tool_allowlist)
+                logger.info(
+                    "[ADR-027] Tool allowlist enabled (check_tools=%s, profiles=%s)",
+                    check_tools,
+                    self._tool_allowlist.profile_names() if self._tool_allowlist else [],
+                )
+            else:
+                logger.warning("[ADR-027] Tool allowlist enabled but failed to load — all tools permitted")
+        else:
+            logger.debug("[ADR-027] Tool allowlist is disabled in config — all tools permitted")
+
         budget_cfg = get_budget(cfg)
         self.budget = RunBudget("", budget_cfg["max_tasks_per_run"], budget_cfg["max_openclaw_calls"],
                                 budget_cfg["max_wall_clock_seconds"], budget_cfg["max_corrective_actions"],
-                                budget_cfg["max_dependency_depth"])
+                                budget_cfg["max_dependency_depth"],
+                                budget_cfg.get("max_token_budget", 1_000_000),
+                                budget_cfg.get("max_steps_per_agent", 50))
         self._max_parallel = get_concurrency(cfg)["max_parallel_specialists"]
         self._active_budgets: dict[str, RunBudget] = {}
 
@@ -184,6 +242,20 @@ class Orchestrator:
     def profile(self, name: str) -> str:
         return self.cfg["openclaw"]["profiles"][name]
 
+    @property
+    def tool_allowlist(self) -> ToolAllowlist | None:
+        """The loaded tool allowlist, or None if not configured/enabled."""
+        return self._tool_allowlist
+
+    def tool_allowlist_report(self) -> dict:
+        """Return a structured report of all profile allowlists for audit."""
+        if self._tool_allowlist is None:
+            return {"enabled": False, "profiles": {}}
+        profiles = {}
+        for name in self._tool_allowlist.profile_names():
+            profiles[name] = self._tool_allowlist.describe_profile(name)
+        return {"enabled": True, "profiles": profiles}
+
     async def _save(self, run, kind, payload):
         eid, is_dup = self.ev.append(run.run_id, kind, payload)
         if is_dup:
@@ -219,12 +291,34 @@ class Orchestrator:
         await self.github.comment(run.issue_number, decision_request(run))
         return False
 
+    def _validate_and_enforce_graph(self, run: RunRecord, task_dicts: list[dict]) -> None:
+        """Validate task graph and enforce max tasks per incident limit.
+
+        Issue #26: validates cycle, depth, dangling deps, duplicate IDs,
+        and the max_tasks graph limit. Raises on any violation.
+        """
+        # Check max tasks per incident
+        budget_cfg = get_budget(self.cfg)
+        max_graph_tasks = budget_cfg.get("max_tasks_per_run", 50)
+        if len(task_dicts) > max_graph_tasks:
+            raise TaskGraphError(
+                f"Task graph has {len(task_dicts)} tasks, exceeding max_tasks_per_run ({max_graph_tasks}). "
+                "Reduce investigation scope or increase max_tasks_per_run."
+            )
+        # Delegate cycle/depth/dangling/duplicate checks to validators
+        validate_task_graph(task_dicts, max_depth=budget_cfg["max_dependency_depth"])
+
+    def _record_budget_snapshot(self, run: RunRecord, budget: RunBudget) -> None:
+        """Save current budget utilisation into the run record for evidence."""
+        run.budget_snapshot = budget.snapshot()
+
     def _budget_for(self, run: RunRecord) -> RunBudget:
         if run.run_id not in self._active_budgets:
             self._active_budgets[run.run_id] = RunBudget(
                 run.run_id, self.budget.max_tasks, self.budget.max_openclaw_calls,
                 self.budget.max_wall_clock_seconds, self.budget.max_corrective_actions,
-                self.budget.max_depth)
+                self.budget.max_depth, self.budget.max_token_budget,
+                self.budget.max_steps_per_agent)
         return self._active_budgets[run.run_id]
 
     async def start_issue(self, number: int, delivery_id: str | None = None) -> RunRecord:
@@ -262,7 +356,10 @@ class Orchestrator:
             run.tasks = await S.build_tasks(self.oc, main, run.run_id, run.incident)
             if not run.tasks: raise RuntimeError("S2 produced no investigation tasks")
             await self.github.comment(run.issue_number, investigation_started(run))
-            await self._save(run, "S2.task_graph", {"tasks": [t.model_dump() for t in run.tasks]})
+            # Issue #26: validate task graph before execution
+            task_dicts = [t.model_dump() for t in run.tasks]
+            self._validate_and_enforce_graph(run, task_dicts)
+            await self._save(run, "S2.task_graph", {"tasks": task_dicts})
 
         budget = self._budget_for(run)
         budget._start_time = _t0_investigate
@@ -301,10 +398,13 @@ class Orchestrator:
                     run.findings.append(f)
                     done.add(f.task_id)
                     await self._save(run, "S4.finding", f.model_dump())
+            self._record_budget_snapshot(run, budget)
+            self.store.save(run)
             pending = [t for t in pending if t.id not in done]
 
         if not await self._budget_preflight(run, budget):
             return
+        self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
         run.root_cause = await S.synthesize_root_cause(self.oc, main, run.run_id, run.incident, run.findings,
                                                        run.human_inputs)
@@ -330,6 +430,7 @@ class Orchestrator:
         budget = self._budget_for(run)
         if not await self._budget_preflight(run, budget):
             return
+        self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
         run.recovery_plan = await S.make_recovery_plan(self.oc, main, run.run_id, run.incident, run.root_cause,
                                                        run.human_inputs)
@@ -377,6 +478,7 @@ class Orchestrator:
         budget = self._budget_for(run)
         if not await self._budget_preflight(run, budget):
             return
+        self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
         run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
                                                  run.root_cause, option)
@@ -414,6 +516,7 @@ class Orchestrator:
         budget = self._budget_for(run)
         if not await self._budget_preflight(run, budget):
             return
+        self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
         run.verification = await S.verify_recovery(self.oc, self.profile("observability-investigator"), run.run_id,
                                                    run.incident, run.execution)
@@ -589,18 +692,51 @@ class Orchestrator:
             if not run.recovery_plan: raise RuntimeError("No recovery plan exists")
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
             if not option: raise ValueError(f"Unknown option id: {command.argument}")
-            # classify_operation supplements option.risk: use the more restrictive of
-            # the declared risk and the runtime classification of the command argument.
-            _RISK_ORDER = {Risk.SAFE_WRITE: 0, Risk.RISKY_WRITE: 1, Risk.DESTRUCTIVE: 2}
-            classified_risk = self.policy.classify_operation(command.argument)
-            effective_risk = (
-                classified_risk
-                if _RISK_ORDER.get(classified_risk, 0) > _RISK_ORDER.get(option.risk, 0)
-                else option.risk
+
+            # ADR-013: resolve effective risk via trusted registry first.
+            # Precedence: registry match (always wins) → classify_operation (escalation only)
+            #   → model-supplied label (fallback).
+            effective_risk, registry_result, classified_risk = (
+                self.policy.resolve_effective_risk_for_option(
+                    option.id, option.description, option.risk
+                )
             )
-            if self.policy.action(effective_risk) == "DENY": raise PermissionError(
-                "Policy denies this option regardless of human approval")
-            if run.decision: run.decision.status = "ANSWERED"
+
+            # Record S6.capability_override evidence whenever the registry was consulted.
+            # Even when no rule matched, recording the lookup provides an audit trail of
+            # what the system considered. We record it only when there was a meaningful
+            # override or a non-trivial fallback path.
+            if registry_result is not None or classified_risk is not None:
+                evidence_payload: dict[str, Any] = {
+                    "option_id": option.id,
+                    "model_risk": option.risk.value,
+                    "effective_risk": effective_risk.value,
+                    "option_description": option.description,
+                }
+                if registry_result is not None:
+                    evidence_payload.update({
+                        "canonical_operation": registry_result.canonical_operation,
+                        "rule_id": registry_result.rule_id,
+                        "registry_risk": registry_result.registry_risk.value
+                        if registry_result.registry_risk
+                        else None,
+                        "pattern_matched": registry_result.pattern_matched,
+                        "pattern_mode": registry_result.pattern_mode,
+                        "approved_by": registry_result.approved_by,
+                    })
+                else:
+                    evidence_payload["classified_risk"] = (
+                        classified_risk.value if classified_risk else None
+                    )
+                await self._save(run, "S6.capability_override", evidence_payload)
+
+            if self.policy.action(effective_risk) == "DENY":
+                raise PermissionError(
+                    "Policy denies this option regardless of human approval "
+                    f"(effective risk: {effective_risk.value})"
+                )
+            if run.decision:
+                run.decision.status = "ANSWERED"
             await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
             metrics.record_command("approve")
             await self._execute_option(run, option)
