@@ -35,9 +35,11 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 DEFAULT_BUDGET = {
     "max_tasks_per_run": 50,
     "max_openclaw_calls": 200,
-    "max_wall_clock_seconds": 3600,   # 1 hour
+    "max_wall_clock_seconds": 3600,  # 1 hour
     "max_corrective_actions": 10,
     "max_dependency_depth": 20,
+    "max_token_budget": 1_000_000,  # 1M tokens per incident (input + output)
+    "max_steps_per_agent": 50,  # Max agentic steps per individual agent
 }
 
 # Concurrency defaults
@@ -54,3 +56,23 @@ def get_budget(cfg: dict) -> dict:
 def get_concurrency(cfg: dict) -> dict:
     """Return the concurrency section from config, merged with defaults."""
     return {**DEFAULT_CONCURRENCY, **cfg.get("concurrency", {})}
+
+
+# ----------------------------------------------------------------------
+# Issue #27 — Tool allowlist defaults (ADR-027)
+# ----------------------------------------------------------------------
+
+DEFAULT_TOOL_ALLOWLIST = {
+    "enabled": False,  # Off by default for backward compatibility with existing tests
+    "path": "config/tool-allowlist.yaml",
+}
+
+
+def get_tool_allowlist(cfg: dict) -> dict:
+    """Return the tool_allowlist section from config, merged with defaults."""
+    return {**DEFAULT_TOOL_ALLOWLIST, **cfg.get("tool_allowlist", {})}
+
+
+def get_openclaw(cfg: dict) -> dict:
+    """Return the openclaw section from config."""
+    return cfg.get("openclaw", {})

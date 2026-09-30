@@ -394,6 +394,8 @@ class RunRecord(BaseModel):
     command_outcomes: dict[str, str] = Field(default_factory=dict)
     # Legacy field: kept for backward compatibility, migrated to command_outcomes
     executed_commands: set[str] = Field(default_factory=set)
+    # Budget snapshot: last recorded budget utilisation (Issue #26)
+    budget_snapshot: dict | None = None
 
     # --- Command outcome helpers (Issue #9 fix) ---
 
