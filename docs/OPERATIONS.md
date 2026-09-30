@@ -46,7 +46,7 @@ The GitHub Issue remains the user-visible system of record; local evidence provi
 ## Telemetry
 
 ```bash
-curl http://localhost:8088/metrics
+curl -H "Authorization: Bearer $OPSWARM_RUNTIME_TOKEN" http://localhost:8088/metrics
 ```
 
 `GET /metrics` returns Prometheus text-format metrics. It requires `opsswarm:admin`
