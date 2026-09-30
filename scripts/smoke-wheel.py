@@ -79,16 +79,26 @@ def install_wheel(python: Path, wheel: Path) -> None:
     print(f"Installed wheel: {wheel.name}")
 
 
-def check_import_origin(python: Path) -> bool:
-    """Verify that opsswarm imports come from site-packages, not repo source."""
-    # Don't set OPSWARM_CONFIG - let it use defaults (None). Setting it to empty string
-    # causes load_config() to treat Path("") as a config path and fail.
-    result = subprocess.run(
-        [str(python), "-c", "import opsswarm.api; print(opsswarm.api.__file__)"],
-        capture_output=True,
-        text=True,
-        env={k: v for k, v in os.environ.items() if k not in ("OPSWARM_CONFIG", "OPSWARM_DATA_DIR")},
-    )
+def check_import_origin(python: Path, config_path: Path) -> bool:
+    """Verify that opsswarm imports from site-packages without checkout exposure."""
+    # Run outside the checkout: otherwise Python prepends the harness's current
+    # working directory to sys.path and can import repository source instead.
+    # Use the supplied external config; importing opsswarm.api initializes its
+    # application configuration at module import time.
+    config_path = config_path.resolve()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        env = {
+            k: v for k, v in os.environ.items() if k not in ("OPSWARM_CONFIG", "OPSWARM_DATA_DIR")
+        }
+        env["OPSWARM_CONFIG"] = str(config_path)
+        env["OPSWARM_DATA_DIR"] = tmpdir
+        result = subprocess.run(
+            [str(python), "-c", "import opsswarm.api; print(opsswarm.api.__file__)"],
+            capture_output=True,
+            text=True,
+            cwd=tmpdir,
+            env=env,
+        )
 
     if result.returncode != 0:
         print(f"ERROR: Failed to import opsswarm:\n{result.stderr}", file=sys.stderr)
@@ -210,7 +220,7 @@ def main() -> int:
         print()
 
         checks = [
-            ("Import origin", lambda: check_import_origin(python)),
+            ("Import origin", lambda: check_import_origin(python, config_path)),
             ("pip check", lambda: check_pip_check(python)),
             ("Health endpoint", lambda: check_health(python, config_path, port)),
         ]
