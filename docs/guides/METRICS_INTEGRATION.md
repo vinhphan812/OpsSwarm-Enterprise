@@ -8,15 +8,17 @@
 
 ## 1. What OpsSwarm Ships (Local MVP)
 
-OpsSwarm exposes a **single, unauthenticated Prometheus-compatible metrics endpoint**:
+OpsSwarm exposes a **Prometheus-compatible `/metrics` endpoint protected by `opsswarm:admin` bearer authentication**:
 
 ```
 GET http://<host>:8088/metrics
+Authorization: Bearer <opsswarm:admin bearer token>
 Content-Type: text/plain
 ```
 
-No API key, no authentication, no TLS enforcement. The endpoint is defined in
-`opsswarm/api.py:43-46`.
+`GET /metrics` requires a valid `opsswarm:admin` bearer token — no unauthenticated scrape path exists.
+Unauthenticated requests receive HTTP 401 or 403. The endpoint is defined in
+`opsswarm/api.py:76` with `Depends(admin_scope)`.
 
 ### 1.1 Exposed Metrics
 
@@ -43,13 +45,18 @@ No API key, no authentication, no TLS enforcement. The endpoint is defined in
 
 | Concern        | Status                                                                           |
 |----------------|----------------------------------------------------------------------------------|
-| Authentication | None (unauthenticated endpoint)                                                  |
-| Authorization  | None — network-level protection required                                         |
+| Authentication | Required: `opsswarm:admin` bearer token (HTTP 401/403 without valid token)                          |
+| Authorization  | `opsswarm:admin` scope — only tokens with this scope may scrape.                               |
 | TLS            | Not enforced by the application; terminate TLS at the scraper or a reverse proxy |
 | Port           | 8088 (configurable via `uvicorn --host ... --port`)                              |
 | Bind address   | 127.0.0.1 in the systemd unit; change to `0.0.0.0` only behind a network policy  |
 
 ### 2.2 Recommended Scrape Configuration
+
+Scrape `/metrics` with an `opsswarm:admin` bearer token. Integrate the token via a
+reverse-proxy header-injection rule (nginx, Caddy, Traefik) or directly in Prometheus
+`authorization` configuration. Never embed raw bearer tokens in plaintext config files
+on shared filesystems — prefer a secrets manager or environment-variable injection.
 
 ```yaml
 # prometheus.yml
@@ -62,7 +69,15 @@ scrape_configs:
     scrape_interval: 30s
     scrape_timeout:  15s
     metrics_path: /metrics
-    # No authentication — rely on network policy or a sidecar.
+    # Bearer-token authorization — inject token via a secrets manager or env var.
+    # Example using a file-backed bearer token:
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/opsswarm_metrics_token
+    # Or, for inline evaluation (preferred only in secured environments):
+    # authorization:
+    #   type: Bearer
+    #   credentials: "<opsswarm:admin bearer token>"
 ```
 
 ### 2.3 Scrape Interval
@@ -88,14 +103,18 @@ outcome types, not by external input.
 ### 2.5 Security Boundary
 
 ```
-[Prometheus] ---- network policy ---- [OpsSwarm :8088/metrics]
+[Prometheus / Reverse Proxy] ---- Bearer auth (opsswarm:admin) ---- [OpsSwarm :8088/metrics]
 ```
 
-- The `/metrics` endpoint MUST NOT be exposed to untrusted networks.
-- Recommended: Prometheus scraper on the same host or in the same private network segment.
-- If cross-network scraping is required, place a reverse proxy (nginx, Caddy) in front of OpsSwarm
-  that terminates TLS and optionally enforces IP allow-listing.
-- **Do not** pass `OPSWARM_API_KEY` to Prometheus — it is not used for `/metrics` and
+- The `/metrics` endpoint **requires an `opsswarm:admin` bearer token** — unauthenticated
+  requests are rejected with HTTP 401 or 403.
+- Preferred deployment: a reverse proxy (nginx, Caddy, Traefik) in front of OpsSwarm that
+  injects the bearer token as a header (e.g. `Proxy-Authorization` or forwarded
+  `Authorization`) so the scraper sends a plain request. This keeps the token out of the
+  Prometheus config file.
+- Alternatively: configure Prometheus `authorization.credentials_file` directly (ensure the
+  token file is readable by the Prometheus process and protected by filesystem permissions).
+- **Do not** expose `OPSWARM_API_KEY` to Prometheus — it is not used for `/metrics` and
   introducing it would create a misleading security signal.
 
 ---
@@ -230,9 +249,9 @@ def test_metrics_endpoint():
 ### 4.2 Recommended Additional Contract Tests
 
 ```python
-def test_metrics_all_counters_present():
+def test_metrics_all_counters_present(client_with_admin_scope):
     """Verify all expected counter families are always present in the output."""
-    response = client.get("/metrics")
+    response = client_with_admin_scope.get("/metrics")   # requires admin scope
     body = response.text
     assert "opsswarm_runs_total" in body
     assert "opsswarm_commands_executed" in body
@@ -244,26 +263,24 @@ def test_metrics_label_format():
     metrics.record_run("PLANNING")
     metrics.record_command("approved")
     metrics.record_verification(True)
-    response = client.get("/metrics")
+    response = client_with_admin_scope.get("/metrics")   # requires admin scope
     body = response.text
     assert 'state="PLANNING"' in body
     assert 'outcome="approved"' in body
     assert 'verified="True"' in body
 
 
-def test_metrics_no_auth_required():
-    """Confirm the /metrics endpoint is accessible without API key."""
-    # No Depends(verify_api_key) on the route — this is a documentation contract.
-    # The absence of a 403 is the observable evidence.
+def test_metrics_requires_bearer_token(client):
+    """Confirm unauthenticated requests receive HTTP 401 or 403."""
     response = client.get("/metrics")
-    assert response.status_code == 200
+    assert response.status_code in (401, 403)
 
 
 def test_metrics_duration_summaries():
     """Verify duration count/sum pairs are rendered."""
     metrics.record_duration("command_execution", 1.5)
     metrics.record_duration("command_execution", 2.5)
-    response = client.get("/metrics")
+    response = client_with_admin_scope.get("/metrics")  # requires admin scope
     body = response.text
     # Note: duration names become bare metric names without prefix
     assert "command_execution_count" in body
@@ -290,7 +307,7 @@ pytest tests/unit/test_metrics.py -v
 | 2  | `Content-Type: text/plain` header present                                                                                         | `tests/unit/test_metrics.py::test_metrics_endpoint`                 |
 | 3  | All three counter families (`opsswarm_runs_total`, `opsswarm_commands_executed`, `opsswarm_verifications_total`) appear in output | `tests/unit/test_metrics.py::test_metrics_all_counters_present`     |
 | 4  | Label values are correctly quoted                                                                                                 | `tests/unit/test_metrics.py::test_metrics_label_format`             |
-| 5  | `/metrics` does not require authentication (no 403 without API key)                                                               | `tests/unit/test_metrics.py::test_metrics_no_auth_required`         |
+| 5  | `/metrics` requires `opsswarm:admin` bearer token; unauthenticated requests receive HTTP 401 or 403 | `tests/unit/test_metrics.py::test_metrics_requires_bearer_token`       |
 | 6  | Duration count/sum pairs render correctly                                                                                         | `tests/unit/test_metrics.py::test_metrics_duration_summaries`       |
 | 7  | OPERATIONS.md documents `curl http://localhost:8088/metrics`                                                                      | `docs/OPERATIONS.md`                                                |
 | 8  | This integration guide exists and accurately describes the boundary                                                               | `docs/guides/METRICS_INTEGRATION.md`                                |
