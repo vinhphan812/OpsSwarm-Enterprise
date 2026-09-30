@@ -309,7 +309,7 @@ pytest tests/unit/test_metrics.py -v
 | 4  | Label values are correctly quoted                                                                                                 | `tests/unit/test_metrics.py::test_metrics_label_format`             |
 | 5  | `/metrics` requires `opsswarm:admin` bearer token; unauthenticated requests receive HTTP 401 or 403 | `tests/unit/test_metrics.py::test_metrics_requires_bearer_token`       |
 | 6  | Duration count/sum pairs render correctly                                                                                         | `tests/unit/test_metrics.py::test_metrics_duration_summaries`       |
-| 7  | OPERATIONS.md documents `curl http://localhost:8088/metrics`                                                                      | `docs/OPERATIONS.md`                                                |
+| 7  | OPERATIONS.md documents authenticated `curl http://localhost:8088/metrics` requiring `opsswarm:admin` bearer token (HTTP 401/403 without) | `docs/OPERATIONS.md`                                               |
 | 8  | This integration guide exists and accurately describes the boundary                                                               | `docs/guides/METRICS_INTEGRATION.md`                                |
 | 9  | No dashboard, alerting, or tracing is claimed in documentation                                                                    | Reviewed: `README.md`, `docs/OPERATIONS.md`, `docs/ARCHITECTURE.md` |
 | 10 | systemd unit binds to `127.0.0.1:8088` (local-only by default)                                                                    | `deploy/systemd/opsswarm.service`                                   |
