@@ -42,6 +42,90 @@ place where file paths from OpenClaw subprocesses are retained.
 `verify_api_key()` uses `hmac.compare_digest()` for constant-time comparison to
 mitigate timing attacks.
 
+### Runtime API authentication (Issue #21)
+
+The Runtime API (`opsswarm/api.py`) enforces scoped bearer-token authentication for all
+endpoints except `/health`. Authentication is implemented in `opsswarm/auth.py`.
+
+**Scopes**
+
+| Scope | Endpoints |
+|-------|-----------|
+| `opsswarm:read` | `GET /runs`, `GET /runs/{issue_number}`, `GET /runs/{issue_number}/evidence`, `GET /runs/{issue_number}/checkpoint` |
+| `opsswarm:write` | `POST /runs/{issue_number}/resume` |
+| `opsswarm:monitor` | `POST /hooks/monitoring` (also requires HMAC webhook signature) |
+| `opsswarm:admin` | All above + `GET /metrics` |
+
+Scope hierarchy: `opsswarm:admin` implies all other scopes. `opsswarm:write` and
+`opsswarm:monitor` do not imply read access.
+
+**Bearer token formats**
+
+HMAC-derived (time-limited):
+
+```
+Authorization: Bearer opsswarm:read <40-char-hex>
+```
+
+Where `<hex>` = HMAC-SHA256 of `<method>:<path>:<unix_timestamp>` using the
+`OPSWARM_RUNTIME_SECRET` env var. Valid for 5 minutes; timestamp must be within
+±60 s of server clock.
+
+Static pre-shared key (rotation requires env reload):
+
+```
+Authorization: Bearer <OPSWARM_API_KEY_<SCOPE>>
+```
+
+**Production fail-closed behaviour**
+
+At FastAPI startup, if `APP_ENV=production` and neither `OPSWARM_RUNTIME_SECRET`
+nor any `OPSWARM_API_KEY_<SCOPE>` is set, the application raises `RuntimeError`
+and refuses to bind its port. Missing auth config does not result in silent
+unauthenticated access.
+
+**`/metrics` endpoint**
+
+`GET /metrics` requires `opsswarm:admin`. Expose only behind a network policy,
+reverse proxy, or IP allowlist in production. The endpoint exposes internal
+operational state; treat it as sensitive infrastructure.
+
+**GitHub webhook independence**
+
+`POST /webhooks/github` is not subject to `opsswarm:*` scopes. It validates the
+GitHub HMAC-SHA256 signature using `GITHUB_WEBHOOK_SECRET` and then evaluates
+human authority via GitHub collaborator permission. This is a separate trust
+domain from Runtime API bearer tokens.
+
+### Error sanitation (Issue #29)
+
+Every exception at the API or orchestrator layer is assigned a 12-character hex
+correlation ID. The ID appears in operator logs (ERROR level, with redacted detail)
+and in GitHub comments (at the end, preceded by "Ref: ").
+
+GitHub comments contain only:
+- A fixed failure banner ("OpsSwarm — Failed / Recovery failed / Verification failed")
+- A sanitised error category (never the raw exception text, stderr, or stack trace)
+- The correlation ID
+
+Redacted patterns include GitHub PATs (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`),
+Bearer/Authorization header values, AWS keys and secrets, `secret=`/`token=`/
+`password=` in JSON, and generic API key patterns. The full pattern list is in
+`opsswarm/errors.py`. `sanitize_for_log()` additionally preserves file paths for
+operator use.
+
+Implementation:
+- `api.py` webhook handler: `PermissionError` and generic `Exception` caught; raw
+  message never posted.
+- `orchestrator.py` failure paths: `run.error` and `run.execution.summary` passed
+  through `sanitize_for_comment()` before embedding in a comment.
+- `openclaw.py` `run_text()`: non-zero exit raises `OpenClawErrorSanitized` with
+  sanitised stderr; raw stderr logged at ERROR level with tokens redacted.
+
+Production fail-closed: if `APP_ENV=production` and auth config is missing, the
+service returns `503` for protected endpoints rather than allowing unauthenticated
+access.
+
 ## Application security model
 
 - GitHub webhook bodies are validated with HMAC-SHA256.

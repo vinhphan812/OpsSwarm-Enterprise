@@ -60,11 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           bandit_rc=0
-          # Skip B105: env-var key identifiers (e.g. OPSWARM_RUNTIME_SECRET) are
-          # not hardcoded secrets; Bandit's B105 issue_text still contains the key
-          # name which triggers the artifact validator's credential-scan, so we
-          # suppress this known-false-positive test ID.
-          python -m bandit -r opsswarm scripts --skip B105 -f json -o artifacts/bandit.json || bandit_rc=$?
+          python -m bandit -r opsswarm scripts -f json -o artifacts/bandit.json || bandit_rc=$?
           python scripts/validate-artifacts.py artifacts/bandit.json
           if [[ "$bandit_rc" -ne 0 && "$bandit_rc" -ne 1 ]]; then
             exit "$bandit_rc"
@@ -206,11 +202,7 @@ jobs:
         run: |
           set -euo pipefail
           bandit_rc=0
-          # Skip B105: env-var key identifiers (e.g. OPSWARM_RUNTIME_SECRET) are
-          # not hardcoded secrets; Bandit's B105 issue_text still contains the key
-          # name which triggers the artifact validator's credential-scan, so we
-          # suppress this known-false-positive test ID.
-          python -m bandit -r opsswarm scripts --skip B105 -f json -o artifacts/bandit.json || bandit_rc=$?
+          python -m bandit -r opsswarm scripts -f json -o artifacts/bandit.json || bandit_rc=$?
           python scripts/validate-artifacts.py artifacts/bandit.json
           if [[ "$bandit_rc" -ne 0 && "$bandit_rc" -ne 1 ]]; then
             exit "$bandit_rc"

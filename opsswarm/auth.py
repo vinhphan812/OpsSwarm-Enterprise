@@ -50,8 +50,8 @@ APP_ENV_KEY = "APP_ENV"
 PRODUCTION_ENV = "production"
 DEVELOPMENT_ENV = "development"
 
-RUNTIME_SECRET_KEY = "OPSWARM_RUNTIME_SECRET"  # noqa: B101  # env-var key, not a secret value
-API_KEY_PREFIX = "OPSWARM_API_KEY_"  # noqa: B105  # env-var key prefix, not a value
+RUNTIME_SECRET_KEY = "OPSWARM_RUNTIME_SECRET"  # nosec: B105  # env-var key, not a secret value
+API_KEY_PREFIX = "OPSWARM_API_KEY_"  # nosec: B105  # env-var key prefix, not a value
 
 SCOPE_READ = "opsswarm:read"
 SCOPE_WRITE = "opsswarm:write"
