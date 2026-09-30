@@ -3,6 +3,7 @@
 These tests use dependency override to avoid module-level initialization.
 They verify the API contract (status codes, error shapes) with mocked engines.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 # Shared reset fixture (avoids auth state pollution between test modules)
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _reset_auth_state():
@@ -34,9 +36,11 @@ def _reset_auth_state():
 # Token helpers (same as security tests)
 # ---------------------------------------------------------------------------
 
+
 def _generate_bearer(scope: str, secret: str, method: str, path: str, **overrides) -> str:
     import hashlib
     import hmac
+
     timestamp = overrides.get("timestamp", int(time.time()))
     payload = f"{method}:{path}:{timestamp}"
     mac = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
@@ -51,12 +55,13 @@ def _auth_header(token: str) -> dict:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _env_secret():
     import opsswarm.auth as auth_module
 
     old = os.environ.get("OPSWARM_RUNTIME_SECRET")
-    os.environ["OPSWARM_RUNTIME_SECRET"] = "test-secret"
+    os.environ["OPSWARM_RUNTIME_SECRET"] = "test-secret"  # noqa: B105
     auth_module.reload_auth_config()
     yield
     if old is None:
@@ -105,6 +110,7 @@ def client():
 # /health
 # ---------------------------------------------------------------------------
 
+
 class TestHealthEndpoint:
     def test_health_returns_ok(self, client):
         response = client.get("/health")
@@ -118,6 +124,7 @@ class TestHealthEndpoint:
 # ---------------------------------------------------------------------------
 # /runs endpoints (require auth; 404 when not found)
 # ---------------------------------------------------------------------------
+
 
 class TestRunsEndpoints:
     def test_runs_empty(self, client):
@@ -148,10 +155,13 @@ class TestRunsEndpoints:
 # Evidence endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestEvidenceEndpoint:
     def test_evidence_not_found(self, client):
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", "test-secret", "GET", "/runs/999/evidence", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", "test-secret", "GET", "/runs/999/evidence", timestamp=now
+        )
         response = client.get("/runs/999/evidence", headers=_auth_header(token))
         assert response.status_code == 404
 
@@ -160,10 +170,13 @@ class TestEvidenceEndpoint:
 # Checkpoint endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestCheckpointEndpoint:
     def test_checkpoint_not_found(self, client):
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", "test-secret", "GET", "/runs/999/checkpoint", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", "test-secret", "GET", "/runs/999/checkpoint", timestamp=now
+        )
         response = client.get("/runs/999/checkpoint", headers=_auth_header(token))
         assert response.status_code == 404
 
@@ -172,10 +185,13 @@ class TestCheckpointEndpoint:
 # Resume endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestResumeEndpoint:
     def test_resume_not_found(self, client):
         now = int(time.time())
-        token = _generate_bearer("opsswarm:write", "test-secret", "POST", "/runs/999/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:write", "test-secret", "POST", "/runs/999/resume", timestamp=now
+        )
         response = client.post("/runs/999/resume", headers=_auth_header(token))
         assert response.status_code == 404
 
@@ -185,7 +201,9 @@ class TestResumeEndpoint:
 
     def test_resume_wrong_scope(self, client):
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", "test-secret", "POST", "/runs/999/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", "test-secret", "POST", "/runs/999/resume", timestamp=now
+        )
         response = client.post("/runs/999/resume", headers=_auth_header(token))
         assert response.status_code == 403
 
@@ -193,6 +211,7 @@ class TestResumeEndpoint:
 # ---------------------------------------------------------------------------
 # Webhook endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestWebhookEndpoint:
     def test_webhook_missing_signature(self, client):
@@ -254,6 +273,7 @@ class TestWebhookEndpoint:
 # ---------------------------------------------------------------------------
 # /metrics endpoint
 # ---------------------------------------------------------------------------
+
 
 class TestMetricsEndpoint:
     def test_metrics_requires_auth(self, client):

@@ -3,6 +3,7 @@
 Covers all acceptance criteria from ADR-014-8:
 https://github.com/NousResearch/opsswarm-enterprise/issues/21
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,7 +22,7 @@ from fastapi.testclient import TestClient
 # ---------------------------------------------------------------------------
 
 # Module-level test constants — avoid using the same name as the env var key.
-_TEST_SECRET = "test-secret-for-adr-014"
+_TEST_SECRET = "test-secret-for-adr-014"  # noqa: B105
 _ALL_TEST_SCOPES = ["opsswarm:read", "opsswarm:write", "opsswarm:monitor", "opsswarm:admin"]
 
 
@@ -40,6 +41,7 @@ def _auth_header(token: str) -> dict:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _env_secret():
@@ -107,6 +109,7 @@ def client():
 # ADR-014 §D3: 401/403 contract
 # ---------------------------------------------------------------------------
 
+
 class TestHttpStatusContract:
     """401 missing/invalid; 403 valid+insufficient; /health always public."""
 
@@ -127,7 +130,9 @@ class TestHttpStatusContract:
     def test_read_token_cannot_write(self, client):
         """opsswarm:read token on POST /runs/1/resume → 403 Insufficient scope."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now
+        )
         response = client.post("/runs/1/resume", headers=_auth_header(token))
         assert response.status_code == 403
         assert "Insufficient scope" in response.json()["detail"]
@@ -135,7 +140,9 @@ class TestHttpStatusContract:
     def test_read_token_cannot_monitor(self, client):
         """opsswarm:read token on POST /hooks/monitoring → 403."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now
+        )
         response = client.post(
             "/hooks/monitoring",
             headers=_auth_header(token),
@@ -153,7 +160,9 @@ class TestHttpStatusContract:
     def test_monitor_token_cannot_resume(self, client):
         """opsswarm:monitor token on POST /runs/1/resume → 403."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:monitor", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:monitor", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now
+        )
         response = client.post("/runs/1/resume", headers=_auth_header(token))
         assert response.status_code == 403
 
@@ -167,7 +176,9 @@ class TestHttpStatusContract:
     def test_admin_token_covers_resume(self, client):
         """opsswarm:admin token covers POST /runs/1/resume → 200/404 (not auth error)."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:admin", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:admin", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now
+        )
         response = client.post("/runs/1/resume", headers=_auth_header(token))
         # 404 because no run exists — not a 403
         assert response.status_code == 404
@@ -175,7 +186,9 @@ class TestHttpStatusContract:
     def test_admin_token_covers_monitor(self, client):
         """opsswarm:admin token covers POST /hooks/monitoring → 200/400 (not auth error)."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:admin", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:admin", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now
+        )
         response = client.post(
             "/hooks/monitoring",
             headers=_auth_header(token),
@@ -195,6 +208,7 @@ class TestHttpStatusContract:
 # ---------------------------------------------------------------------------
 # HMAC validation
 # ---------------------------------------------------------------------------
+
 
 class TestHmacValidation:
     """HMAC-SHA256 bearer tokens."""
@@ -250,6 +264,7 @@ class TestHmacValidation:
 # Anti-replay
 # ---------------------------------------------------------------------------
 
+
 class TestAntiReplay:
     """Token reuse within the window should be detected."""
 
@@ -273,6 +288,7 @@ class TestAntiReplay:
 # GitHub webhook independence
 # ---------------------------------------------------------------------------
 
+
 class TestGithubWebhookIndependence:
     """GitHub webhook HMAC is independent of runtime API auth."""
 
@@ -286,6 +302,7 @@ class TestGithubWebhookIndependence:
             with patch("opsswarm.api.verify_signature", side_effect=lambda *a, **k: True):
                 # Also patch at module level
                 import opsswarm.api as api_module
+
                 orig = api_module.verify_signature
                 api_module.verify_signature = lambda *a, **k: True
                 try:
@@ -328,6 +345,7 @@ class TestGithubWebhookIndependence:
 # /health always public
 # ---------------------------------------------------------------------------
 
+
 class TestHealthAlwaysPublic:
     """ADR-014 §D3: /health is always public regardless of auth config."""
 
@@ -347,6 +365,7 @@ class TestHealthAlwaysPublic:
 # ---------------------------------------------------------------------------
 # ADR-014 §D4: Fail-closed production startup
 # ---------------------------------------------------------------------------
+
 
 class TestProductionFailClosed:
     """Missing required auth config in production → RuntimeError at startup."""
@@ -398,6 +417,7 @@ class TestProductionFailClosed:
 # ADR-014 §D5: Monitoring ingress abuse controls
 # ---------------------------------------------------------------------------
 
+
 class TestMonitoringIngressControls:
     """64 KB body limit; rate limit per source; no anonymous trigger."""
 
@@ -422,7 +442,10 @@ class TestMonitoringIngressControls:
         # Each token is valid but the rate limiter should trigger on the 21st.
         tokens = [
             _generate_bearer(
-                "opsswarm:monitor", _TEST_SECRET, "POST", "/hooks/monitoring",
+                "opsswarm:monitor",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
                 timestamp=int(time.time()) + i,
             )
             for i in range(21)
@@ -436,7 +459,7 @@ class TestMonitoringIngressControls:
             r = client.post("/hooks/monitoring", content=payload, headers=headers)
             # We may get 200 or 400 (if gh.create_issue mock doesn't fully work),
             # but we shouldn't hit rate limit yet
-            assert r.status_code in (200, 400), f"Request {i+1} failed: {r.status_code} {r.text}"
+            assert r.status_code in (200, 400), f"Request {i + 1} failed: {r.status_code} {r.text}"
             # Reset replay store so next token is accepted
             auth_module.reset_replay_store()
 
@@ -458,6 +481,7 @@ class TestMonitoringIngressControls:
 # ---------------------------------------------------------------------------
 # ADR-014 §D1: Pre-shared scoped keys (alternative path)
 # ---------------------------------------------------------------------------
+
 
 class TestPresharedKeys:
     """OPSWARM_API_KEY_<SCOPE> env vars as static bearer tokens."""
@@ -534,6 +558,7 @@ class TestPresharedKeys:
 # Scope hierarchy
 # ---------------------------------------------------------------------------
 
+
 class TestScopeHierarchy:
     """admin > write, read; monitor is strictly limited; write !> read."""
 
@@ -547,7 +572,9 @@ class TestScopeHierarchy:
     def test_write_token_cannot_monitor(self, client):
         """opsswarm:write token on POST /hooks/monitoring → 403."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:write", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:write", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now
+        )
         response = client.post(
             "/hooks/monitoring",
             headers=_auth_header(token),
@@ -558,7 +585,9 @@ class TestScopeHierarchy:
     def test_read_token_cannot_resume(self, client):
         """opsswarm:read token on POST /runs/1/resume → 403."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:read", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:read", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now
+        )
         response = client.post("/runs/1/resume", headers=_auth_header(token))
         assert response.status_code == 403
 
@@ -566,6 +595,7 @@ class TestScopeHierarchy:
 # ---------------------------------------------------------------------------
 # Log redaction — HMAC tokens must not leak into logs
 # ---------------------------------------------------------------------------
+
 
 class TestLogRedaction:
     """Auth failures must not log the presented token value."""
@@ -579,9 +609,7 @@ class TestLogRedaction:
         assert response.status_code == 401
         # The token hex must not appear raw in any log message
         for record in caplog.records:
-            assert bad_token not in record.message, (
-                f"Token leaked in log: {record.message}"
-            )
+            assert bad_token not in record.message, f"Token leaked in log: {record.message}"
 
     def test_replay_rejection_not_logged(self, client, caplog):
         """Anti-replay rejection must not log the consumed token."""
@@ -605,6 +633,7 @@ class TestLogRedaction:
 # Metrics endpoint
 # ---------------------------------------------------------------------------
 
+
 class TestMetricsEndpoint:
     """GET /metrics default behaviour (public or admin-scoped)."""
 
@@ -618,6 +647,7 @@ class TestMetricsEndpoint:
 # ---------------------------------------------------------------------------
 # Token generation helper (for operator documentation)
 # ---------------------------------------------------------------------------
+
 
 class TestGenerateBearerToken:
     """verify opsswarm.auth.generate_bearer_token() produces valid tokens."""
@@ -637,6 +667,7 @@ class TestGenerateBearerToken:
         token_scope, token_hmac_hex = token.split("=", 1)
         # Token should be valid for the same method/path
         from opsswarm.auth import verify_bearer_hmac
+
         ts = int(time.time())
         result = verify_bearer_hmac(token_scope, token_hmac_hex, secret, method, path, timestamp=ts)
         assert result is True
@@ -645,6 +676,7 @@ class TestGenerateBearerToken:
 # -----------------------------------------------------------------------
 # ADR-014 coverage boost: uncovered branches
 # -----------------------------------------------------------------------
+
 
 class TestPresharedKeyFallback:
     """Cover the static-key path when bearer token matches a pre-shared key."""
@@ -724,7 +756,9 @@ class TestHmacDerivationFallback:
     def test_hmac_path_valid_token_accepted(self):
         """HMAC-derived token valid for method+path → accepted."""
         now = int(time.time())
-        token = _generate_bearer("opsswarm:write", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now)
+        token = _generate_bearer(
+            "opsswarm:write", _TEST_SECRET, "POST", "/runs/1/resume", timestamp=now
+        )
         import opsswarm.api as api_module
 
         orig_engine = api_module.engine
@@ -803,7 +837,9 @@ class TestVerifyBearerHmacEdgeCases:
         boundary_ts = int(time.time()) - 60  # exactly -60s
         payload = f"GET:/runs:{boundary_ts}"
         mac = hmac.new(_TEST_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        result = verify_bearer_hmac("opsswarm:read", mac, _TEST_SECRET, "GET", "/runs", timestamp=boundary_ts)
+        result = verify_bearer_hmac(
+            "opsswarm:read", mac, _TEST_SECRET, "GET", "/runs", timestamp=boundary_ts
+        )
         assert result is True
 
     def test_timestamp_at_plus_skew_boundary(self):
@@ -813,5 +849,7 @@ class TestVerifyBearerHmacEdgeCases:
         boundary_ts = int(time.time()) + 60  # exactly +60s
         payload = f"GET:/runs:{boundary_ts}"
         mac = hmac.new(_TEST_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        result = verify_bearer_hmac("opsswarm:read", mac, _TEST_SECRET, "GET", "/runs", timestamp=boundary_ts)
+        result = verify_bearer_hmac(
+            "opsswarm:read", mac, _TEST_SECRET, "GET", "/runs", timestamp=boundary_ts
+        )
         assert result is True

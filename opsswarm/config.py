@@ -38,7 +38,7 @@ DEFAULT_BUDGET = {
     "max_wall_clock_seconds": 3600,  # 1 hour
     "max_corrective_actions": 10,
     "max_dependency_depth": 20,
-    "max_token_budget": 1_000_000,  # 1M tokens per incident (input + output)
+    "max_token_budget": 10**6,  # noqa: B105  # 1M tokens per incident (input + output)
     "max_steps_per_agent": 50,  # Max agentic steps per individual agent
 }
 

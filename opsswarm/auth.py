@@ -27,6 +27,7 @@ Production fail-closed (ADR-014 D4):
   APP_ENV=production + no OPSWARM_RUNTIME_SECRET + no OPSWARM_API_KEY_* →
   RuntimeError at startup.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -50,13 +51,13 @@ APP_ENV_KEY = "APP_ENV"
 PRODUCTION_ENV = "production"
 DEVELOPMENT_ENV = "development"
 
-RUNTIME_SECRET_KEY = "OPSWARM_RUNTIME_SECRET"
-API_KEY_PREFIX = "OPSWARM_API_KEY_"
+RUNTIME_SECRET_KEY = "OPSWARM_RUNTIME_SECRET"  # noqa: B101  # env-var key, not a secret value
+API_KEY_PREFIX = "OPSWARM_API_KEY_"  # noqa: B105  # env-var key prefix, not a value
 
-SCOPE_READ    = "opsswarm:read"
-SCOPE_WRITE   = "opsswarm:write"
+SCOPE_READ = "opsswarm:read"
+SCOPE_WRITE = "opsswarm:write"
 SCOPE_MONITOR = "opsswarm:monitor"
-SCOPE_ADMIN   = "opsswarm:admin"
+SCOPE_ADMIN = "opsswarm:admin"
 
 # Ordered from most- to least-privileged for the hierarchy check.
 ALL_SCOPES: Final = [SCOPE_ADMIN, SCOPE_WRITE, SCOPE_MONITOR, SCOPE_READ]
@@ -65,26 +66,27 @@ ALL_SCOPES: Final = [SCOPE_ADMIN, SCOPE_WRITE, SCOPE_MONITOR, SCOPE_READ]
 # Path prefixes use the actual route segments; variable parts match by prefix.
 # e.g. "POST /runs" covers POST /runs/1/resume, POST /runs/42/evidence, etc.
 SCOPE_ENDPOINTS: Final = {
-    SCOPE_READ:    {"GET /runs", "GET /metrics"},
-    SCOPE_WRITE:   {"POST /runs", "GET /runs", "GET /metrics"},
+    SCOPE_READ: {"GET /runs", "GET /metrics"},
+    SCOPE_WRITE: {"POST /runs", "GET /runs", "GET /metrics"},
     SCOPE_MONITOR: {"POST /hooks/monitoring"},
-    SCOPE_ADMIN:   {"GET /runs", "GET /metrics", "POST /runs", "POST /hooks/monitoring"},
+    SCOPE_ADMIN: {"GET /runs", "GET /metrics", "POST /runs", "POST /hooks/monitoring"},
 }
 
 # Token lifetime and clock-skew tolerance
-TOKEN_TTL_SECONDS    = 300   # 5 minutes
-SKEW_TOLERANCE_SECS  = 60    # ±60 s
+TOKEN_TTL_SECONDS = 300  # 5 minutes
+SKEW_TOLERANCE_SECS = 60  # ±60 s
 
 # Monitoring ingress limits (ADR-014 D5)
-MONITORING_MAX_BYTES = 64 * 1024   # 64 KiB
-MONITORING_RATE_LIMIT = 20         # req/min per source
+MONITORING_MAX_BYTES = 64 * 1024  # 64 KiB
+MONITORING_RATE_LIMIT = 20  # req/min per source
 
 # Request context keys
-CTX_SCOPE_KEY = "opsswarm_scope"   # Starlette request.state key
+CTX_SCOPE_KEY = "opsswarm_scope"  # Starlette request.state key
 
 # ---------------------------------------------------------------------------
 # Rate limiting (in-process, per-process)
 # ---------------------------------------------------------------------------
+
 
 class _SimpleRateLimiter:
     """Per-source-IP or per-token rate limiter.
@@ -126,6 +128,7 @@ _monitoring_limiter = _SimpleRateLimiter(
 # ---------------------------------------------------------------------------
 # Anti-replay token tracker
 # ---------------------------------------------------------------------------
+
 
 class _AntiReplayStore:
     """Tracks used HMAC tokens within the validity window to detect replay.
@@ -183,10 +186,10 @@ def reload_auth_config() -> None:
     global _opsswarm_runtime_secret, _preshared_keys
     _opsswarm_runtime_secret = os.environ.get(RUNTIME_SECRET_KEY) or None
     _preshared_keys = {
-        SCOPE_READ:    os.environ.get(f"{API_KEY_PREFIX}READ", ""),
-        SCOPE_WRITE:   os.environ.get(f"{API_KEY_PREFIX}WRITE", ""),
+        SCOPE_READ: os.environ.get(f"{API_KEY_PREFIX}READ", ""),
+        SCOPE_WRITE: os.environ.get(f"{API_KEY_PREFIX}WRITE", ""),
         SCOPE_MONITOR: os.environ.get(f"{API_KEY_PREFIX}MONITOR", ""),
-        SCOPE_ADMIN:   os.environ.get(f"{API_KEY_PREFIX}ADMIN", ""),
+        SCOPE_ADMIN: os.environ.get(f"{API_KEY_PREFIX}ADMIN", ""),
     }
     # Normalise: drop empty-string entries
     _preshared_keys = {k: v for k, v in _preshared_keys.items() if v}
@@ -219,6 +222,7 @@ reload_auth_config()
 # ---------------------------------------------------------------------------
 # Token generation helpers (for operators / tests)
 # ---------------------------------------------------------------------------
+
 
 def generate_bearer_token(
     scope: str,
@@ -268,6 +272,7 @@ def verify_bearer_hmac(
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+
 def _scope_covers_endpoint(scope: str, method: str, path: str) -> bool:
     """Return True if `scope` authorises `method` + `path`.
 
@@ -277,10 +282,10 @@ def _scope_covers_endpoint(scope: str, method: str, path: str) -> bool:
 
     # Build the effective scopes (admin implies all others)
     hierarchy = {
-        SCOPE_ADMIN:   (SCOPE_ADMIN, SCOPE_WRITE, SCOPE_MONITOR, SCOPE_READ),
-        SCOPE_WRITE:  (SCOPE_WRITE, SCOPE_READ),
+        SCOPE_ADMIN: (SCOPE_ADMIN, SCOPE_WRITE, SCOPE_MONITOR, SCOPE_READ),
+        SCOPE_WRITE: (SCOPE_WRITE, SCOPE_READ),
         SCOPE_MONITOR: (SCOPE_MONITOR,),
-        SCOPE_READ:   (SCOPE_READ,),
+        SCOPE_READ: (SCOPE_READ,),
     }
 
     for s in hierarchy.get(scope, ()):
@@ -301,6 +306,7 @@ def _redact_for_log(value: str, max_len: int = 16) -> str:
 # ---------------------------------------------------------------------------
 # Main bearer validator
 # ---------------------------------------------------------------------------
+
 
 async def verify_scoped_bearer(
     request: Request,
@@ -366,8 +372,9 @@ async def verify_scoped_bearer(
             now = int(time.time())
             for ts_offset in range(-SKEW_TOLERANCE_SECS, SKEW_TOLERANCE_SECS + 1):
                 ts = now + ts_offset
-                if verify_bearer_hmac(token_scope, token_hmac_hex,
-                                      _opsswarm_runtime_secret, method, path, ts):
+                if verify_bearer_hmac(
+                    token_scope, token_hmac_hex, _opsswarm_runtime_secret, method, path, ts
+                ):
                     effective_scope = token_scope
                     break
 
@@ -390,6 +397,7 @@ async def verify_scoped_bearer(
 # ---------------------------------------------------------------------------
 # FastAPI dependency helpers
 # ---------------------------------------------------------------------------
+
 
 async def read_scope(request: Request) -> str:
     """Dependency: requires opsswarm:read scope (admin also permitted)."""
@@ -427,6 +435,7 @@ async def admin_scope(request: Request) -> str:
 # Monitoring ingress helpers
 # ---------------------------------------------------------------------------
 
+
 def check_monitoring_body_size(content_length: int | None) -> None:
     """Raise HTTPException 413 if monitoring body exceeds 64 KiB."""
     if content_length is not None and content_length > MONITORING_MAX_BYTES:
@@ -444,6 +453,7 @@ def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
 # ---------------------------------------------------------------------------
 # Tests reset helper
 # ---------------------------------------------------------------------------
+
 
 def reset_replay_store() -> None:
     """Clear the anti-replay store. For use in tests only."""
