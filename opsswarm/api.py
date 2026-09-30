@@ -8,17 +8,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from starlette.responses import PlainTextResponse
 
 from .auth import (
-    APP_ENV_KEY,
-    MONITORING_MAX_BYTES,
-    SCOPE_ADMIN,
-    SCOPE_MONITOR,
-    SCOPE_READ,
-    SCOPE_WRITE,
     _ensure_production_auth_config,
     admin_scope,
     check_monitoring_body_size,
     check_monitoring_rate_limit,
-    monitor_scope,
     read_scope,
     reload_auth_config,
     verify_scoped_bearer,

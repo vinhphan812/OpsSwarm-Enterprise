@@ -39,7 +39,6 @@ import time
 from typing import Final
 
 from fastapi import HTTPException, Request
-from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
 
