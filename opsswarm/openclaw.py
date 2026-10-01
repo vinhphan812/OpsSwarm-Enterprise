@@ -97,10 +97,16 @@ class OpenClawClient:
             ToolDenyError: When a disallowed tool is detected (check_tools enabled).
             OpenClawErrorSanitized: When OpenClaw returns a non-zero exit code.
         """
-        # ADR-027 enforcement point: check tool access before invocation
+        # ADR-027 enforcement point:
+        # Tool-level enforcement (tool names in the prompt) is done by the
+        # orchestrator before calling OpenClaw via _check_tool_access(tool, profile).
+        # Here we do a lightweight profile-level check: verify the agent name
+        # itself is allowlisted (prevents invoking an unknown agent).
         _enforce = check_tools if check_tools is not None else self._check_tools
         if _enforce and self._tool_allowlist is not None:
-            self._tool_allowlist.check(agent, agent)
+            # Check that the agent is a known/allowlisted profile.
+            # If the agent name is not in the allowlist, this raises ToolDenyError.
+            self._check_tool_access(agent, agent)
 
         with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
             f.write(prompt);

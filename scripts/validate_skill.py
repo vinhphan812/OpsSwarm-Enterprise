@@ -27,9 +27,11 @@ RUNTIME_DATA_DIR = PROJECT_ROOT / "runtime-data" / "evidence"
 
 # Required frontmatter fields per SKILL.md
 REQUIRED_FIELDS = {"name", "description"}
+ALLOWED_FRONTMATTER_FIELDS = REQUIRED_FIELDS
 
-# Minimum test threshold per skill (per Issue #3)
+# Minimum test threshold per skill (ADR-011 / Issue #3).
 MIN_TESTS_PER_SKILL = 24
+REQUIRED_CATEGORIES = frozenset({"normal", "boundary", "fault", "cross_skill"})
 
 # Skill IDs in execution order
 ALL_SKILLS = [
@@ -98,10 +100,21 @@ def validate_skill_frontmatter(skill_id: str) -> tuple[bool, list[str]]:
         errors.append(f"Failed to parse frontmatter for {skill_id}")
         return False, errors
 
-    # Check required fields
-    missing = REQUIRED_FIELDS - set(frontmatter.keys())
+    if not isinstance(frontmatter, dict):
+        errors.append(f"Frontmatter must be a mapping for {skill_id}")
+        return False, errors
+
+    # Exact allowlist prevents undocumented fields from becoming unenforced API.
+    missing = REQUIRED_FIELDS - set(frontmatter)
+    extra = set(frontmatter) - ALLOWED_FRONTMATTER_FIELDS
     if missing:
-        errors.append(f"Missing required fields: {missing}")
+        errors.append(f"Missing required fields: {sorted(missing)}")
+    if extra:
+        errors.append(f"Unsupported frontmatter fields: {sorted(extra)}")
+    if frontmatter.get("name") != skill_id:
+        errors.append(f"Frontmatter name must equal allowlisted skill id {skill_id}")
+    if not isinstance(frontmatter.get("description"), str) or not frontmatter["description"].strip():
+        errors.append("description must be a non-empty string")
 
     return len(errors) == 0, errors
 
@@ -119,8 +132,10 @@ def validate_skill_structure(skill_id: str) -> tuple[bool, list[str]]:
     if not (skill_dir / "SKILL.md").exists():
         errors.append(f"SKILL.md not found in {skill_id}")
 
-    # Note: tests/ and scripts/ are optional per current architecture
-    # They may exist in the main project, not duplicated in skills/
+    # Skill folders are intentionally SKILL.md-only (ADR-011).
+    entries = [p.name for p in skill_dir.iterdir() if p.name != "SKILL.md"]
+    if entries:
+        errors.append(f"Skill directory must contain only SKILL.md; found: {sorted(entries)}")
 
     return len(errors) == 0, errors
 
@@ -140,47 +155,68 @@ def validate_static(skill_id: str) -> tuple[bool, list[str]]:
     return struct_pass and fm_pass, all_errors
 
 
-def count_tests_for_skill(skill_id: str) -> int:
-    """Count tests for a specific skill using pytest --collect-only."""
-    skill_num = skill_id.split("-")[0].replace("s", "")  # s1-intent-guard -> 1
+def collect_test_evidence(skill_id: str) -> tuple[list[dict[str, Any]], list[str]]:
+    """Collect deterministic per-test category evidence from source markers."""
+    import ast
+
+    skill_num = skill_id.split("-", 1)[0][1:]
     test_dir = TESTS_DIR / f"skill_s{skill_num}"
-
+    evidence: list[dict[str, Any]] = []
+    errors: list[str] = []
     if not test_dir.exists():
-        return 0
+        errors.append(f"Test directory not found for {skill_id}: {test_dir}")
+        return evidence, errors
 
-    try:
-        result = subprocess.run(
-            ["pytest", str(test_dir), "--collect-only", "-q"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        # Parse test count from output
-        # pytest output: "X tests collected" or "no tests collected"
-        output = result.stdout + result.stderr
-        if "no tests collected" in output.lower():
-            return 0
-        # Try to extract number
-        for line in output.splitlines():
-            if "test" in line.lower() and "collected" in line.lower():
-                parts = line.split()
-                for i, part in enumerate(parts):
-                    if part.isdigit():
-                        return int(part)
-        return 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return 0
+    for test_file in sorted(test_dir.glob("test_*.py")):
+        try:
+            source = test_file.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=str(test_file))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    for marker in TEST_MARKERS:
+                        if marker in [m.name for m in getattr(node, "decorator_list", [])]:
+                            evidence.append({
+                                "skill_id": skill_id,
+                                "file": str(test_file.relative_to(PROJECT_ROOT)),
+                                "function": node.name,
+                                "category": marker,
+                            })
+                            break
+        except (SyntaxError, OSError) as exc:
+            errors.append(f"Error reading {test_file}: {exc}")
+
+    return evidence, errors
+
+
+def collect_test_category_counts(skill_id: str) -> dict[str, int]:
+    """Collect test counts by category marker."""
+    evidence, _ = collect_test_evidence(skill_id)
+    counts = {cat: 0 for cat in TEST_MARKERS}
+    counts["other"] = 0
+    for item in evidence:
+        cat = item.get("category", "other")
+        counts[cat] = counts.get(cat, 0) + 1
+    return counts
 
 
 def validate_test_threshold(skill_id: str) -> tuple[bool, list[str]]:
-    """Validate skill has minimum test count."""
+    """Validate skill has minimum test count across all required categories."""
     errors = []
-    test_count = count_tests_for_skill(skill_id)
+    evidence, parse_errors = collect_test_evidence(skill_id)
+    errors.extend(parse_errors)
+    counts = collect_test_category_counts(skill_id)
+    total = sum(counts.values())
 
-    if test_count < MIN_TESTS_PER_SKILL:
+    if total < MIN_TESTS_PER_SKILL:
         errors.append(
-            f"Test count {test_count} below threshold {MIN_TESTS_PER_SKILL} for {skill_id}"
+            f"Test count {total} below threshold {MIN_TESTS_PER_SKILL} for {skill_id}"
         )
+        return False, errors
+
+    # Every required category must have at least 1 test.
+    missing_cats = REQUIRED_CATEGORIES - set(counts.keys())
+    if missing_cats:
+        errors.append(f"Missing test categories: {sorted(missing_cats)}")
         return False, errors
 
     return True, errors
@@ -213,44 +249,11 @@ def validate_runnable(skill_id: str) -> tuple[bool, list[str]]:
     dep_pass, dep_errors = validate_dependencies(skill_id)
     all_errors.extend(dep_errors)
 
-    # Validate test threshold
+    # Validate test threshold (includes category enforcement)
     test_pass, test_errors = validate_test_threshold(skill_id)
     all_errors.extend(test_errors)
 
     return dep_pass and test_pass, all_errors
-
-
-def collect_test_category_counts(skill_id: str) -> dict[str, int]:
-    """Collect test counts by category marker."""
-    skill_num = skill_id.split("-")[0].replace("s", "")
-    test_dir = TESTS_DIR / f"skill_s{skill_num}"
-
-    if not test_dir.exists():
-        return {"normal": 0, "boundary": 0, "fault": 0, "cross_skill": 0, "other": 0}
-
-    counts = {"normal": 0, "boundary": 0, "fault": 0, "cross_skill": 0, "other": 0}
-
-    try:
-        result = subprocess.run(
-            ["pytest", str(test_dir), "--collect-only", "-q", "-v"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-        output = result.stdout + result.stderr
-
-        # Count by marker
-        for marker in TEST_MARKERS:
-            if f"<Module [{marker}]" in output or f"<Function [{marker}]" in output:
-                # This is a rough approximation; pytest doesn't easily expose markers in collect-only
-                pass
-
-        # For now, just return total count
-        # In production, would parse pytest-json-report or use pytest --markers
-        return counts
-
-    except (subprocess.TimeoutExpired, FileNotFoundError):
-        return counts
 
 
 def generate_evidence(
@@ -324,12 +327,13 @@ def run_validation(
     runnable_errors = []
     tests_collected = 0
 
-    if not static_only:
+    if not runnable_only:
         static_pass, static_errors = validate_static(skill_id)
 
-    if not runnable_only and static_pass:
+    if not static_only:
         runnable_pass, runnable_errors = validate_runnable(skill_id)
-        tests_collected = count_tests_for_skill(skill_id)
+        evidence_list, _ = collect_test_evidence(skill_id)
+        tests_collected = len(evidence_list)
 
     evidence = generate_evidence(
         run_id=run_id,

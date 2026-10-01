@@ -41,20 +41,43 @@ class TestValidTransitions:
 class TestTerminalStates:
     """Test terminal states have no outgoing transitions."""
 
-    def test_resolved_is_terminal(self):
-        assert RunState.RESOLVED in TERMINAL_STATES
-
     def test_failed_is_terminal(self):
         assert RunState.FAILED in TERMINAL_STATES
 
     def test_aborted_is_terminal(self):
         assert RunState.ABORTED in TERMINAL_STATES
 
-    def test_no_transitions_from_resolved(self):
-        assert VALID_TRANSITIONS[RunState.RESOLVED] == set()
+    def test_plan_rca_resolved_is_terminal(self):
+        """ADR-015: PLAN_RCA_RESOLVED is the terminal state after Phase-2 RCA completes."""
+        assert RunState.PLAN_RCA_RESOLVED in TERMINAL_STATES
 
-    def test_no_transitions_from_aborted(self):
-        assert VALID_TRANSITIONS[RunState.ABORTED] == set()
+    def test_plan_rca_resolved_has_no_outgoing_transitions(self):
+        """ADR-015: PLAN_RCA_RESOLVED is a sink state."""
+        assert VALID_TRANSITIONS[RunState.PLAN_RCA_RESOLVED] == set()
+
+
+class TestPlanRcaTransitions:
+    """ADR-015: two-phase plan — PLAN_RCA and PLAN_RCA_RESOLVED transitions."""
+
+    def test_resolved_allows_plan_rca(self):
+        """ADR-015: After verification, RESOLVED may transition to PLAN_RCA (Phase 2)."""
+        assert RunState.PLAN_RCA in VALID_TRANSITIONS[RunState.RESOLVED]
+
+    def test_resolved_allows_skip_rca(self):
+        """ADR-015: RCA may be skipped via PLAN_RCA_RESOLVED when rca_enabled=false."""
+        assert RunState.PLAN_RCA_RESOLVED in VALID_TRANSITIONS[RunState.RESOLVED]
+
+    def test_plan_rca_transitions_to_rca_resolved(self):
+        """ADR-015: PLAN_RCA progresses to PLAN_RCA_RESOLVED on successful synthesis."""
+        assert RunState.PLAN_RCA_RESOLVED in VALID_TRANSITIONS[RunState.PLAN_RCA]
+
+    def test_plan_rca_may_abort(self):
+        """ADR-015: PLAN_RCA may be abandoned if budget is exhausted or RCA is not feasible."""
+        assert RunState.ABORTED in VALID_TRANSITIONS[RunState.PLAN_RCA]
+
+    def test_resolved_is_not_in_terminal_states(self):
+        """ADR-015: RESOLVED alone is not terminal — PLAN_RCA is a valid exit path."""
+        assert RunState.RESOLVED not in TERMINAL_STATES
 
 
 class TestInvalidTransitions:

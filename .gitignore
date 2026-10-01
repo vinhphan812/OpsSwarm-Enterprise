@@ -19,3 +19,6 @@ build
 artifacts/
 *.egg-info/
 .coverage
+_diag_*.py
+.tmp-pr*.md
+.locked-runtime/
