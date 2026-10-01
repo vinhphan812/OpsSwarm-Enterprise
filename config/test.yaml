@@ -40,6 +40,8 @@ labels:
     RESOLVED: state:resolved
     FAILED: state:failed
     ABORTED: state:aborted
+    PLAN_RCA: phase:rca
+    PLAN_RCA_RESOLVED: phase:rca-done
 
 persistence:
   enable_idempotency: true

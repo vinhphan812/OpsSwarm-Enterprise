@@ -219,9 +219,10 @@ def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str
 def _normalise_bandit_for_scan(value: Any) -> Any:
     """Preserve Bandit findings while replacing only per-file metric path keys.
 
-    Bandit's ``metrics`` object uses scanned file paths as keys. Long generated
+    Bandit's metrics object uses scanned file paths as keys. Long generated
     paths can resemble high-entropy tokens, but the keys contain no finding
-    evidence. The standard ``more_info`` documentation URL is also omitted.
+    evidence. The standard more_info documentation URL is also omitted.
+
     Finding metadata, issue text, and source snippets remain intact so that
     credential detection is applied to the security-relevant content.
     """
@@ -237,9 +238,16 @@ def _normalise_bandit_for_scan(value: Any) -> Any:
     metrics = value.get("metrics")
     if isinstance(metrics, dict):
         totals = metrics.get("_totals")
-        normalised["metrics"] = {"_totals": totals} if isinstance(totals, dict) else {}
+        # Remove more_info from _totals to prevent false positives from documentation URLs
+        if isinstance(totals, dict):
+            filtered_totals = {k: v for k, v in totals.items() if k != "more_info"}
+            # If totals was just {"more_info": ...}, make it empty
+            if not filtered_totals:
+                filtered_totals = {}
+            normalised["metrics"] = {"_totals": filtered_totals}
+        else:
+            normalised["metrics"] = {"_totals": totals} if isinstance(totals, dict) else {}
     return normalised
-
 
 def _validate_bandit_policy(value: Any) -> None:
     """Fail when Bandit reports a medium- or high-severity finding."""

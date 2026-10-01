@@ -70,3 +70,34 @@ def extra_investigation_prompt(incident: IncidentContext, request: str) -> str:
 Choose one profile from observability-investigator, application-investigator, infrastructure-investigator, database-investigator.
 Return a task object with id="HX1", type="INVESTIGATE", objective, profile, required_capabilities[], risk="read", depends_on=[], parallelizable=false, expected_output="Finding", status="PENDING".
 {JSON_ONLY}\nIncident:\n{incident.model_dump_json(indent=2)}\nHuman request:\n{request}"""
+
+
+# ADR-015: Phase 2 RCA synthesis prompt (Plan_RCA)
+def rca_plan_prompt(
+    incident: IncidentContext, root: RootCauseArtifact, findings: list[Finding], human_inputs: list[dict]
+) -> str:
+    return f"""You are OpsSwarm S3-RCA. Produce a structured postmortem and root-cause analysis report.
+Draw on the verified root-cause analysis, all investigation findings, and any human inputs.
+Return ONLY valid JSON with the following shape:
+{{
+  "proximate_cause": "<string>",
+  "root_cause": "<string>",
+  "causal_chain": ["<string>", ...],
+  "contributing_factors": ["<string>", ...],
+  "what_went_well": ["<string>", ...],
+  "what_went_poorly": ["<string>", ...],
+  "timeline": [{{"timestamp": "<ISO8601 or descriptive>", "actor": "<string>", "action": "<string>"}}, ...],
+  "evidence_refs": ["<string>", ...],
+  "corrective_actions": [{{"description": "<string>", "priority": "critical|high|medium|low", "owner": "<string>|null"}}, ...],
+  "lessons_learned": "<string>",
+  "confidence": <float 0..1>
+}}
+{JSON_ONLY}
+Incident:
+{incident.model_dump_json(indent=2)}
+Root cause:
+{root.model_dump_json(indent=2)}
+Findings:
+{json.dumps([f.model_dump() for f in findings], ensure_ascii=False, default=str)}
+Human inputs:
+{json.dumps(human_inputs, ensure_ascii=False)}"""

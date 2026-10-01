@@ -15,16 +15,12 @@ the Skill's own runtime or tooling.
 
 An independent CLI validator `scripts/validate_skill.py` enforces these gates:
 
-1. **Static structural validation** — `SKILL.md` frontmatter parses, required fields present, `dependencies` entries
-   reference existing Skill names.
-2. **Directory layout validation** — expected subdirectories exist (`scripts/`, `resources/`, `tests/` if declared in
-   `SKILL.md`).
-3. **Dependency resolution** — all `dependencies` entries in any Skill's `SKILL.md` point to an existing Skill
-   directory.
-4. **Test count verification** — the Skill's `tests/` directory contains at least the number of test files declared in
-   its `SKILL.md` frontmatter.
-5. **Evidence generation** — each gate run emits a structured JSON report (`skill-validation-report.json`) consumable by
-   CI.
+1. **Static structural validation** — exactly the allowlisted S1-S8 directory and exact `name`/`description` frontmatter are required; skill folders may contain only `SKILL.md`.
+2. **Directory layout validation** — undeclared per-skill scripts, resources, tests, or other files fail validation.
+3. **Dependency resolution** — all declared dependency entries (when present) must reference an existing allowlisted Skill.
+4. **Test contract verification** — every skill must have at least 24 substantive tests, with normal, boundary, fault, and cross-skill categories. Category and per-test identity evidence is emitted in JSON.
+5. **Runnable enforcement** — `--runnable` runs dependency, structure, test count, category, and evidence checks; it is not a skip flag.
+6. **Evidence generation** — each gate run emits structured JSONL containing machine-readable per-test evidence consumable by CI.
 
 ## Implementation
 

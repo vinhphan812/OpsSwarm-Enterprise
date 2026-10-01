@@ -79,6 +79,36 @@ jobs:
       - name: Type check
         run: python -m mypy
 
+      - name: Unit and contract layers
+        run: python -m pytest tests/unit tests/contracts -q
+
+      - name: Integration layer
+        run: python -m pytest tests/integration -q
+
+      - name: Fault layer
+        run: python -m pytest tests/faults -q
+
+      - name: Real-boundary E2E layer
+        run: python -m pytest tests/e2e -q
+
+      - name: Smoke layer
+        run: python -m pytest tests/smoke -q
+
+      - name: Publish layer results
+        if: always()
+        run: |
+          mkdir -p test-results
+          python -m pytest tests/unit tests/contracts tests/integration tests/faults tests/e2e tests/smoke --junitxml=test-results/layers.xml -q
+
+      - name: Upload layer results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: layer-results-${{ matrix.python-version }}
+          path: test-results/layers.xml
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Run test suite
         run: python -m pytest -q
 
