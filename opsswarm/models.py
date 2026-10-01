@@ -83,7 +83,10 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
         RunState.ABORTED,
     },
     RunState.WAITING_INPUT: {RunState.DIAGNOSED, RunState.INVESTIGATING, RunState.ABORTED},
-    RunState.RESOLVED: set(),  # Terminal - no transitions out
+    RunState.RESOLVED: {
+        RunState.PLAN_RCA,           # ADR-015/ADR-016 Phase 2: kick off RCA
+        RunState.PLAN_RCA_RESOLVED,  # skip RCA when rca_enabled=false
+    },
     RunState.FAILED: {
         RunState.WAITING_APPROVAL,
         RunState.WAITING_DECISION,
