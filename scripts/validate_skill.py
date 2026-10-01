@@ -172,9 +172,17 @@ def collect_test_evidence(skill_id: str) -> tuple[list[dict[str, Any]], list[str
             source = test_file.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(test_file))
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    marker_names: set[str] = set()
+                    for m in getattr(node, "decorator_list", []):
+                        if isinstance(m, ast.Name):
+                            marker_names.add(m.id)
+                        elif isinstance(m, ast.Attribute):
+                            marker_names.add(m.attr)
+                        elif isinstance(m, ast.Call) and isinstance(m.func, ast.Attribute):
+                            marker_names.add(m.func.attr)
                     for marker in TEST_MARKERS:
-                        if marker in [m.name for m in getattr(node, "decorator_list", [])]:
+                        if marker in marker_names:
                             evidence.append({
                                 "skill_id": skill_id,
                                 "file": str(test_file.relative_to(PROJECT_ROOT)),
