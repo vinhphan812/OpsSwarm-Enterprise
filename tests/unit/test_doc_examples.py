@@ -125,6 +125,7 @@ SHELL_DOCS = [
     # RELEASE_GUIDE.md contains only text blocks (```text / ```), not shell blocks
 ]
 
+
 @pytest.mark.parametrize("md_file", SHELL_DOCS, ids=lambda p: p.name)
 class TestShellExamples:
     def test_no_shell_syntax_errors(self, md_file: Path):
@@ -137,8 +138,7 @@ class TestShellExamples:
         for ex in shell_blocks:
             ok, msg = _balanced_quotes(ex.code)
             assert ok, (
-                f"Shell balance error in {ex.snippet_id()}: {msg}\n"
-                f"```{ex.lang}\n{ex.code}\n```"
+                f"Shell balance error in {ex.snippet_id()}: {msg}\n```{ex.lang}\n{ex.code}\n```"
             )
 
 
@@ -150,6 +150,7 @@ PYTHON_DOCS = [
     DOCS_DIR / "guides" / "RELEASE_GUIDE.md",
     DOCS_DIR / "SECURITY.md",
 ]
+
 
 @pytest.mark.parametrize("md_file", PYTHON_DOCS, ids=lambda p: p.name)
 class TestPythonExamples:
@@ -182,6 +183,7 @@ YAML_DOCS = [
     DOCS_DIR / "INSTALLATION.md",
     DOCS_DIR / "guides" / "METRICS_INTEGRATION.md",
 ]
+
 
 @pytest.mark.parametrize("md_file", YAML_DOCS, ids=lambda p: p.name)
 class TestYamlExamples:
@@ -216,6 +218,7 @@ class TestYamlExamples:
 # ---------------------------------------------------------------------------
 # Test: no literal placeholder text in example URLs
 # ---------------------------------------------------------------------------
+
 
 class TestNoPlaceholderLinks:
     def test_release_guide_has_real_github_url(self):

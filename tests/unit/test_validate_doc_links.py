@@ -26,6 +26,7 @@ from validate_doc_links import (
 # slugify_heading
 # ---------------------------------------------------------------------------
 
+
 class TestSlugifyHeading:
     def test_basic(self):
         assert slugify_heading("## Hello World") == "hello-world"
@@ -54,6 +55,7 @@ class TestSlugifyHeading:
 # find_line_number
 # ---------------------------------------------------------------------------
 
+
 class TestFindLineNumber:
     def test_finds_exact_target(self):
         content = "line 0\nline 1\nline 2\n"
@@ -71,6 +73,7 @@ class TestFindLineNumber:
 # ---------------------------------------------------------------------------
 # extract_headings
 # ---------------------------------------------------------------------------
+
 
 class TestExtractHeadings:
     def test_extracts_all_levels(self, tmp_path: Path):
@@ -92,6 +95,7 @@ class TestExtractHeadings:
 # ---------------------------------------------------------------------------
 # check_file_links — mocked filesystem
 # ---------------------------------------------------------------------------
+
 
 class TestCheckFileLinks:
     def test_broken_internal_path(self, tmp_path: Path):
@@ -202,6 +206,7 @@ class TestCheckFileLinks:
 # ---------------------------------------------------------------------------
 # validate_documentation_links — integration
 # ---------------------------------------------------------------------------
+
 
 class TestValidateDocumentationLinks:
     def test_returns_count_and_broken_list(self, tmp_path: Path):

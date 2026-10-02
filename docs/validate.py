@@ -69,7 +69,8 @@ def main() -> int:
         description="Validate OpsSwarm documentation: links, anchors, and code examples.",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Show per-file progress for link checking and verbose pytest output.",
     )

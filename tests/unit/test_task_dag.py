@@ -507,7 +507,7 @@ def test_dag_f3_very_long_task_id():
 def test_dag_f4_many_dependencies():
     """DAG-F4: Many dependencies - task depends on many others"""
     deps = [f"T{i}" for i in range(10)]
-    tasks_data = [
+    tasks_data: list[dict[str, object]] = [
         {"id": f"T{i}", "type": "OBSERVE", "objective": f"Task {i}", "profile": "observability"}
         for i in range(10)
     ]
