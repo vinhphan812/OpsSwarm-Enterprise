@@ -29,6 +29,14 @@ jobs:
             "Python 3.13 quality gates"
             "Coverage enforcement"
             "Build distributions"
+            "Skill gate s1-intent-guard"
+            "Skill gate s2-task-graph"
+            "Skill gate s3-horizon-plan"
+            "Skill gate s4-role-dispatch"
+            "Skill gate s5-collab-exec"
+            "Skill gate s6-resilience-guard"
+            "Skill gate s7-observe-verify"
+            "Skill gate s8-orchestration-hub"
           )
 
           for attempt in $(seq 1 60); do

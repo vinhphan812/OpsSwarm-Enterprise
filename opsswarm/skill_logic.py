@@ -14,6 +14,9 @@ from .models import (
     RootCauseArtifact,
     IncidentContext,
     EvidenceRef,
+    TaskType,
+    Risk,
+    RCAReport,
 )
 from .metrics import metrics
 from .normalization import normalize_finding, normalize_root_cause_artifact, normalize_recovery_plan
@@ -53,7 +56,18 @@ def parse_issue(number: int, issue: dict) -> IncidentContext:
 async def build_tasks(oc, agent: str, run_id: str, incident: IncidentContext) -> list[Task]:
     metrics.record_openclaw_call(agent)
     data = await oc.run_json(agent, f"{run_id}-s2", task_graph_prompt(incident))
-    return [Task.model_validate(x) for x in data.get("tasks", [])]
+    try:
+        tasks_data = data.get("tasks") if isinstance(data, dict) else None
+        if tasks_data is None:
+            raise ValueError("OpenClaw returned no tasks key or non-dict payload")
+        return [Task.model_validate(x) for x in tasks_data]
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "S2.task_graph", data, str(ve))
+        logger.error(f"Validation failed for task graph: {redacted}")
+        return []
+    except Exception:
+        logger.error("Unexpected error building task graph: [details redacted]")
+        return []
 
 
 async def execute_task(
@@ -177,24 +191,166 @@ async def make_recovery_plan(oc, agent, run_id, incident, root, human_inputs) ->
 
 async def execute_recovery(oc, agent, run_id, incident, root, option) -> ExecutionResult:
     metrics.record_openclaw_call(agent)
-    return ExecutionResult.model_validate(
-        await oc.run_json(
-            agent, f"{run_id}-recover", recovery_prompt(incident, root, option.model_dump_json())
-        )
+    data = await oc.run_json(
+        agent, f"{run_id}-recover", recovery_prompt(incident, root, option.model_dump_json())
     )
+    try:
+        return ExecutionResult.model_validate(data)
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "S5.execution", data, str(ve))
+        logger.error(f"Validation failed for recovery execution: {redacted}")
+        return ExecutionResult(
+            option_id=option.id,
+            success=False,
+            summary="Validation failed: structured output could not be parsed",
+            evidence=[redacted],
+        )
+    except Exception:
+        logger.error("Unexpected error in execute_recovery: [details redacted]")
+        return ExecutionResult(
+            option_id=option.id,
+            success=False,
+            summary="Unexpected error during recovery execution",
+            evidence=[],
+        )
 
 
 async def verify_recovery(oc, agent, run_id, incident, execution) -> VerificationResult:
     metrics.record_openclaw_call(agent)
-    return VerificationResult.model_validate(
-        await oc.run_json(
-            agent, f"{run_id}-verify", verify_prompt(incident, execution.model_dump_json())
+    data = await oc.run_json(
+        agent, f"{run_id}-verify", verify_prompt(incident, execution.model_dump_json())
+    )
+    try:
+        return VerificationResult.model_validate(data)
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "S7.verification", data, str(ve))
+        logger.error(f"Validation failed for recovery verification: {redacted}")
+        return VerificationResult(
+            verified=False,
+            summary="Validation failed: structured output could not be parsed",
+            evidence=[redacted],
+            confidence=0.0,
         )
-    )
+    except Exception:
+        logger.error("Unexpected error in verify_recovery: [details redacted]")
+        return VerificationResult(
+            verified=False,
+            summary="Unexpected error during recovery verification",
+            evidence=[],
+            confidence=0.0,
+        )
 
 
-async def make_extra_task(oc, agent, run_id, incident, request) -> Task:
+async def make_extra_task(oc, agent: str, run_id: str, incident: IncidentContext, request: str) -> Task:
     metrics.record_openclaw_call(agent)
-    return Task.model_validate(
-        await oc.run_json(agent, f"{run_id}-extra", extra_investigation_prompt(incident, request))
+    data = await oc.run_json(agent, f"{run_id}-extra", extra_investigation_prompt(incident, request))
+    try:
+        return Task.model_validate(data)
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "extra_task", data, str(ve))
+        logger.error(f"Validation failed for extra task: {redacted}")
+        # Return a minimal valid task so the caller can proceed
+        return Task(
+            id="extra-fallback",
+            type=TaskType.INVESTIGATE,
+            objective=f"Extra investigation (request: {request})",
+            profile="incident-manager",
+            risk=Risk.READ,
+        )
+    except Exception:
+        logger.error("Unexpected error in make_extra_task: [details redacted]")
+        return Task(
+            id="extra-fallback",
+            type=TaskType.INVESTIGATE,
+            objective=f"Extra investigation (request: {request})",
+            profile="incident-manager",
+            risk=Risk.READ,
+        )
+
+
+# ADR-015: Phase 2 RCA synthesis (Plan_RCA)
+async def synthesize_rca(
+    oc, agent, run_id, incident: IncidentContext, root: RootCauseArtifact,
+    findings: list[Finding], human_inputs: list[dict]
+) -> RCAReport:
+    """Synthesize a structured RCA report after the incident has been verified resolved.
+
+    This is Phase 2 of the two-phase plan workflow. It is independent of Phase 1
+    (remediation execution and verification) and uses a separate budget envelope.
+    """
+    metrics.record_openclaw_call(agent)
+    data = await oc.run_json(
+        agent, f"{run_id}-rca", rca_plan_prompt(incident, root, findings, human_inputs)
     )
+    try:
+        normalized = _normalize_rca_report(data)
+        normalized["run_id"] = run_id
+        normalized["issue_number"] = incident.issue_number
+        return RCAReport.model_validate(normalized)
+    except ValidationError as ve:
+        redacted = _persist_diagnostics(run_id, "RCA.rca_report", data, str(ve))
+        logger.error(f"Validation failed for RCA report: {redacted}")
+        return RCAReport(
+            run_id=run_id,
+            issue_number=incident.issue_number,
+            proximate_cause=root.proximate_cause,
+            root_cause=root.root_cause,
+            causal_chain=root.causal_chain,
+            confidence=root.confidence,
+        )
+    except Exception:
+        logger.error("Unexpected error in synthesize_rca: [details redacted]")
+        return RCAReport(
+            run_id=run_id,
+            issue_number=incident.issue_number,
+        )
+
+
+def _normalize_rca_report(data: dict) -> dict:
+    """Normalize an LLM raw output dict into RCAReport-compatible form.
+
+    Handles field name aliases and type coercions to absorb LLM variance.
+    """
+    result: dict = dict(data)
+
+    # Aliases commonly emitted by LLMs
+    if "rootCause" in result and "root_cause" not in result:
+        result["root_cause"] = result.pop("rootCause")
+    if "proximateCause" in result and "proximate_cause" not in result:
+        result["proximate_cause"] = result.pop("proximateCause")
+    if "causalChain" in result and "causal_chain" not in result:
+        result["causal_chain"] = result.pop("causalChain")
+    if "contributingFactors" in result:
+        result.setdefault("contributing_factors", result.pop("contributingFactors"))
+    if "whatWentWell" in result:
+        result.setdefault("what_went_well", result.pop("whatWentWell"))
+    if "whatWentPoorly" in result:
+        result.setdefault("what_went_poorly", result.pop("whatWentPoorly"))
+    if "lessonsLearned" in result:
+        result.setdefault("lessons_learned", result.pop("lessonsLearned"))
+    if "correctiveActions" in result:
+        actions = result.pop("correctiveActions")
+        normalized_actions = []
+        for a in actions:
+            if isinstance(a, str):
+                normalized_actions.append({"description": a, "priority": "medium", "owner": None})
+            elif isinstance(a, dict):
+                normalized_actions.append({
+                    "description": a.get("description", a.get("action", "")),
+                    "priority": a.get("priority", "medium"),
+                    "owner": a.get("owner"),
+                })
+        result["corrective_actions"] = normalized_actions
+    if "timeline" in result:
+        timeline = result["timeline"]
+        normalized_timeline = []
+        for ev in timeline:
+            if isinstance(ev, dict):
+                normalized_timeline.append({
+                    "timestamp": ev.get("timestamp", ""),
+                    "actor": ev.get("actor", ""),
+                    "action": ev.get("action", ""),
+                })
+        result["timeline"] = normalized_timeline
+
+    return result
