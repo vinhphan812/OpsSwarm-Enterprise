@@ -265,6 +265,13 @@ class Orchestrator:
         self.store.save(run)
 
     async def _set_state(self, run: RunRecord, state: RunState):
+        prev_state = run.state
+        prev_time = getattr(run, "_state_entered_at", None)
+        now = time.monotonic()
+        if prev_state is not None and prev_time is not None:
+            duration = now - prev_time
+            metrics.record_transition(prev_state, state, duration)
+        run._state_entered_at = now
         run.transition(state, enforcement=self.state_enforcement)
         self.store.save(run)
         # Checkpoint state transition
@@ -278,6 +285,10 @@ class Orchestrator:
         if run.incident and run.incident.severity.startswith("SEV"):
             labels.append("sev:" + run.incident.severity[3:])
         await self.github.set_labels(run.issue_number, labels)
+        # ADR-015: Phase 2 RCA label
+        if state == RunState.PLAN_RCA:
+            rca_label = cfg.get("rca_label", "phase:rca")
+            await self.github.add_label(run.issue_number, rca_label)
 
     async def _budget_preflight(self, run: RunRecord, budget: RunBudget) -> bool:
         budget.wall_clock_seconds = budget.elapsed_seconds()
@@ -309,8 +320,18 @@ class Orchestrator:
         validate_task_graph(task_dicts, max_depth=budget_cfg["max_dependency_depth"])
 
     def _record_budget_snapshot(self, run: RunRecord, budget: RunBudget) -> None:
-        """Save current budget utilisation into the run record for evidence."""
+        """Save current budget utilisation into the run record for evidence
+        and publish to Prometheus gauges.
+        """
         run.budget_snapshot = budget.snapshot()
+        # Publish utilisation as Prometheus gauges
+        metrics.set_budget_utilization("tasks", budget.tasks_executed / max(budget.max_tasks, 1))
+        metrics.set_budget_utilization(
+            "execution_seconds", budget.wall_clock_seconds / max(budget.max_wall_clock_seconds, 1)
+        )
+        metrics.set_budget_utilization(
+            "openclaw_calls", budget.openclaw_calls / max(budget.max_openclaw_calls, 1)
+        )
 
     def _budget_for(self, run: RunRecord) -> RunBudget:
         if run.run_id not in self._active_budgets:
@@ -436,6 +457,7 @@ class Orchestrator:
                                                        run.human_inputs)
         await self._save(run, "S3.recovery_plan", run.recovery_plan.model_dump())
         action, reason = self.policy.classify_plan(run.recovery_plan)
+        metrics.record_policy_action(action)
         if action == "AUTO":
             option = run.recovery_plan.options[0];
             await self._execute_option(run, option);
@@ -548,24 +570,83 @@ class Orchestrator:
         await self._set_state(run, RunState.RESOLVED);
         metrics.record_run("resolved")
         await self.github.comment(run.issue_number, resolved(run));
-        await self.github.comment(run.issue_number, postmortem(run))
-        if self.cfg.get("create_corrective_issues", True) and run.root_cause:
-            budget = self._budget_for(run)
-            for action in run.root_cause.corrective_actions:
-                if not await self._budget_preflight(run, budget):
-                    return
-                budget.mark_corrective_action()
-                await self.github.create_issue(f"[OpsSwarm corrective] {action[:100]}",
-                                               f"Parent incident: #{run.issue_number}\n\n{action}",
-                                               ["opsswarm:corrective-action"])
         await self.github.close_issue(run.issue_number)
+        # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close.  RCA requires
+        # the verified Phase 1 prerequisites; legacy/recovery runs can resolve
+        # without an incident or root-cause artifact and must not crash here.
+        if self.cfg.get("rca_enabled", False) and run.incident and run.root_cause:
+            await self._plan_rca(run)
+        elif self.cfg.get("rca_enabled", False):
+            await self._set_state(run, RunState.PLAN_RCA_RESOLVED)
+            await self._save(run, "RCA.skipped", {"reason": "missing_phase_1_prerequisites"})
+
+    # ADR-015: Phase 2 — deferred RCA synthesis (Plan_RCA)
+    async def _plan_rca(self, run: RunRecord) -> None:
+        """Execute Phase 2: synthesize structured RCA report after incident resolution.
+
+        Runs after the incident is closed (RESOLVED). Produces a durable RCAReport
+        and files corrective-action issues. Budget is independent of Phase 1.
+        """
+        await self._set_state(run, RunState.PLAN_RCA)
+        main = self.profile("incident-manager")
+        rca_budget_cfg = self.cfg.get("rca_budget", {})
+        # Lightweight RCA budget: capped in wall-clock; token tracking uses the
+        # existing RunBudget.mark_openclaw_call() call above (shared counter).
+        rca_max_wall = rca_budget_cfg.get("max_wall_clock_seconds", 600)
+        rca_t0 = time.monotonic()
+
+        async def rca_budget_ok() -> bool:
+            elapsed = time.monotonic() - rca_t0
+            if elapsed >= rca_max_wall:
+                run.error = "RCA budget exhausted: wall-clock limit reached"
+                await self._set_state(run, RunState.ABORTED)
+                return False
+            return True
+
+        if not await rca_budget_ok():
+            return
+
+        budget = self._budget_for(run)
+        budget.mark_openclaw_call()
+        run.rca_report = await S.synthesize_rca(
+            self.oc, main, run.run_id, run.incident, run.root_cause,
+            run.findings, run.human_inputs
+        )
+        run.rca_budget_snapshot = {
+            "tokens_used": budget.tokens_used,
+            "wall_clock_seconds": round(time.monotonic() - rca_t0, 2),
+        }
+        await self._save(run, "RCA.rca_report", run.rca_report.model_dump())
+        await self._set_state(run, RunState.PLAN_RCA_RESOLVED)
+        # File corrective-action issues from the structured report
+        if self.cfg.get("create_corrective_issues", True) and run.rca_report:
+            for ca in run.rca_report.corrective_actions:
+                if not await rca_budget_ok():
+                    break
+                ca_desc = ca.get("description", "") if isinstance(ca, dict) else str(ca)
+                ca_priority = ca.get("priority", "medium") if isinstance(ca, dict) else "medium"
+                ca_owner = ca.get("owner") if isinstance(ca, dict) else None
+                issue_title = f"[OpsSwarm corrective] {ca_desc[:100]}"
+                issue_body = (
+                    f"**Priority:** {ca_priority}\n"
+                    f"**Owner:** {ca_owner or 'unassigned'}\n"
+                    f"**Parent incident:** #{run.issue_number}\n\n"
+                    f"{ca_desc}"
+                )
+                url = await self.github.create_issue(
+                    issue_title, issue_body, ["opsswarm:corrective-action"]
+                )
+                if isinstance(ca, dict):
+                    ca["ticket_url"] = url
+                    ca["status"] = "filed"
+        self.store.save(run)
 
     async def handle_comment(self, number: int, actor: str, body: str, permission: str, command,
                              comment_id: str | None = None, delivery_id: str | None = None):
         run = self.runs.get(number)
         if not run: return
         # Check terminal state: reject all commands if run is in terminal state
-        if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
+        if (run.state in TERMINAL_STATES or run.state == RunState.RESOLVED) and (command is None or command.name != "resume"):
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
@@ -731,6 +812,7 @@ class Orchestrator:
                 await self._save(run, "S6.capability_override", evidence_payload)
 
             if self.policy.action(effective_risk) == "DENY":
+                metrics.record_policy_action("DENY")
                 raise PermissionError(
                     "Policy denies this option regardless of human approval "
                     f"(effective risk: {effective_risk.value})"

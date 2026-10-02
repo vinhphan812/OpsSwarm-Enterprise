@@ -37,6 +37,9 @@ class RunState(str, Enum):
     RESOLVED = "RESOLVED"
     FAILED = "FAILED"
     ABORTED = "ABORTED"
+    # ADR-015 Phase 2 stubs — deferred RCA planning
+    PLAN_RCA = "PLAN_RCA"
+    PLAN_RCA_RESOLVED = "PLAN_RCA_RESOLVED"
 
 
 # Valid monotonic state transitions
@@ -80,7 +83,10 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
         RunState.ABORTED,
     },
     RunState.WAITING_INPUT: {RunState.DIAGNOSED, RunState.INVESTIGATING, RunState.ABORTED},
-    RunState.RESOLVED: set(),  # Terminal - no transitions out
+    RunState.RESOLVED: {
+        RunState.PLAN_RCA,           # ADR-015/ADR-016 Phase 2: kick off RCA
+        RunState.PLAN_RCA_RESOLVED,  # skip RCA when rca_enabled=false
+    },
     RunState.FAILED: {
         RunState.WAITING_APPROVAL,
         RunState.WAITING_DECISION,
@@ -89,10 +95,19 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
         RunState.ABORTED,
     },
     RunState.ABORTED: set(),  # Terminal - no transitions out
+    # ADR-015 Phase 2 stubs
+    RunState.PLAN_RCA: {RunState.PLAN_RCA_RESOLVED, RunState.ABORTED},
+    RunState.PLAN_RCA_RESOLVED: set(),  # Terminal
 }
 
 # Terminal states - no further transitions allowed
-TERMINAL_STATES: set[RunState] = {RunState.RESOLVED, RunState.FAILED, RunState.ABORTED}
+# ADR-015: PLAN_RCA_RESOLVED is terminal (RCA phase complete); RESOLVED alone is not
+# terminal when rca_enabled=true because PLAN_RCA/PLAN_RCA_RESOLVED are valid exits.
+TERMINAL_STATES: set[RunState] = {
+    RunState.FAILED,
+    RunState.ABORTED,
+    RunState.PLAN_RCA_RESOLVED,
+}
 
 
 class Risk(str, Enum):
@@ -353,6 +368,70 @@ class ExecutionResult(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
 
 
+class RemediationExecutionKind(str, Enum):
+    """Remediation execution modes supported by the governed branch/PR subflow."""
+
+    # Agent applies the fix directly (via OpenClaw), then opens PR.
+    OPENCLAW_APPLIED = "openclaw_applied"
+
+    # Human applies the fix outside OpsSwarm; agent opens PR only.
+    HUMAN_APPLIED = "human_applied"
+
+
+class BranchRef(BaseModel):
+    """Git branch created as part of a governed remediation."""
+
+    name: str
+    base_ref: str = "main"
+    sha: str | None = None  # populated after creation
+
+
+class PullRequestRef(BaseModel):
+    """GitHub Pull Request opened as part of a governed remediation."""
+
+    number: int | None = None
+    url: str | None = None
+    title: str = ""
+    body: str = ""
+    draft: bool = True
+    state: str | None = None  # open / closed / merged
+    checks_passed: bool | None = None
+    mergeable: bool | None = None
+
+
+class RemediationExecution(BaseModel):
+    """Governed service/code remediation execution (ADR-014 / #44).
+
+    Tracks the full branch → PR → CI → human-approval → merge → deploy cycle.
+    Lives alongside the plain :class:`ExecutionResult` in :class:`RunRecord`
+    so the existing S5 path remains untouched until the two-phase plan ADR
+    integrates it.
+    """
+
+    option_id: str
+    kind: RemediationExecutionKind
+
+    # Lifecycle fields
+    branch: BranchRef | None = None
+    pr: PullRequestRef | None = None
+    ci_passed: bool = False
+    human_approved: bool = False
+    approved_by: str | None = None
+    merged: bool = False
+    deployed: bool = False
+
+    # Error / abort
+    error: str | None = None
+    aborted: bool = False
+
+    # Evidence of each step
+    evidence: list[str] = Field(default_factory=list)
+
+    def is_terminal(self) -> bool:
+        """Return True when the subflow has reached a final state."""
+        return self.merged or self.deployed or self.error is not None or self.aborted
+
+
 class VerificationResult(BaseModel):
     verified: bool
     summary: str
@@ -361,6 +440,43 @@ class VerificationResult(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
     # S7 veto: if True, abort instead of fail on verification failure
     abort: bool = False
+
+
+class RCAReport(BaseModel):
+    """Structured RCA and postmortem record (ADR-015: Plan_RCA).
+
+    Produced in Phase 2 after the incident has been verified as resolved.
+    Captures the full causal analysis and lessons learned separate from
+    the immediate service-restoration plan (Phase 1, RecoveryPlan).
+    """
+    run_id: str = ""
+    issue_number: int = 0
+    proximate_cause: str = ""
+    root_cause: str = ""
+    causal_chain: list[str] = Field(default_factory=list)
+    contributing_factors: list[str] = Field(default_factory=list)
+    what_went_well: list[str] = Field(default_factory=list)
+    what_went_poorly: list[str] = Field(default_factory=list)
+    timeline: list[dict] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    corrective_actions: list[dict] = Field(default_factory=list)
+    lessons_learned: str = ""
+    confidence: float = 0.0
+
+    @classmethod
+    def from_root_cause(cls, rc: RootCauseArtifact) -> "RCAReport":
+        """Convert a RootCauseArtifact into an RCAReport (Phase-2 adapter)."""
+        return cls(
+            run_id="",
+            issue_number=0,
+            proximate_cause=rc.proximate_cause,
+            root_cause=rc.root_cause,
+            causal_chain=rc.causal_chain,
+            evidence_refs=rc.evidence_refs,
+            confidence=rc.confidence,
+            corrective_actions=[{"description": a, "priority": "medium", "owner": None}
+                               for a in rc.corrective_actions],
+        )
 
 
 class RunRecord(BaseModel):
@@ -379,6 +495,9 @@ class RunRecord(BaseModel):
     verification: VerificationResult | None = None
     human_inputs: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
+    # ADR-015: Phase 2 — structured RCA report and dedicated budget
+    rca_report: RCAReport | None = None
+    rca_budget_snapshot: dict | None = None
     # Checkpoint fields for run recovery (ADR-009-3)
     checkpoint_state: str | None = None
     last_checkpoint_at: datetime | None = None
@@ -457,12 +576,19 @@ class RunRecord(BaseModel):
             self.updated_at = utc_now()
             return
 
-        # Check terminal state first
+        # Check terminal state: prevent transitions out of states with no valid exits.
+        # RESOLVED allows PLAN_RCA/PLAN_RCA_RESOLVED (ADR-015), so it is only
+        # fully terminal when the outgoing transition is not in VALID_TRANSITIONS.
         if self.state in TERMINAL_STATES:
+            # Allow the transition if it is explicitly listed as valid
+            if new_state in VALID_TRANSITIONS.get(self.state, set()):
+                self.state = new_state
+                self.updated_at = utc_now()
+                return
             error_msg = f"Cannot transition from terminal state {self.state.value}"
             if enforcement == "strict":
                 raise InvalidStateTransition(self.state, new_state)
-            # Audit mode: log warning but allow transition for backward compatibility
+            # Audit mode: log warning but allow for backward compatibility
             logger.warning(f"[AUDIT] {error_msg} (enforcement={enforcement})")
             self.state = new_state
             self.updated_at = utc_now()

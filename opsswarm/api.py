@@ -75,6 +75,12 @@ async def health():
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])
 async def get_metrics():
+    # Refresh active-runs gauge before rendering so /metrics reflects current state
+    state_counts: dict[str, int] = {}
+    for run in engine.runs.values():
+        sv = run.state.value if run.state else "UNKNOWN"
+        state_counts[sv] = state_counts.get(sv, 0) + 1
+    metrics.set_active_runs(state_counts)
     return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
 
 
