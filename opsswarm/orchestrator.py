@@ -571,9 +571,14 @@ class Orchestrator:
         metrics.record_run("resolved")
         await self.github.comment(run.issue_number, resolved(run));
         await self.github.close_issue(run.issue_number)
-        # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close
-        if self.cfg.get("rca_enabled", True):
+        # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close.  RCA requires
+        # the verified Phase 1 prerequisites; legacy/recovery runs can resolve
+        # without an incident or root-cause artifact and must not crash here.
+        if self.cfg.get("rca_enabled", False) and run.incident and run.root_cause:
             await self._plan_rca(run)
+        elif self.cfg.get("rca_enabled", False):
+            await self._set_state(run, RunState.PLAN_RCA_RESOLVED)
+            await self._save(run, "RCA.skipped", {"reason": "missing_phase_1_prerequisites"})
 
     # ADR-015: Phase 2 — deferred RCA synthesis (Plan_RCA)
     async def _plan_rca(self, run: RunRecord) -> None:
@@ -641,7 +646,7 @@ class Orchestrator:
         run = self.runs.get(number)
         if not run: return
         # Check terminal state: reject all commands if run is in terminal state
-        if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
+        if (run.state in TERMINAL_STATES or run.state == RunState.RESOLVED) and (command is None or command.name != "resume"):
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
