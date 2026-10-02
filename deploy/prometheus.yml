@@ -1,0 +1,52 @@
+# Prometheus scrape configuration for OpsSwarm Enterprise
+#
+# Scrape the /metrics endpoint protected by opsswarm:admin bearer auth.
+# Set the following environment variables on the prometheus host:
+#   OPSWARM_RUNTIME_SECRET  — HMAC secret shared between Prometheus and OpsSwarm
+#   OPSWARM_API_KEY_ADMIN   — static admin bearer token (alternative to HMAC)
+#
+# Usage:
+#   prometheus --config.file=deploy/prometheus.yml
+#
+# For static token auth, generate a token with:
+#   python -c "from opsswarm.auth import make_admin_token; \\
+#              print(make_admin_token('your-secret'))"
+# and set it as the Authorization header below.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "opsswarm"
+    scrape_interval: 30s
+    static_configs:
+      - targets:
+          - "localhost:8000"
+    metrics_path: "/metrics"
+    scheme: "http"
+    # Bearer authentication — use ONE of the two auth blocks below.
+    #
+    # Option A: static bearer token (simpler, rotate via env var)
+    # Set OPSWARM_API_KEY_ADMIN in the OpsSwarm environment.
+    authorization:
+      type: Bearer
+      credentials: "${OPSWARM_API_KEY_ADMIN}"
+
+    # Option B: HMAC-signed request (recommended for production)
+    # Generate the Authorization header dynamically via a relabelling rule
+    # or an auth_server / custom_http_config that signs with OPSWARM_RUNTIME_SECRET.
+    # Uncomment and configure your signing tool:
+    #
+    # tls_config:
+    #   insecure_skip_verify: false
+    # custom_http_config: |
+    #   http_server_config:
+    #     tls_config:
+    #       cert_file: /path/to/tls.crt
+    #       key_file:  /path/to/tls.key
+
+  # Optional: scrape Prometheus itself for self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
