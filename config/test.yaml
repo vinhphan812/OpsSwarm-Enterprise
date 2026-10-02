@@ -48,3 +48,26 @@ persistence:
   enable_state_enforcement: true  # strict in tests
   enable_checkpoints: true
   enable_atomic_writes: true
+
+observability:
+  metrics:
+    histogram_buckets_seconds:
+      - 0.1
+      - 0.5
+      - 1.0
+      - 5.0
+      - 10.0
+      - 30.0
+      - 60.0
+      - 120.0
+    scrape_path: /metrics
+    scrape_interval_seconds: 30
+  correlation:
+    header_name: X-Corr-ID
+    response_headers:
+      - X-Corr-ID
+      - X-Request-ID
+  logging:
+    level: INFO
+    format: structured_json
+    corr_id_context: true

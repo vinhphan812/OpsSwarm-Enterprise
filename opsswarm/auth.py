@@ -244,6 +244,34 @@ def generate_bearer_token(
     return f"{scope}={mac}"
 
 
+def make_admin_token(
+    secret: str,
+    method: str = "GET",
+    path: str = "/metrics",
+    timestamp: int | None = None,
+) -> str:
+    """Convenience: generate an ``opsswarm:admin`` bearer token.
+
+    Thin wrapper around :func:`generate_bearer_token` that fixes the scope
+    to ``opsswarm:admin``.  Intended for CI / operator scripts and tests.
+    """
+    return generate_bearer_token(SCOPE_ADMIN, secret, method, path, timestamp)
+
+
+def make_read_token(
+    secret: str,
+    method: str = "GET",
+    path: str = "/runs",
+    timestamp: int | None = None,
+) -> str:
+    """Convenience: generate an ``opsswarm:read`` bearer token.
+
+    Thin wrapper around :func:`generate_bearer_token` that fixes the scope
+    to ``opsswarm:read``.  Intended for CI / operator scripts and tests.
+    """
+    return generate_bearer_token(SCOPE_READ, secret, method, path, timestamp)
+
+
 def verify_bearer_hmac(
     token_scope: str,
     token_hmac_hex: str,
