@@ -389,13 +389,13 @@ class TestReconciliationGapDetection:
 class TestTerminalStateMonotonicity:
     """Test Case 4: Terminal-state uniqueness/monotonicity under concurrent sequences.
 
-    Verifies that terminal states (RESOLVED, FAILED, ABORTED) are unique
-    and transitions to them are monotonic (can't go back).
+    Verifies that terminal states (PLAN_RCA_RESOLVED, FAILED, ABORTED)
+    are unique and transitions to them are monotonic (can't go back).
     """
 
     def test_terminal_states_are_terminal(self):
         """Terminal states should be in TERMINAL_STATES set."""
-        assert RunState.RESOLVED in TERMINAL_STATES
+        assert RunState.PLAN_RCA_RESOLVED in TERMINAL_STATES
         assert RunState.FAILED in TERMINAL_STATES
         assert RunState.ABORTED in TERMINAL_STATES
 
@@ -406,11 +406,10 @@ class TestTerminalStateMonotonicity:
 
     def test_terminal_state_transition_validation(self):
         """Cannot transition FROM terminal states (monotonicity)."""
-        # RESOLVED is terminal - no valid transitions out
+        # RESOLVED is an intermediate ADR-015 phase state; RCA completion is terminal.
         allowed_from_resolved = VALID_TRANSITIONS.get(RunState.RESOLVED, set())
-        assert len(allowed_from_resolved) == 0, (
-            f"RESOLVED should have no transitions, got {allowed_from_resolved}"
-        )
+        assert RunState.PLAN_RCA in allowed_from_resolved
+        assert RunState.PLAN_RCA_RESOLVED in allowed_from_resolved
 
         # ABORTED is terminal - no valid transitions out
         allowed_from_aborted = VALID_TRANSITIONS.get(RunState.ABORTED, set())
