@@ -79,7 +79,7 @@ class TestEvidenceAppendWithIdempotency:
 
     def test_append_duplicate_based_on_payload_signature(self, tmp_path):
         """Duplicate detection is based on payload signature (sig_payload), not event_id.
-        
+
         Two appends with different event_ids but the same payload are detected as duplicates.
         """
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)

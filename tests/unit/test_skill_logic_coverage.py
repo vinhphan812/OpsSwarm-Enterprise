@@ -89,7 +89,7 @@ def test_redact_dict_list_with_mixed_types():
 @pytest.mark.asyncio
 async def test_build_tasks_generic_exception():
     """Lines 68-70: non-ValidationError exceptions in the try block return [].
-    
+
     Patch Task.model_validate (inside the try block) to raise a
     non-ValidationError so it hits the generic except Exception handler.
     """
@@ -272,7 +272,7 @@ async def test_make_extra_task_generic_exception():
 @pytest.mark.asyncio
 async def test_synthesize_rca_generic_exception():
     """Lines 301-306: non-ValidationError exceptions return safe RCAReport fallback.
-    
+
     Patch _normalize_rca_report (called inside the try block) to raise
     RuntimeError — this hits the generic except Exception handler (not
     ValidationError) and exercises the safe fallback.
