@@ -281,62 +281,83 @@ class EvidenceStore:
 
         last_sig = "GENESIS"
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
-            if line.strip():
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError as e:
-                    self._corrupt_count += 1
-                    logger.error(
-                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
-                    )
-                    _m = _get_metrics()
-                    if _m is not None:
-                        _m.record_evidence_failure("corrupt")
-                    corrupt_path = self.path / f"{run_id}.corrupt"
-                    with corrupt_path.open("a", encoding="utf-8") as cf:
-                        cf.write(line + "\n")
-                    raise MalformedEvidenceError(
-                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
-                    ) from e
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as e:
+                # ADR-009-1 tolerant mode: continue on malformed JSONL rows instead of
+                # raising MalformedEvidenceError.  The corrupt line is written to a
+                # .corrupt sidecar for manual forensics, and chain processing resumes
+                # from the last valid signature.
+                self._corrupt_count += 1
+                logger.warning(
+                    "[ADR-009-1] Malformed JSONL row in evidence for run %s at line %d "
+                    "-- written to .corrupt sidecar; chain resumes from last valid signature",
+                    run_id,
+                    i + 1,
+                    extra={"adr": "ADR-009-1", "run_id": run_id, "line": i + 1},
+                )
+                _m = _get_metrics()
+                if _m is not None:
+                    _m.record_evidence_failure("corrupt")
+                corrupt_path = self.path / f"{run_id}.corrupt"
+                with corrupt_path.open("a", encoding="utf-8") as cf:
+                    cf.write(line + "\n")
+                # Chain continuity is preserved: last_sig is unchanged so subsequent
+                # valid records are still verified correctly.
+                continue
 
-                kind = rec.get("kind", "")
-                payload = rec.get("payload", {})
+            kind = rec.get("kind", "")
+            payload = rec.get("payload", {})
 
-                # Re-derive payload signature for deduplication index
-                sig_payload = self._signature(kind, payload)
-                self._index[run_id].add(sig_payload)
+            # Re-derive payload signature for deduplication index
+            sig_payload = self._signature(kind, payload)
+            self._index[run_id].add(sig_payload)
 
-                # Independently verify the stored chained signature rather than
-                # blindly trusting it (discussion_r4111809761).  If the recomputed
-                # signature does not match the stored one the chain is broken,
-                # which means the record was tampered or truncated; raise so the
-                # caller can treat the audit trail as untrusted.
-                #
-                # STRICT validation: reject records where signature is missing,
-                # empty string, or non-string.  Never silently accept unverified
-                # records (C-01 fix).
-                stored_sig = rec.get("signature")
-                if not isinstance(stored_sig, str) or not stored_sig:
-                    raise MalformedEvidenceError(
-                        f"Evidence record missing or invalid signature for run {run_id} "
-                        f"at line {i + 1}: signature must be a non-empty string, "
-                        f"got {type(stored_sig).__name__ if stored_sig is not None else 'None'!r}"
-                    )
-                recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=last_sig)
-                if stored_sig != recomputed_sig:
-                    logger.error(
-                        "Evidence chain verification failed for run %s at line %d "
-                        "(stored=%s, recomputed=%s)",
-                        run_id,
-                        i + 1,
-                        stored_sig,
-                        recomputed_sig,
-                    )
-                    raise MalformedEvidenceError(
-                        f"Evidence chain broken for run {run_id} at line {i + 1}: "
-                        f"stored signature does not match recomputed value"
-                    )
-                last_sig = stored_sig
+            # Independently verify the stored chained signature rather than
+            # blindly trusting it (discussion_r4111809761).  If the recomputed
+            # signature does not match the stored one the chain is broken,
+            # which means the record was tampered or truncated; raise so the
+            # caller can treat the audit trail as untrusted.
+            #
+            # STRICT validation: reject records where signature is missing,
+            # empty string, or non-string.  Never silently accept unverified
+            # records (C-01 fix).
+            stored_sig = rec.get("signature")
+            if not isinstance(stored_sig, str) or not stored_sig:
+                # ADR-009-1 tolerant mode: record has no chainable signature; skip it
+                # but log a warning and write to .corrupt sidecar so it is preserved.
+                self._corrupt_count += 1
+                logger.warning(
+                    "[ADR-009-1] Evidence record missing or invalid signature for run %s "
+                    "at line %d -- signature must be a non-empty string, got %s; "
+                    "written to .corrupt sidecar",
+                    run_id,
+                    i + 1,
+                    type(stored_sig).__name__ if stored_sig is not None else "None",
+                    extra={"adr": "ADR-009-1", "run_id": run_id, "line": i + 1},
+                )
+                corrupt_path = self.path / f"{run_id}.corrupt"
+                with corrupt_path.open("a", encoding="utf-8") as cf:
+                    cf.write(line + "\n")
+                # Chain resumes from the last valid last_sig.
+                continue
+            recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=last_sig)
+            if stored_sig != recomputed_sig:
+                logger.error(
+                    "Evidence chain verification failed for run %s at line %d "
+                    "(stored=%s, recomputed=%s)",
+                    run_id,
+                    i + 1,
+                    stored_sig,
+                    recomputed_sig,
+                )
+                raise MalformedEvidenceError(
+                    f"Evidence chain broken for run {run_id} at line {i + 1}: "
+                    f"stored signature does not match recomputed value"
+                )
+            last_sig = stored_sig
         self._last_signature[run_id] = last_sig
 
     def get_duplicate_count(self) -> int:
@@ -363,17 +384,25 @@ class EvidenceStore:
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError as exc:
+                # ADR-009-1 tolerant mode: continue on malformed JSONL rows instead
+                # of raising MalformedEvidenceError.  Write the corrupt line to a
+                # .corrupt sidecar and resume chain processing.
                 self._corrupt_count += 1
-                logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                logger.warning(
+                    "[ADR-009-1] Malformed JSONL row in evidence for run %s at line %d "
+                    "-- written to .corrupt sidecar; chain resumes from last valid signature",
+                    run_id,
+                    i + 1,
+                    extra={"adr": "ADR-009-1", "run_id": run_id, "line": i + 1},
+                )
                 _m = _get_metrics()
                 if _m is not None:
                     _m.record_evidence_failure("corrupt")
                 corrupt_path = self.path / f"{run_id}.corrupt"
                 with corrupt_path.open("a", encoding="utf-8") as cf:
                     cf.write(line + "\n")
-                raise MalformedEvidenceError(
-                    f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
-                ) from exc
+                # Chain continuity is preserved; prev_sig is unchanged.
+                continue
 
             # C-02: re-derive chained signature and verify before returning
             kind = rec.get("kind", "")
@@ -382,11 +411,23 @@ class EvidenceStore:
 
             # STRICT: reject missing / non-string signatures (consistent with C-01)
             if not isinstance(stored_sig, str) or not stored_sig:
-                raise MalformedEvidenceError(
-                    f"Evidence record missing or invalid signature for run {run_id} "
-                    f"at line {i + 1}: signature must be a non-empty string, "
-                    f"got {type(stored_sig).__name__ if stored_sig is not None else 'None'!r}"
+                # ADR-009-1 tolerant mode: skip records without a chainable signature,
+                # log a warning, and write to .corrupt sidecar.
+                self._corrupt_count += 1
+                logger.warning(
+                    "[ADR-009-1] Evidence record missing or invalid signature for run %s "
+                    "at line %d -- signature must be a non-empty string, got %s; "
+                    "written to .corrupt sidecar",
+                    run_id,
+                    i + 1,
+                    type(stored_sig).__name__ if stored_sig is not None else "None",
+                    extra={"adr": "ADR-009-1", "run_id": run_id, "line": i + 1},
                 )
+                corrupt_path = self.path / f"{run_id}.corrupt"
+                with corrupt_path.open("a", encoding="utf-8") as cf:
+                    cf.write(line + "\n")
+                # Chain resumes from the last valid prev_sig.
+                continue
 
             recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
             if stored_sig != recomputed_sig:

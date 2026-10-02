@@ -231,8 +231,8 @@ class TestEvidenceAdditionalCoverage:
         # Metrics recorded
         mock_m.record_evidence_failure.assert_called_once_with("duplicate")
 
-    def test_load_existing_signatures_corrupt_json_raises(self, tmp_path):
-        """Lines 287-300: corrupt JSONL raises MalformedEvidenceError."""
+    def test_load_existing_signatures_tolerates_corrupt_json(self, tmp_path):
+        """ADR-009-1: corrupt JSONL is tolerated with .corrupt sidecar."""
         from opsswarm.evidence import MalformedEvidenceError
 
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=False)
@@ -241,8 +241,10 @@ class TestEvidenceAdditionalCoverage:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("not valid json\n", encoding="utf-8")
 
-        with pytest.raises(MalformedEvidenceError, match="Malformed JSONL row"):
-            ev._load_existing_signatures(run_id)
+        # ADR-009-1 tolerant: no exception, corrupt written to .corrupt sidecar
+        ev._load_existing_signatures(run_id)
+        corrupt = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt.exists()
 
     def test_get_metrics_returns_none_when_unavailable(self, tmp_path):
         """Lines 27-31: _get_metrics returns None when metrics is unavailable."""
