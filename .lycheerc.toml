@@ -1,0 +1,31 @@
+# Lychee configuration for docs-linkcheck CI job
+# See: https://github.com/lycheeverse/lychee
+
+cache = ".lychee-cache"
+max-cache-age = "1d"
+
+[lint]
+  exclude_private = true
+  exclude_external = false
+
+# Retry transient failures (rate-limited, timeout)
+max_concurrency = 8
+max_redirect = 5
+max_retries = 3
+  [lint.delay]
+    initial = 1.0
+
+# Treat these HTTP statuses as failures (lychee defaults are 400, 500-999)
+[filter]
+  status = [">=400"]
+
+# Ignore these URLs (use with care; prefer fixing the link instead)
+[ignore]
+  urls = [
+    # Placeholder for URLs known to be flaky in CI
+    # "https://some-unreliable-service.example.com",
+  ]
+
+# Custom headers sent with every request (e.g. auth for internal docs)
+[headers]
+  # Accept: "text/html, application/xhtml+xml"
