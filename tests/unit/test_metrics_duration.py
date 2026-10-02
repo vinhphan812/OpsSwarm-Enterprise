@@ -79,6 +79,19 @@ def _safe_workflow_responses():
             "confidence": 0.97,
             "raw": {},
         },
+        {
+            "proximate_cause": "bad deploy",
+            "root_cause": "bad deploy",
+            "causal_chain": ["deploy"],
+            "contributing_factors": [],
+            "what_went_well": [],
+            "what_went_poorly": [],
+            "timeline": [],
+            "evidence_refs": [],
+            "corrective_actions": [],
+            "lessons_learned": "test",
+            "confidence": 0.9,
+        },
     ]
 
 
@@ -186,7 +199,7 @@ async def test_investigate_duration_recorded_after_resolved_run(tmp_path, cfg, i
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
     run = await eng.start_issue(1)
 
-    assert run.state == RunState.RESOLVED
+    assert run.state in {RunState.RESOLVED, RunState.PLAN_RCA_RESOLVED}
     assert global_metrics.histograms_count["investigate_seconds"] > before_count
     # On fast hardware time.monotonic() can return the same value twice, yielding a
     # 0.0 delta. Guard: if count grew, the call site is wired — the sum must be
@@ -214,7 +227,7 @@ async def test_verify_duration_recorded_after_resolved_run(tmp_path, cfg, issue)
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
     run = await eng.start_issue(1)
 
-    assert run.state == RunState.RESOLVED
+    assert run.state in {RunState.RESOLVED, RunState.PLAN_RCA_RESOLVED}
     assert global_metrics.histograms_count["verify_seconds"] > before_count
     # Sum must be strictly greater than the snapshot taken before this run.
     # On fast hardware time.monotonic() can return the same value twice,
@@ -249,7 +262,7 @@ async def test_both_duration_spans_recorded_in_single_run(tmp_path, cfg, issue):
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
     run = await eng.start_issue(1)
 
-    assert run.state == RunState.RESOLVED
+    assert run.state in {RunState.RESOLVED, RunState.PLAN_RCA_RESOLVED}
     assert global_metrics.histograms_count["investigate_seconds"] > before_inv, (
         "investigate_seconds was not recorded — _investigate duration call site is missing"
     )

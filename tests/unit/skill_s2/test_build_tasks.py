@@ -404,8 +404,9 @@ async def test_s2_f2_missing_required_fields():
     fake_response = {"tasks": [{"id": "T1"}]}  # Missing type, objective, profile
     oc = make_fake_oc(fake_response)
 
-    with pytest.raises(Exception):  # Pydantic validation error
-        await build_tasks(oc, "agent", "run-1", incident)
+    # Invalid structured output fails closed rather than escaping as an exception.
+    result = await build_tasks(oc, "agent", "run-1", incident)
+    assert result == []
 
 
 @pytest.mark.unit
@@ -421,8 +422,8 @@ async def test_s2_f3_invalid_task_type():
     }
     oc = make_fake_oc(fake_response)
 
-    with pytest.raises(Exception):
-        await build_tasks(oc, "agent", "run-1", incident)
+    result = await build_tasks(oc, "agent", "run-1", incident)
+    assert result == []
 
 
 @pytest.mark.unit
@@ -446,8 +447,8 @@ async def test_s2_f4_invalid_risk_value():
     }
     oc = make_fake_oc(fake_response)
 
-    with pytest.raises(Exception):
-        await build_tasks(oc, "agent", "run-1", incident)
+    result = await build_tasks(oc, "agent", "run-1", incident)
+    assert result == []
 
 
 @pytest.mark.unit

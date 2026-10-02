@@ -181,7 +181,7 @@ class ReconciliationManager:
         non_terminal = []
 
         for run in all_runs:
-            if run.state not in TERMINAL_STATES:
+            if run.state not in TERMINAL_STATES and run.state != RunState.RESOLVED:
                 non_terminal.append(run)
                 logger.info(f"Found non-terminal run {run.run_id} in state {run.state.value}")
             else:
