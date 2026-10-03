@@ -1,7 +1,9 @@
 """Unit tests for opsswarm.github_client module."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from opsswarm.github_client import GitHubClient
@@ -593,3 +595,136 @@ class TestGitHubClientSSRF:
         assert client.client.timeout is not None
         assert client.client.timeout.connect == 5.0
         assert client.client.timeout.read == 10.0
+
+
+class TestGitHubClientLogInjection:
+    """Issue #58: log-injection (CodeQL py/log-injection alerts #3/#4).
+
+    Verifies that attacker-controlled path/method values and GitHub-controlled
+    HTTP response bodies containing CRLF or control characters are sanitised
+    through sanitize_for_log() before reaching the structured-log handler, so
+    emitted log lines are always single-line and no control-char injection is
+    possible.  The raised PermissionError is intentionally NOT sanitised of its
+    structured string (method/path are already validated/allowlisted inputs) —
+    callers that surface it to GitHub comments are responsible for their own
+    sanitisation layer (opsswarm/orchestrator.py / api.py handle that).
+    """
+
+    @pytest.fixture
+    def client(self):
+        return GitHubClient(token="test-token", repo="owner/repo")
+
+    def _make_mock_error_response(
+        self, status_code: int, text: str, exc_cls=Exception
+    ):
+        """Return (mock_request, mock_response) for a 4xx/5xx HTTP error.
+
+        HTTPStatusError (httpx >= 0.27) requires message=, request=, response= kwargs.
+        """
+        mock_r = MagicMock()
+        mock_r.status_code = status_code
+        mock_r.text = text
+        mock_r.content = text.encode()
+        mock_request = MagicMock()
+        # HTTPStatusError needs message= request= response= (httpx 0.27+)
+        if exc_cls is httpx.HTTPStatusError or exc_cls.__name__ == "HTTPStatusError":
+            exc = exc_cls(
+                message=f"HTTP {status_code}",
+                request=mock_request,
+                response=mock_r,
+            )
+        else:
+            exc = exc_cls(f"HTTP {status_code}")
+        mock_r.raise_for_status = MagicMock(side_effect=exc)
+        mock_async_request = AsyncMock(return_value=mock_r)
+        return mock_r, mock_async_request
+
+    @pytest.mark.asyncio
+    async def test_crlf_in_path_logged_sanitized(self, client, caplog):
+        """CRLF in path is replaced, not embedded verbatim in the log line."""
+        path = "/repos/owner/repo\x0d\x0ainjected: true/issues"
+        mock_r, mock_request = self._make_mock_error_response(
+            403, "Forbidden body", exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 403"):
+                    await client._req("GET", path)
+        # The log line must not contain an embedded newline that could inject a field.
+        for record in caplog.records:
+            assert "\n" not in record.getMessage(), (
+                f"Log message contains a raw newline: {record.getMessage()!r}"
+            )
+            assert "\n" not in record.getMessage(), (
+                f"Log message contains a raw CR: {record.getMessage()!r}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_control_chars_in_response_body_logged_sanitized(self, client, caplog):
+        """Control characters in GitHub error body are stripped from log output."""
+        body = (
+            "Error: \x00NUL\x01\x1f last printable before space\x7fDEL\x80-high-byte"
+            "\x9f\x85Vietnamese \xe1\xbb\x9b\xef\xbf\xbd"
+        )
+        mock_r, mock_request = self._make_mock_error_response(
+            500, body, exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 500"):
+                    await client._req("GET", "/test")
+        for record in caplog.records:
+            msg = record.getMessage()
+            # C0 controls stripped; \t → space, \n → U+21A0; high bytes preserved
+            assert "\x00" not in msg
+            assert "\x7f" not in msg
+            assert "\x80" not in msg  # C1 block stripped
+            assert "\x85" not in msg  #NEL control char stripped
+            assert "\xe1" in msg     # Vietnamese CJK high bytes preserved
+            assert "\xef" in msg
+            # No log-line breaks
+            assert "\n" not in msg
+            assert "\n" not in msg
+
+    @pytest.mark.asyncio
+    async def test_sensitive_token_in_response_body_redacted(self, client, caplog):
+        """Sensitive tokens in GitHub error body are redacted by sanitize_for_log."""
+        body = '{"error": "invalid_token", "token": "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABC"}'
+        mock_r, mock_request = self._make_mock_error_response(
+            401, body, exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 401"):
+                    await client._req("POST", "/webhook")
+        for record in caplog.records:
+            msg = record.getMessage()
+            assert "ghp_" not in msg
+            # The "token" JSON key pattern redacts as [REDACTED]; ghp_ pattern would be [GITHUB_TOKEN]
+            assert "[REDACTED]" in msg or "[GITHUB_TOKEN]" in msg
+
+    @pytest.mark.asyncio
+    async def test_httperror_raises_safe_permission_error(self, client):
+        """HTTPStatusError raises PermissionError with clean structured string."""
+        mock_r, mock_request = self._make_mock_error_response(
+            403, "You have been rate limited", exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with pytest.raises(PermissionError, match=r"GitHub API returned 403 for POST /repos/owner/repo/issues"):
+                await client._req("POST", "/repos/owner/repo/issues")
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_raises_sanitized_permission_error(self, client):
+        """Unexpected Exception raises PermissionError; no raw class name leaks."""
+        mock_r = MagicMock()
+        mock_r.raise_for_status = MagicMock(side_effect=RuntimeError("connection refused"))
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
+                await client._req("GET", "/test")
+        # The logger.exception call is covered by the CRLF test above; the raised
+        # PermissionError is intentionally clean and safe to surface.

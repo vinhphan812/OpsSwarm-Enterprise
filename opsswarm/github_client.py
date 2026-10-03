@@ -6,6 +6,10 @@ from typing import Any
 
 import httpx
 
+from .errors import sanitize_for_log
+
+import logging
+
 logger = logging.getLogger(__name__)
 
 # ADR-028: SSRF mitigation — only these base URLs are permitted.
@@ -72,8 +76,8 @@ class GitHubClient:
             logger.error(
                 "GitHub API HTTP error: status=%s path=%s detail=%s",
                 e.response.status_code,
-                path,
-                e.response.text[:500],
+                sanitize_for_log(path),
+                sanitize_for_log(e.response.text[:500]),
             )
             raise PermissionError(
                 f"GitHub API returned {e.response.status_code} for {method} {path}"
@@ -81,7 +85,11 @@ class GitHubClient:
         except PermissionError:
             raise  # already sanitized
         except Exception as e:
-            logger.exception("GitHub API unexpected error: method=%s path=%s", method, path)
+            logger.exception(
+                "GitHub API unexpected error: method=%s path=%s",
+                sanitize_for_log(method),
+                sanitize_for_log(path),
+            )
             raise PermissionError(f"GitHub API request failed for {method} {path}") from None
 
     async def get_issue(self, number: int):
