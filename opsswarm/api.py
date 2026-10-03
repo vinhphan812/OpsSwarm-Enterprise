@@ -21,6 +21,7 @@ from .commands import parse_command
 from .config import load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import GitHubClient
+from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
@@ -52,6 +53,19 @@ engine = Orchestrator(cfg, gh, oc, os.environ.get("OPSWARM_DATA_DIR", "runtime-d
 app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
 
 
+@app.middleware("http")
+async def correlation_middleware(request: Request, call_next):
+    """Bind a correlation ID for one request and expose it in the response."""
+    correlation_id = request.headers.get("X-Correlation-ID") or new_correlation_id()
+    token = set_corr_id(correlation_id)
+    try:
+        response = await call_next(request)
+    finally:
+        reset_corr_id(token)
+    response.headers["X-Correlation-ID"] = correlation_id
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Lifespan: fail-closed production startup check (ADR-014 D4)
 # ---------------------------------------------------------------------------
@@ -59,6 +73,8 @@ app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
 
 @app.on_event("startup")
 async def _startup_auth_check():
+    from .logging_config import setup_logging
+    setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
 
@@ -81,6 +97,14 @@ async def get_metrics():
         sv = run.state.value if run.state else "UNKNOWN"
         state_counts[sv] = state_counts.get(sv, 0) + 1
     metrics.set_active_runs(state_counts)
+    # Log the scrape with the correlation ID for traceability
+    logger.info(
+        "Metrics scraped",
+        extra={
+            "run_count": len(engine.runs),
+            "state_counts": state_counts,
+        },
+    )
     return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
 
 

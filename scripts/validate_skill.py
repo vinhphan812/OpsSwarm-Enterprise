@@ -172,7 +172,7 @@ def collect_test_evidence(skill_id: str) -> tuple[list[dict[str, Any]], list[str
             source = test_file.read_text(encoding="utf-8")
             tree = ast.parse(source, filename=str(test_file))
             for node in ast.walk(tree):
-                if isinstance(node, ast.FunctionDef):
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     # Collect marker names from both ast.Name (bare @normal)
                     # and ast.Attribute (@pytest.mark.normal) decorators.
                     decorator_names: set[str] = set()

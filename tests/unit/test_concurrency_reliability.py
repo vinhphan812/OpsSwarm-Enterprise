@@ -394,10 +394,16 @@ class TestTerminalStateMonotonicity:
     """
 
     def test_terminal_states_are_terminal(self):
-        """Terminal states should be in TERMINAL_STATES set."""
-        assert RunState.RESOLVED in TERMINAL_STATES
+        """Terminal states should be in TERMINAL_STATES set.
+
+        ADR-015: RESOLVED is not terminal; it transitions to PLAN_RCA.
+        The orchestrator's command handler explicitly rejects freetext while
+        RESOLVED, but reconciliation treats it as resumable until RCA completes.
+        """
+        assert RunState.RESOLVED not in TERMINAL_STATES
         assert RunState.FAILED in TERMINAL_STATES
         assert RunState.ABORTED in TERMINAL_STATES
+        assert RunState.PLAN_RCA_RESOLVED in TERMINAL_STATES
 
         # Non-terminal states should not be in the set
         assert RunState.OPEN not in TERMINAL_STATES
@@ -405,11 +411,21 @@ class TestTerminalStateMonotonicity:
         assert RunState.EXECUTING not in TERMINAL_STATES
 
     def test_terminal_state_transition_validation(self):
-        """Cannot transition FROM terminal states (monotonicity)."""
-        # RESOLVED is terminal - no valid transitions out
+        """Cannot transition FROM terminal states (monotonicity).
+
+        ADR-015: PLAN_RCA_RESOLVED is the terminal state (Phase 2 complete).
+        RESOLVED is NOT terminal (allows PLAN_RCA / PLAN_RCA_RESOLVED transitions).
+        """
+        # ADR-015: PLAN_RCA_RESOLVED is terminal - no valid transitions out
+        allowed_from_rca_resolved = VALID_TRANSITIONS.get(RunState.PLAN_RCA_RESOLVED, set())
+        assert len(allowed_from_rca_resolved) == 0, (
+            f"PLAN_RCA_RESOLVED should have no transitions, got {allowed_from_rca_resolved}"
+        )
+
+        # ADR-015: RESOLVED is NOT terminal - allows PLAN_RCA / PLAN_RCA_RESOLVED
         allowed_from_resolved = VALID_TRANSITIONS.get(RunState.RESOLVED, set())
-        assert len(allowed_from_resolved) == 0, (
-            f"RESOLVED should have no transitions, got {allowed_from_resolved}"
+        assert len(allowed_from_resolved) == 2, (
+            f"RESOLVED should allow PLAN_RCA and PLAN_RCA_RESOLVED, got {allowed_from_resolved}"
         )
 
         # ABORTED is terminal - no valid transitions out

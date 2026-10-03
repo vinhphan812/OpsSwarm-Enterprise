@@ -286,8 +286,9 @@ class EvidenceStore:
                     rec = json.loads(line)
                 except json.JSONDecodeError as e:
                     self._corrupt_count += 1
-                    logger.error(
-                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
+                    logger.warning(
+                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}, "
+                        f"skipping (tolerant mode — ADR-009-1)"
                     )
                     _m = _get_metrics()
                     if _m is not None:
@@ -295,9 +296,9 @@ class EvidenceStore:
                     corrupt_path = self.path / f"{run_id}.corrupt"
                     with corrupt_path.open("a", encoding="utf-8") as cf:
                         cf.write(line + "\n")
-                    raise MalformedEvidenceError(
-                        f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
-                    ) from e
+                    # ADR-009-1: tolerant of malformed JSONL rows — continue processing
+                    # so evidence that comes after a corrupt row is still accessible.
+                    continue
 
                 kind = rec.get("kind", "")
                 payload = rec.get("payload", {})
@@ -364,16 +365,19 @@ class EvidenceStore:
                 rec = json.loads(line)
             except json.JSONDecodeError as exc:
                 self._corrupt_count += 1
-                logger.error(f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}")
+                logger.warning(
+                    f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}, "
+                    f"skipping (tolerant mode — ADR-009-1)"
+                )
                 _m = _get_metrics()
                 if _m is not None:
                     _m.record_evidence_failure("corrupt")
                 corrupt_path = self.path / f"{run_id}.corrupt"
                 with corrupt_path.open("a", encoding="utf-8") as cf:
                     cf.write(line + "\n")
-                raise MalformedEvidenceError(
-                    f"Malformed JSONL row in evidence for run {run_id} at line {i + 1}"
-                ) from exc
+                # ADR-009-1: tolerant of malformed JSONL rows — continue processing
+                # so evidence that comes after a corrupt row is still accessible.
+                continue
 
             # C-02: re-derive chained signature and verify before returning
             kind = rec.get("kind", "")

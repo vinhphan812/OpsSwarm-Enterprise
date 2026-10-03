@@ -101,8 +101,8 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
 }
 
 # Terminal states - no further transitions allowed
-# ADR-015: PLAN_RCA_RESOLVED is terminal (RCA phase complete); RESOLVED alone is not
-# terminal when rca_enabled=true because PLAN_RCA/PLAN_RCA_RESOLVED are valid exits.
+# ADR-015: PLAN_RCA_RESOLVED is terminal (RCA phase complete); RESOLVED alone is
+# not terminal because PLAN_RCA/PLAN_RCA_RESOLVED are valid exits.
 TERMINAL_STATES: set[RunState] = {
     RunState.FAILED,
     RunState.ABORTED,
@@ -492,6 +492,7 @@ class RunRecord(BaseModel):
     recovery_plan: RecoveryPlan | None = None
     decision: DecisionRequest | None = None
     execution: ExecutionResult | None = None
+    remediation_execution: RemediationExecution | None = None
     verification: VerificationResult | None = None
     human_inputs: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None

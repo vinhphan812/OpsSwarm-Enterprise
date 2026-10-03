@@ -60,8 +60,11 @@ class RunStore:
             if tmp_path.exists():
                 tmp_path.unlink()
 
-            # Write to temp file
-            tmp_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+            # Write and flush the complete snapshot before publishing it.
+            with tmp_path.open("w", encoding="utf-8") as tmp_file:
+                tmp_file.write(run.model_dump_json(indent=2))
+                tmp_file.flush()
+                os.fsync(tmp_file.fileno())
 
             # Atomic rename - os.replace is atomic on both POSIX and Windows
             # It handles cross-device moves and replaces existing files atomically

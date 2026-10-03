@@ -132,15 +132,22 @@ async def test_verify_abort_veto(cfg, tmp_path):
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_verify_pass(cfg, tmp_path):
-    """_verify with high confidence transitions to RESOLVED."""
+    """_verify with high confidence transitions to RESOLVED.
+
+    ADR-015: _verify now also calls _plan_rca after resolution, which requires
+    synthesize_rca to be mocked.
+    """
     gh = FakeGitHub({"number": 1})
 
-    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify:
+    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify, \
+         patch("opsswarm.skill_logic.synthesize_rca", new_callable=AsyncMock) as mock_rca:
         mock_verify.return_value = VerificationResult(
             verified=True,
             confidence=0.99,
             summary="Passed",
         )
+        # ADR-015: Mock synthesize_rca to avoid needing fake response
+        mock_rca.return_value = MagicMock()
 
         oc = FakeOpenClaw([])
         eng = Orchestrator(cfg, gh, oc, str(tmp_path))
@@ -319,18 +326,18 @@ async def test_handle_comment_command_confirmed(cfg, tmp_path):
     # Mock approve
     eng.github.comment = AsyncMock()
     eng.store.save = MagicMock()
-    from opsswarm.models import RecoveryPlan, RemediationOption
-
+    from opsswarm.models import RecoveryPlan, RemediationOption, ExecutionResult
     option = RemediationOption(id="opt1", risk="read", description="Safe")
     run.recovery_plan = RecoveryPlan(options=[option])
 
-    # Using 'approve' command - needs existing recovery plan
+    # Patch execute_option to simulate successful execution (sets run.execution)
+    async def mock_execute_option(r, opt):
+        run.execution = ExecutionResult(option_id=opt.id, success=True, summary="executed")
+    eng._execute_option = AsyncMock(side_effect=mock_execute_option)
+
     cmd = MagicMock()
     cmd.name = "approve"
     cmd.argument = "opt1"
-
-    # Patch execute_option to prevent actual execution
-    eng._execute_option = AsyncMock()
 
     await eng.handle_comment(1, "reader", "approve", "maintain", cmd, comment_id="cid")
 

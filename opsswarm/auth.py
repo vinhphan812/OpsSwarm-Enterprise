@@ -244,6 +244,31 @@ def generate_bearer_token(
     return f"{scope}={mac}"
 
 
+def make_admin_token(secret: str, method: str = "GET", path: str = "/metrics") -> str:
+    """Convenience helper to mint an opsswarm:admin bearer token.
+
+    Use this in scripts, smoke tests, or Prometheus configurations that need
+    a static token instead of a dynamically-generated one.
+
+    Example (Prometheus scrape target):
+        OPSWARM_METRICS_TOKEN=$(python -c \\
+            "from opsswarm.auth import make_admin_token; \\
+             print(make_admin_token('${OPSWARM_RUNTIME_SECRET}'))")
+
+    Returns the bare token value (without the ``Bearer `` prefix).  Wrap in
+    ``Authorization: Bearer <token>`` when issuing requests.
+    """
+    return generate_bearer_token(SCOPE_ADMIN, secret, method, path)
+
+
+def make_read_token(secret: str, method: str = "GET", path: str = "/runs") -> str:
+    """Convenience helper to mint an opsswarm:read bearer token.
+
+    Use this in scripts or monitoring tools that only need to poll /runs.
+    """
+    return generate_bearer_token(SCOPE_READ, secret, method, path)
+
+
 def verify_bearer_hmac(
     token_scope: str,
     token_hmac_hex: str,

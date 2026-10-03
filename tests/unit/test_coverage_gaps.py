@@ -618,7 +618,8 @@ class TestReconciliationLoadNonTerminal:
         data_dir = str(tmp_path / "recon8")
         store = RunStore(data_dir)
         # Terminal run
-        r1 = RunRecord(run_id="terminal", issue_number=1, state=RunState.RESOLVED)
+        # ADR-015: PLAN_RCA_RESOLVED is the true terminal state (Phase 2 complete)
+        r1 = RunRecord(run_id="terminal", issue_number=1, state=RunState.PLAN_RCA_RESOLVED)
         # Non-terminal run
         r2 = RunRecord(run_id="non-terminal", issue_number=2, state=RunState.INVESTIGATING)
         store.save(r1)

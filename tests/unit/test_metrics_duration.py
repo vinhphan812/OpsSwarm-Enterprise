@@ -44,6 +44,15 @@ def issue():
     }
 
 
+def _rca_response():
+    """RCA synthesis response."""
+    return {
+        "proximate_cause": "test",
+        "root_cause": "test",
+        "causal_chain": ["test"],
+        "confidence": 0.9,
+    }
+
 def _safe_workflow_responses():
     """Full response set for a safe-write run that resolves end-to-end."""
     return investigation_and_rca() + [
@@ -79,6 +88,7 @@ def _safe_workflow_responses():
             "confidence": 0.97,
             "raw": {},
         },
+        _rca_response(),
     ]
 
 

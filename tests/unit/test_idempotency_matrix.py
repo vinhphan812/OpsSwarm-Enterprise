@@ -150,8 +150,12 @@ class TestStateMachine:
             run.transition(RunState.OPEN, enforcement="strict")
 
     def test_terminal_states_reject_commands(self):
-        """Terminal states should reject commands."""
-        run = RunRecord(run_id="RUN-1", issue_number=1, state=RunState.RESOLVED)
+        """Terminal states should reject commands.
+
+        ADR-015: RESOLVED is not in TERMINAL_STATES (allows PLAN_RCA).
+        PLAN_RCA_RESOLVED is the actual terminal state.
+        """
+        run = RunRecord(run_id="RUN-1", issue_number=1, state=RunState.PLAN_RCA_RESOLVED)
 
         # Check terminal state rejection logic
         assert run.state in TERMINAL_STATES
@@ -378,7 +382,8 @@ class TestIntegration:
         assert is_duplicate is True
 
         # Terminal state should reject
-        run.state = RunState.RESOLVED
+        # ADR-015: PLAN_RCA_RESOLVED is the terminal state (Phase 2 complete)
+        run.state = RunState.PLAN_RCA_RESOLVED
         assert run.state in TERMINAL_STATES
 
 
