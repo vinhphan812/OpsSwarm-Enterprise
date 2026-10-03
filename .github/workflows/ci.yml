@@ -48,6 +48,8 @@ jobs:
     name: Python ${{ matrix.python-version }} quality gates
     needs: dependency-lock
     runs-on: ubuntu-latest
+    env:
+      OPSWARM_CONFIG: config/test.yaml
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +120,8 @@ jobs:
   coverage:
     name: Coverage enforcement
     runs-on: ubuntu-latest
+    env:
+      OPSWARM_CONFIG: config/test.yaml
     needs: quality
     steps:
       - name: Checkout repository
