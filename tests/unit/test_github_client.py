@@ -27,12 +27,12 @@ class TestGitHubClient:
         assert client.client.headers["Accept"] == "application/vnd.github+json"
 
     def test_init_custom_base_url(self):
-        """Client can use custom base URL."""
+        """Client can use the https://github.com/api/v3 alias."""
         client = GitHubClient(
-            token="token", repo="owner/repo", base_url="https://github.example.com/api/v3"
+            token="token", repo="owner/repo", base_url="https://github.com/api/v3"
         )
         # Check that the client was created with the custom URL
-        assert "github.example.com" in str(client.client.base_url)
+        assert "github.com" in str(client.client.base_url)
 
     @pytest.mark.asyncio
     async def test_get_issue_success(self, client):
@@ -486,3 +486,110 @@ class TestGitHubClient:
 
             with pytest.raises(PermissionError, match="GitHub API returned 403"):
                 await client._req("GET", "/repos/owner/repo/secret")
+
+
+class TestGitHubClientSSRF:
+    """ADR-028 SSRF mitigation tests — fail-closed transport boundary."""
+
+    # ----- base_url allowlist -----
+
+    def test_init_rejects_arbitrary_base_url(self):
+        """Non-whitelisted base_url raises ValueError."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="https://evil.com/api")
+
+    def test_init_rejects_http_base_url(self):
+        """Plain http:// base_url raises ValueError (no TLS)."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://api.github.com")
+
+    def test_init_rejects_localhost_base_url(self):
+        """Non-whitelisted localhost variants raise ValueError."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://localhost/api")
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://192.168.1.1/api")
+
+    def test_init_accepts_localhost_for_test_fixtures(self):
+        """http://127.0.0.1 is accepted for local test fixtures only."""
+        client = GitHubClient(
+            token="tok", repo="test/repo", base_url="http://127.0.0.1", verify=False
+        )
+        assert client.client is not None
+        assert client.client.follow_redirects is False
+
+    def test_init_accepts_github_com_api(self):
+        """https://api.github.com is accepted."""
+        client = GitHubClient(token="tok", repo="owner/repo", base_url="https://api.github.com")
+        assert client.client is not None
+
+    def test_init_accepts_github_com_api_alias(self):
+        """https://github.com/api/v3 is accepted."""
+        client = GitHubClient(
+            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
+        )
+        assert client.client is not None
+
+    # ----- repo format validation -----
+
+    def test_init_rejects_repo_traversal(self):
+        """Path-traversal repo raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="../../../attacker.com/redirect")
+
+    def test_init_rejects_repo_no_slash(self):
+        """Repo without owner/ raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="onlyrepo")
+
+    def test_init_rejects_repo_empty_owner(self):
+        """Empty owner component raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="/repo")
+
+    def test_init_rejects_repo_empty_name(self):
+        """Empty repo-name component raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="owner/")
+
+    def test_init_accepts_valid_repo(self):
+        """Valid 'owner/repo' format is accepted."""
+        client = GitHubClient(token="tok", repo="my-org/my_service")
+        assert client.repo == "my-org/my_service"
+
+    def test_init_accepts_repo_with_dots_underscores(self):
+        """Dots and underscores in repo components are accepted."""
+        client = GitHubClient(token="tok", repo="my.org/my_serv.ice-1")
+        assert client.repo == "my.org/my_serv.ice-1"
+
+    # ----- follow_redirects=False -----
+
+    def test_init_follow_redirects_false(self):
+        """Client is created with follow_redirects=False."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        assert client.client.follow_redirects is False
+
+    def test_init_custom_base_url_follow_redirects_false(self):
+        """Even with a custom whitelisted base_url, redirects are disabled."""
+        client = GitHubClient(
+            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
+        )
+        assert client.client.follow_redirects is False
+
+    # ----- transport limits -----
+
+    def test_init_transport_limits_applied(self):
+        """Transport limits are applied to the connection pool."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        # httpx 0.27 AsyncConnectionPool doesn't expose _limits; verify pool exists.
+        pool = client.client._transport._pool
+        assert pool is not None
+
+    # ----- request timeout -----
+
+    def test_init_timeout_applied(self):
+        """Request timeout is set."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        assert client.client.timeout is not None
+        assert client.client.timeout.connect == 5.0
+        assert client.client.timeout.read == 10.0

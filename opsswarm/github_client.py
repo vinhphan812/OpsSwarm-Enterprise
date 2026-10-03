@@ -1,15 +1,51 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
+# ADR-028: SSRF mitigation — only these base URLs are permitted.
+# GitHub Enterprise instances must be added here explicitly; no arbitrary URLs accepted.
+# http://127.0.0.1 is allowed ONLY for local test fixtures (e.g. e2e test servers).
+_ALLOWED_BASE_URLS: frozenset[str] = frozenset({
+    "https://api.github.com",
+    "https://github.com/api/v3",
+    "http://127.0.0.1",
+})
+
+# ADR-028: max_keepalive_connections=1 and max_connections=2 keep the transport
+# scoped to a single logical channel, preventing connection-pooling abuse.
+_TRANSPORT_LIMITS = httpx.Limits(max_keepalive_connections=1, max_connections=2)
+
+# ADR-028: conservative timeout — bounds both overall request and TCP connect.
+_REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
+
+# ADR-028: repo must match owner/repo (alphanumeric, hyphens, underscores).
+_REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9._-]+$")
+
 
 class GitHubClient:
-    def __init__(self, token: str, repo: str, base_url: str = "https://api.github.com"):
+    def __init__(
+        self,
+        token: str,
+        repo: str,
+        base_url: str = "https://api.github.com",
+        verify: bool | str = True,
+    ):
+        if base_url not in _ALLOWED_BASE_URLS:
+            raise ValueError(
+                f"base_url must be one of {sorted(_ALLOWED_BASE_URLS)!r}; "
+                f"got {base_url!r}. "
+                "See ADR-028 for GitHub Enterprise allowlist policy."
+            )
+        if not _REPO_PATTERN.match(repo):
+            raise ValueError(
+                f"repo must be in 'owner/repo' format; got {repo!r}."
+            )
         self.repo = repo
         self.client = httpx.AsyncClient(
             base_url=base_url,
@@ -18,6 +54,10 @@ class GitHubClient:
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
             },
+            follow_redirects=False,  # ADR-028: prevent redirect-to-arbitrary-host SSRF
+            limits=_TRANSPORT_LIMITS,
+            timeout=_REQUEST_TIMEOUT,
+            verify=verify,  # True (default system CA), False (skip, for test self-signed certs), or path str
         )
 
     async def _req(self, method: str, path: str, **kwargs) -> Any:
