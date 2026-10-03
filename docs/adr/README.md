@@ -26,6 +26,8 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [014](ADR-014_RUNTIME_API_AUTHENTICATION.md) | Runtime API Authentication, Scopes, and Ingress Controls | Accepted | #21 authn/authz for Runtime API and monitoring ingress |
 | [015](ADR-015_TWO_PHASE_PLAN_WORKFLOW.md) | Two-Phase Plan: Immediate Remediation vs. Deferred RCA | Accepted | #43 Plan_Remediation vs Plan_RCA; `PLAN_RCA`/`PLAN_RCA_RESOLVED` states; budget separation |
 | [016](ADR-016_twophase_plan.md) | Two-Phase Plan: Plan_Remediation vs Plan_RCA | Accepted | #43 ADR canonical naming; TERMINAL_STATES corrected; tests updated |
+| [028](ADR-028_TRANSPORT_BOUNDARY_FOR_GITHUB_CLIENT.md) | Transport Boundary for GitHubClient (SSRF Mitigation) | Accepted | #57 py/partial-ssrf CodeQL alert; base_url allowlist, redirect lock-down, repo validation |
+| [029](ADR-029_LOG_INJECTION_PREVENTION.md) | Control-Character Sanitiser for Structured Log Injection Prevention | Accepted | #58 py/log-injection CodeQL alerts #3/#4; _strip_control_chars in errors.py; route github_client._req log data through sanitize_for_log |
 
 ## ADR Lifecycle Statuses
 
