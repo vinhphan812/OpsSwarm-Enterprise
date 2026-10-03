@@ -9,6 +9,9 @@ class Metrics:
     VALID_POLICY_ACTIONS: set[str] = {"AUTO", "APPROVAL", "DECISION", "INPUT", "DENY"}
     VALID_EVIDENCE_FAILURES: set[str] = {"duplicate", "corrupt", "write_error"}
     VALID_BUDGET_TYPES: set[str] = {"tasks", "execution_seconds", "openclaw_calls"}
+    VALID_HUMAN_GATE_KINDS: set[str] = {"approval", "decision", "input"}
+    VALID_RECONCILIATION_OUTCOMES: set[str] = {"clean_recovery", "ambiguous", "impossible", "no_evidence"}
+    VALID_WEBHOOK_DELIVERY_KINDS: set[str] = {"processed", "dedup_skipped", "rejected"}
 
     def __init__(self):
         # ── Core counters (already shipped in PR #33) ──────────────────────────
@@ -30,11 +33,28 @@ class Metrics:
         # OpenClaw calls by profile
         self.openclaw_calls = Counter()  # profile: count
 
+        # OpenClaw call duration histogram (per-profile seconds)
+        self.openclaw_duration_count = Counter()  # profile: count
+        self.openclaw_duration_sum = Counter()     # profile: seconds
+
+        # OpenClaw timeout / error counters (per-profile)
+        self.openclaw_timeouts = Counter()  # profile: count
+        self.openclaw_errors = Counter()    # profile: count
+
         # Policy classification outcomes
         self.policy_actions = Counter()  # action: count (AUTO / APPROVAL / DECISION / INPUT / DENY)
 
         # Evidence failures
         self.evidence_failures = Counter()  # failure_type: count
+
+        # Reconciliation outcomes
+        self.reconciliation_outcomes = Counter()  # outcome: count
+
+        # Ambiguous write counter
+        self.ambiguous_writes = Counter()  # count
+
+        # Webhook delivery counter
+        self.webhook_deliveries = Counter()  # kind: count
 
         # Budget utilisation — gauge (populated on read)
         self._budget_gauge: dict[str, float] = {}
@@ -47,6 +67,8 @@ class Metrics:
             "policy_actions": set(),
             "evidence_failures": set(),
             "transition": set(),
+            "reconciliation_outcomes": set(),
+            "webhook_deliveries": set(),
         }
 
     # ── Core recording methods (already shipped) ───────────────────────────────
@@ -81,6 +103,25 @@ class Metrics:
         self.openclaw_calls[profile] += 1
         self._observed_labels["openclaw_calls"].add(profile)
 
+    def record_openclaw_duration(self, profile: str, seconds: float):
+        if not profile or not profile.replace("_", "").replace("-", "").isalnum():
+            profile = "unknown"
+        self.openclaw_duration_count[profile] += 1
+        self.openclaw_duration_sum[profile] += seconds
+        self._observed_labels.setdefault("openclaw_call_seconds", set()).add(profile)
+
+    def record_openclaw_timeout(self, profile: str):
+        if not profile or not profile.replace("_", "").replace("-", "").isalnum():
+            profile = "unknown"
+        self.openclaw_timeouts[profile] += 1
+        self._observed_labels.setdefault("openclaw_timeouts", set()).add(profile)
+
+    def record_openclaw_error(self, profile: str):
+        if not profile or not profile.replace("_", "").replace("-", "").isalnum():
+            profile = "unknown"
+        self.openclaw_errors[profile] += 1
+        self._observed_labels.setdefault("openclaw_errors", set()).add(profile)
+
     # ── NEW: policy actions ───────────────────────────────────────────────────
 
     def record_policy_action(self, action: str):
@@ -89,6 +130,39 @@ class Metrics:
             return
         self.policy_actions[action] += 1
         self._observed_labels["policy_actions"].add(action)
+
+    # ── NEW: human gate wait duration ─────────────────────────────────────────
+
+    def record_human_gate(self, gate_kind: str, duration: float):
+        if gate_kind not in self.VALID_HUMAN_GATE_KINDS:
+            gate_kind = "unknown"
+        self.histograms_count["human_gate_seconds"] += 1
+        self.histograms_sum["human_gate_seconds"] += duration
+        self._observed_labels.setdefault("human_gate_seconds", set()).add(gate_kind)
+
+    # ── NEW: ambiguous write counter ───────────────────────────────────────────
+
+    def record_ambiguous_write(self):
+        """Increment the ambiguous-write counter each time execution.ambiguous=True."""
+        self.ambiguous_writes["total"] += 1
+
+    # ── NEW: reconciliation outcomes ────────────────────────────────────────────
+
+    def record_reconciliation_outcome(self, outcome: str):
+        """Record a reconciliation outcome with cardinality guard."""
+        if outcome not in self.VALID_RECONCILIATION_OUTCOMES:
+            outcome = "unknown"
+        self.reconciliation_outcomes[outcome] += 1
+        self._observed_labels.setdefault("reconciliation_outcomes", set()).add(outcome)
+
+    # ── NEW: webhook delivery counter ─────────────────────────────────────────────
+
+    def record_webhook_delivery(self, kind: str):
+        """Record a webhook delivery by outcome kind with cardinality guard."""
+        if kind not in self.VALID_WEBHOOK_DELIVERY_KINDS:
+            kind = "unknown"
+        self.webhook_deliveries[kind] += 1
+        self._observed_labels.setdefault("webhook_deliveries", set()).add(kind)
 
     # ── NEW: evidence failures ─────────────────────────────────────────────────
 
@@ -138,6 +212,10 @@ class Metrics:
             lines.append(f"{name}_count {self.histograms_count[name]}")
             lines.append(f"{name}_sum {self.histograms_sum[name]}")
 
+        # ── NEW: human gate wait duration (histogram) ───────────────────────────
+        # human_gate_seconds is emitted via the generic histograms block above.
+        # Cardinality is guarded by VALID_HUMAN_GATE_KINDS (3 values).
+
         # ── NEW: active runs gauge ─────────────────────────────────────────────
         for state, count in sorted(self._active_runs_gauge.items()):
             lines.append(f'opsswarm_active_runs{{state="{state}"}} {count}')
@@ -154,13 +232,41 @@ class Metrics:
                 f'to_state="{to_state}"}}_sum {self.transition_sum[key]}'
             )
 
-        # ── NEW: OpenClaw calls by profile ────────────────────────────────────
+        # ── OpenClaw metrics (G2 / Issue #30) ────────────────────────────────
         for profile, count in sorted(self.openclaw_calls.items()):
             lines.append(f'opsswarm_openclaw_calls_total{{profile="{profile}"}} {count}')
+
+        for profile in sorted(self.openclaw_duration_count.keys()):
+            lines.append(
+                f'opsswarm_openclaw_call_seconds{{profile="{profile}"}}_count '
+                f'{self.openclaw_duration_count[profile]}'
+            )
+            lines.append(
+                f'opsswarm_openclaw_call_seconds{{profile="{profile}"}}_sum '
+                f'{self.openclaw_duration_sum[profile]:.6f}'
+            )
+
+        for profile, count in sorted(self.openclaw_timeouts.items()):
+            lines.append(f'opsswarm_openclaw_timeouts_total{{profile="{profile}"}} {count}')
+
+        for profile, count in sorted(self.openclaw_errors.items()):
+            lines.append(f'opsswarm_openclaw_errors_total{{profile="{profile}"}} {count}')
 
         # ── NEW: policy actions ────────────────────────────────────────────────
         for action, count in sorted(self.policy_actions.items()):
             lines.append(f'opsswarm_policy_actions_total{{action="{action}"}} {count}')
+
+        # ── NEW: ambiguous writes ─────────────────────────────────────────────────
+        if self.ambiguous_writes:
+            lines.append(f'opsswarm_execution_ambiguous_total {self.ambiguous_writes["total"]}')
+
+        # ── NEW: reconciliation outcomes ─────────────────────────────────────────
+        for outcome, count in sorted(self.reconciliation_outcomes.items()):
+            lines.append(f'opsswarm_reconciliation_outcome{{outcome="{outcome}"}} {count}')
+
+        # ── NEW: webhook deliveries ──────────────────────────────────────────────
+        for kind, count in sorted(self.webhook_deliveries.items()):
+            lines.append(f'opsswarm_webhook_deliveries_total{{kind="{kind}"}} {count}')
 
         # ── NEW: evidence failures ─────────────────────────────────────────────
         for failure_type, count in sorted(self.evidence_failures.items()):

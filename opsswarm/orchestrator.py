@@ -28,6 +28,13 @@ from .validators import validate_task_graph, TaskGraphError
 
 logger = logging.getLogger(__name__)
 
+# Human-gate states whose wait duration is tracked as G1 (Issue #30)
+HUMAN_GATE_STATES: set[RunState] = {
+    RunState.WAITING_APPROVAL,
+    RunState.WAITING_DECISION,
+    RunState.WAITING_INPUT,
+}
+
 
 class RunBudget:
     """Per-run counters with fail-closed limits."""
@@ -151,14 +158,18 @@ class Orchestrator:
         allowlist_cfg = get_tool_allowlist(cfg)
         if allowlist_cfg.get("enabled", False):
             self._tool_allowlist = ToolAllowlist.from_config(cfg)
-            check_tools = get_openclaw(cfg).get("check_tools", False)
             if self._tool_allowlist is not None:
-                self._tool_allowlist = self._tool_allowlist
                 self.oc.set_tool_allowlist(self._tool_allowlist)
+                # ADR-027 Fix B: propagate check_tools flag to the client so
+                # _check_tool_access() actually raises instead of no-op.
+                # Must set check_tools BEFORE set_tool_allowlist so the
+                # enforcement gate is active when set_tool_allowlist is called.
+                check_tools = get_openclaw(cfg).get("check_tools", False)
+                self.oc.set_check_tools(check_tools)
                 logger.info(
                     "[ADR-027] Tool allowlist enabled (check_tools=%s, profiles=%s)",
                     check_tools,
-                    self._tool_allowlist.profile_names() if self._tool_allowlist else [],
+                    self._tool_allowlist.profile_names(),
                 )
             else:
                 logger.warning("[ADR-027] Tool allowlist enabled but failed to load — all tools permitted")
@@ -269,6 +280,19 @@ class Orchestrator:
         prev_state = run.state
         prev_time = getattr(run, "_state_entered_at", None)
         now = time.monotonic()
+
+        # ── G1: human-gate wait duration (Issue #30) ─────────────────────────
+        # When exiting a gate state, record how long the run spent waiting.
+        if prev_state in HUMAN_GATE_STATES and prev_time is not None:
+            gate_kind_map = {
+                RunState.WAITING_APPROVAL: "approval",
+                RunState.WAITING_DECISION: "decision",
+                RunState.WAITING_INPUT: "input",
+            }
+            gate_kind = gate_kind_map.get(prev_state)
+            if gate_kind is not None:
+                metrics.record_human_gate(gate_kind, now - prev_time)
+
         if prev_state is not None and prev_time is not None:
             duration = now - prev_time
             metrics.record_transition(prev_state, state, duration)
@@ -350,12 +374,15 @@ class Orchestrator:
             # Check idempotency: skip if this delivery was already processed
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
                 logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+                metrics.record_webhook_delivery("dedup_skipped")
                 return existing
             if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
             issue = await self.github.get_issue(number)
             req = self.cfg.get("required_issue_label", "opsswarm")
             names = [x.get("name", "") for x in issue.get("labels", []) if isinstance(x, dict)]
-            if req and req not in names: raise RuntimeError(f"Issue #{number} lacks required label {req}")
+            if req and req not in names:
+                metrics.record_webhook_delivery("rejected")
+                raise RuntimeError(f"Issue #{number} lacks required label {req}")
             run = RunRecord(run_id=f"RUN-GH-{number}-{uuid.uuid4().hex[:8]}", issue_number=number)
             # Store delivery ID for idempotency if provided
             if delivery_id:
@@ -366,6 +393,7 @@ class Orchestrator:
             run.incident = S.parse_issue(number, issue);
             await self._save(run, "S1.incident", run.incident.model_dump())
             await self._investigate(run)
+            metrics.record_webhook_delivery("processed")
             return run
 
     async def _investigate(self, run: RunRecord, extra_task: Task | None = None):
@@ -514,6 +542,7 @@ class Orchestrator:
             "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
         })
         if run.execution.ambiguous:
+            metrics.record_ambiguous_write()
             run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
                                            reason="The write outcome is ambiguous. Blind retry is prohibited.",
                                            options=[],
@@ -732,6 +761,7 @@ class Orchestrator:
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
+            metrics.record_webhook_delivery("rejected")
             return
 
         # ADR-015: RESOLVED is not in TERMINAL_STATES (allows PLAN_RCA transition)
@@ -740,6 +770,7 @@ class Orchestrator:
             logger.info(f"Rejecting freetext on issue #{number}: run is in RESOLVED state")
             await self.github.comment(number,
                                       "OpsSwarm cannot process freetext on a closed incident (state: RESOLVED). Please open a new issue if needed.")
+            metrics.record_webhook_delivery("rejected")
             return
 
         # Migrate legacy executed_commands to command_outcomes for backward compatibility
@@ -769,12 +800,14 @@ class Orchestrator:
                     "OpsSwarm cannot safely retry this command because its external outcome is unknown. "
                     "Reconcile the external system first, then issue a new command.",
                 )
+                metrics.record_webhook_delivery("rejected")
                 return
             elif outcome in (CommandOutcome.RECEIVED.value, CommandOutcome.EXECUTING.value):
                 logger.info(f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}")
 
         if delivery_id and delivery_id in run.idempotency_keys:
             logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+            metrics.record_webhook_delivery("dedup_skipped")
             return
 
         # Record this comment/delivery as RECEIVED (not yet executed) - Issue #9 fix
@@ -787,6 +820,7 @@ class Orchestrator:
         # Persist immediately so crash recovery can find this command
         if comment_id or delivery_id:
             self.store.save(run)
+        metrics.record_webhook_delivery("processed")
         if not command:
             run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"});
             await self._save(run, "human.free_text", run.human_inputs[-1]);
