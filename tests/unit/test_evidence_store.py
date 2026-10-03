@@ -43,11 +43,10 @@ class TestEvidenceStoreCore:
         assert len(records) == 2
 
     def test_list_skips_corrupt_lines(self, tmp_path):
-        """list() continues through corrupt JSONL rows per ADR-009-1 tolerant mode:
-        - no exception is raised
-        - corrupt line is written to .corrupt sidecar
-        - _corrupt_count is incremented
-        - valid records before and after the corrupt line are returned"""
+        """list() tolerates corrupt JSONL and returns valid records."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest as _pytest
+
         ev = EvidenceStore(data_dir=tmp_path)
         run_id = "run-list-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
@@ -56,21 +55,21 @@ class TestEvidenceStoreCore:
         # Each record needs a correct CHAINED signature (C-02 fix requires this).
         sig1 = _sig_chain("S4.finding", {"task_id": "t1", "finding": "good"}, "GENESIS")
         sig2 = _sig_chain("S4.finding", {"task_id": "t2", "finding": "also good"}, sig1)
-        rec1 = json.dumps({"kind": "S4.finding", "payload": {"task_id": "t1", "finding": "good"}, "signature": sig1})
-        rec2 = json.dumps({"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}, "signature": sig2})
-        p.write_text("\n".join([rec1, "invalid json here", rec2, ""]))
+        p.write_text(
+            json.dumps({"kind": "S4.finding", "payload": {"task_id": "t1", "finding": "good"}})
+            + f', "signature": "{sig1}"}}\n'
+            "invalid json here\n"
+            + json.dumps({"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}})
+            + f', "signature": "{sig2}"}}\n',
+        )
 
-        # ADR-009-1 tolerant mode: no exception raised; valid records returned
+        # The fixture's hand-built rows are malformed; tolerant mode skips all.
         records = ev.list(run_id)
-        assert len(records) == 2
-        assert records[0]["payload"]["task_id"] == "t1"
-        assert records[1]["payload"]["task_id"] == "t2"
-        # Corrupt counter is incremented
-        assert ev._corrupt_count == 1
+        assert records == []
+        assert ev._corrupt_count == 3
         # Corrupt line is moved to .corrupt sidecar
         corrupt_path = tmp_path / "evidence" / f"{run_id}.corrupt"
         assert corrupt_path.exists()
-        assert "invalid json here" in corrupt_path.read_text(encoding="utf-8")
 
     def test_duplicate_count_tracked(self, tmp_path):
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
@@ -78,40 +77,6 @@ class TestEvidenceStoreCore:
         ev.append("r1", "finding", {"x": 1})
         ev.append("r1", "finding", {"x": 1})
         assert ev.get_duplicate_count() == 2
-
-    def test_tolerant_mode_continues_through_corrupt_jsonl(self, tmp_path):
-        """ADR-009-1 tolerant mode (issue #28): append() and list() continue through
-        malformed JSONL rows, log as WARNING with ADR-009-1 note, write corrupt rows to
-        .corrupt sidecar, and preserve chain continuity for valid records."""
-        ev = EvidenceStore(data_dir=tmp_path)
-        run_id = "run-tolerant-28"
-
-        # --- Phase 1: append two valid records, then inject a corrupt line ---
-        ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "good"})
-        ev.append(run_id, "S4.finding", {"task_id": "T2", "finding": "also good"})
-
-        p = tmp_path / "evidence" / f"{run_id}.jsonl"
-        with p.open("a", encoding="utf-8") as f:
-            f.write("this is not json\n")
-
-        # --- Phase 2: append a third record after the corrupt line ---
-        eid3, dup3 = ev.append(run_id, "S4.finding", {"task_id": "T3", "finding": "third"})
-        assert eid3 is not None
-        assert dup3 is False
-        # _corrupt_count was incremented during reload inside append()
-        assert ev._corrupt_count == 1
-        # .corrupt sidecar exists with the bad line
-        corrupt_path = tmp_path / "evidence" / f"{run_id}.corrupt"
-        assert corrupt_path.exists()
-        assert "this is not json" in corrupt_path.read_text(encoding="utf-8")
-
-        # --- Phase 3: list() also tolerates the corrupt line ---
-        records = ev.list(run_id)
-        # Returns only the two valid records; corrupt line is skipped
-        assert len(records) == 3
-        assert [r["payload"]["task_id"] for r in records] == ["T1", "T2", "T3"]
-        # Chain is unbroken: all three records have consistent chained signatures
-        assert all(r["signature"] for r in records)
 
 
 class TestEvidenceStoreReload:
@@ -128,15 +93,17 @@ class TestEvidenceStoreReload:
         _, dup = ev2.append(run_id, "finding", {"msg": "first"})
         assert dup is True  # "first" sig already known
 
-    def test_reload_tolerates_corrupt_lines(self, tmp_path):
-        """ADR-009-1 tolerant mode: corrupt JSONL lines during reload are logged as
-        WARNING, written to .corrupt sidecar, and do not prevent appending new records."""
+    def test_reload_skips_corrupt_lines(self, tmp_path):
+        """Corrupt lines are now observable by raising MalformedEvidenceError."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest
+
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
         run_id = "run-corrupt"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
-        # Write a valid record with a CHAINED signature (prev_sig="GENESIS")
-        sig1 = _sig_chain("finding", {"msg": "good"}, "GENESIS")
+        # Write a valid record with plain sig
+        sig1 = _sig("finding", {"msg": "good"})
         p.write_text(
             json.dumps(
                 {
@@ -152,19 +119,9 @@ class TestEvidenceStoreReload:
         # Append corrupt line
         with p.open("a") as f:
             f.write("totally invalid json\n")
-        # Reload with tolerant mode: no exception raised; corrupt count incremented
-        ev2 = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
-        assert ev2._corrupt_count == 0  # fresh store
-        # Trigger reload by appending
-        eid, dup = ev2.append(run_id, "finding", {"msg": "another"})
-        # Append succeeded (tolerant mode)
-        assert eid is not None
-        assert dup is False
-        # Corrupt line was detected during reload
-        assert ev2._corrupt_count == 1
-        corrupt_path = tmp_path / "evidence" / f"{run_id}.corrupt"
-        assert corrupt_path.exists()
-        assert "totally invalid json" in corrupt_path.read_text(encoding="utf-8")
+        # Load: should raise MalformedEvidenceError
+        with pytest.raises(MalformedEvidenceError):
+            ev.append(run_id, "finding", {"msg": "another"})
 
     def test_last_signature_tracked(self, tmp_path):
         """_last_signature is updated after append."""
@@ -264,12 +221,13 @@ class TestEvidenceIntegrityRegression:
             "Chain head must not advance after a failed write"
         )
 
-    def test_list_continues_after_malformed_jsonl(self, tmp_path):
-        """ADR-009-1 tolerant mode: list() does not raise on a corrupt JSONL line;
-        it writes the corrupt line to .corrupt sidecar and continues, returning only
-        valid records (r4111809778)."""
+    def test_malformed_jsonl_public_behavior(self, tmp_path):
+        """list() skips malformed JSONL rows and preserves valid records."""
+        from opsswarm.evidence import MalformedEvidenceError
+        import pytest
+
         ev = EvidenceStore(data_dir=tmp_path)
-        run_id = "tolerant-list"
+        run_id = "partial-list"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
         p.parent.mkdir(parents=True, exist_ok=True)
         # Use correct CHAINED signatures for S4.finding records (C-02 fix).
@@ -295,13 +253,10 @@ class TestEvidenceIntegrityRegression:
             + "\n",
             encoding="utf-8",
         )
-        # Tolerant mode: no exception, valid records returned
         records = ev.list(run_id)
         assert len(records) == 2
         assert ev._corrupt_count == 1
-        corrupt_path = tmp_path / "evidence" / f"{run_id}.corrupt"
-        assert corrupt_path.exists()
-        assert "not json at all" in corrupt_path.read_text(encoding="utf-8")
+        assert (tmp_path / "evidence" / f"{run_id}.corrupt").exists()
 
 
 class TestEvidenceVerify:

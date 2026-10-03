@@ -28,6 +28,13 @@ from .validators import validate_task_graph, TaskGraphError
 
 logger = logging.getLogger(__name__)
 
+# Human-gate states whose wait duration is tracked as G1 (Issue #30)
+HUMAN_GATE_STATES: set[RunState] = {
+    RunState.WAITING_APPROVAL,
+    RunState.WAITING_DECISION,
+    RunState.WAITING_INPUT,
+}
+
 
 class RunBudget:
     """Per-run counters with fail-closed limits."""
@@ -151,14 +158,18 @@ class Orchestrator:
         allowlist_cfg = get_tool_allowlist(cfg)
         if allowlist_cfg.get("enabled", False):
             self._tool_allowlist = ToolAllowlist.from_config(cfg)
-            check_tools = get_openclaw(cfg).get("check_tools", False)
             if self._tool_allowlist is not None:
-                self._tool_allowlist = self._tool_allowlist
                 self.oc.set_tool_allowlist(self._tool_allowlist)
+                # ADR-027 Fix B: propagate check_tools flag to the client so
+                # _check_tool_access() actually raises instead of no-op.
+                # Must set check_tools BEFORE set_tool_allowlist so the
+                # enforcement gate is active when set_tool_allowlist is called.
+                check_tools = get_openclaw(cfg).get("check_tools", False)
+                self.oc.set_check_tools(check_tools)
                 logger.info(
                     "[ADR-027] Tool allowlist enabled (check_tools=%s, profiles=%s)",
                     check_tools,
-                    self._tool_allowlist.profile_names() if self._tool_allowlist else [],
+                    self._tool_allowlist.profile_names(),
                 )
             else:
                 logger.warning("[ADR-027] Tool allowlist enabled but failed to load — all tools permitted")
@@ -173,6 +184,7 @@ class Orchestrator:
                                 budget_cfg.get("max_steps_per_agent", 50))
         self._max_parallel = get_concurrency(cfg)["max_parallel_specialists"]
         self._active_budgets: dict[str, RunBudget] = {}
+        self._command_locks: dict[int, asyncio.Lock] = {}
 
         # Run crash recovery on startup if enabled
         if enable_recovery:
@@ -268,6 +280,19 @@ class Orchestrator:
         prev_state = run.state
         prev_time = getattr(run, "_state_entered_at", None)
         now = time.monotonic()
+
+        # ── G1: human-gate wait duration (Issue #30) ─────────────────────────
+        # When exiting a gate state, record how long the run spent waiting.
+        if prev_state in HUMAN_GATE_STATES and prev_time is not None:
+            gate_kind_map = {
+                RunState.WAITING_APPROVAL: "approval",
+                RunState.WAITING_DECISION: "decision",
+                RunState.WAITING_INPUT: "input",
+            }
+            gate_kind = gate_kind_map.get(prev_state)
+            if gate_kind is not None:
+                metrics.record_human_gate(gate_kind, now - prev_time)
+
         if prev_state is not None and prev_time is not None:
             duration = now - prev_time
             metrics.record_transition(prev_state, state, duration)
@@ -349,12 +374,15 @@ class Orchestrator:
             # Check idempotency: skip if this delivery was already processed
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
                 logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+                metrics.record_webhook_delivery("dedup_skipped")
                 return existing
             if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
             issue = await self.github.get_issue(number)
             req = self.cfg.get("required_issue_label", "opsswarm")
             names = [x.get("name", "") for x in issue.get("labels", []) if isinstance(x, dict)]
-            if req and req not in names: raise RuntimeError(f"Issue #{number} lacks required label {req}")
+            if req and req not in names:
+                metrics.record_webhook_delivery("rejected")
+                raise RuntimeError(f"Issue #{number} lacks required label {req}")
             run = RunRecord(run_id=f"RUN-GH-{number}-{uuid.uuid4().hex[:8]}", issue_number=number)
             # Store delivery ID for idempotency if provided
             if delivery_id:
@@ -365,6 +393,7 @@ class Orchestrator:
             run.incident = S.parse_issue(number, issue);
             await self._save(run, "S1.incident", run.incident.model_dump())
             await self._investigate(run)
+            metrics.record_webhook_delivery("processed")
             return run
 
     async def _investigate(self, run: RunRecord, extra_task: Task | None = None):
@@ -513,6 +542,7 @@ class Orchestrator:
             "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
         })
         if run.execution.ambiguous:
+            metrics.record_ambiguous_write()
             run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
                                            reason="The write outcome is ambiguous. Blind retry is prohibited.",
                                            options=[],
@@ -531,6 +561,83 @@ class Orchestrator:
                                      f"## OpsSwarm — Recovery failed\n\n{safe_summary}\n\nRef: {corr_id}");
             return
         await self._verify(run)
+
+    async def _execute_governed_remediation(
+        self,
+        run: RunRecord,
+        option: RemediationOption,
+        *,
+        approved_by: str | None = None,
+        branch: str | None = None,
+        base: str = "main",
+    ) -> RemediationExecution:
+        """Prepare and merge a governed code/service remediation PR.
+
+        This hook deliberately keeps deployment execution separate: callers may
+        invoke it after the human approval gate, then run S5/S7 deployment and
+        verification. It provides the auditable branch/PR/CI/merge plumbing
+        without coupling the two-phase plan workflow to a deployment platform.
+        """
+        branch_name = branch or f"opsswarm/{run.issue_number}/{option.id}"
+        execution = RemediationExecution(
+            option_id=option.id,
+            kind=RemediationExecutionKind.OPENCLAW_APPLIED,
+            human_approved=approved_by is not None,
+            approved_by=approved_by,
+        )
+        try:
+            branch_data = await self.github.create_branch(branch_name, base)
+            branch_sha = (branch_data.get("object") or {}).get("sha") if isinstance(branch_data, dict) else None
+            execution.branch = BranchRef(name=branch_name, base_ref=base, sha=branch_sha)
+            execution.evidence.append(f"branch:{branch_name}")
+
+            pr_data = await self.github.open_pr(
+                title=f"fix: governed remediation for issue #{run.issue_number}",
+                body=(
+                    f"Governed OpsSwarm remediation for issue #{run.issue_number}.\n\n"
+                    f"Option: `{option.id}`\n{option.description}"
+                ),
+                head=branch_name,
+                base=base,
+                draft=True,
+            )
+            pr_number = pr_data.get("number") if isinstance(pr_data, dict) else None
+            execution.pr = PullRequestRef(
+                number=pr_number,
+                url=pr_data.get("html_url") if isinstance(pr_data, dict) else None,
+                title=pr_data.get("title", "") if isinstance(pr_data, dict) else "",
+                body=pr_data.get("body", "") if isinstance(pr_data, dict) else "",
+                draft=pr_data.get("draft", True) if isinstance(pr_data, dict) else True,
+                state=pr_data.get("state") if isinstance(pr_data, dict) else None,
+                mergeable=pr_data.get("mergeable") if isinstance(pr_data, dict) else None,
+            )
+            execution.evidence.append(f"pr:{pr_number}")
+
+            if pr_number is None:
+                raise RuntimeError("GitHub did not return a pull-request number")
+            status = await self.github.get_pr_status(pr_number)
+            execution.ci_passed = status.get("checks_state") == "success"
+            if not execution.ci_passed:
+                execution.error = f"PR checks are not passing: {status.get('checks_state', 'unknown')}"
+                return execution
+            if approved_by is None:
+                return execution
+
+            merge_data = await self.github.merge_pr(pr_number, merge_method="squash")
+            execution.merged = bool((merge_data or {}).get("merged"))
+            if not execution.merged:
+                execution.error = "GitHub did not confirm pull-request merge"
+            else:
+                execution.evidence.append(f"merged:{pr_number}")
+            return execution
+        except Exception as exc:
+            execution.error = str(exc)
+            return execution
+
+    async def _save_governed_execution(self, run: RunRecord, execution: RemediationExecution) -> None:
+        """Persist governed remediation state and its evidence."""
+        run.remediation_execution = execution
+        await self._save(run, "S5.governed_remediation", execution.model_dump())
 
     async def _verify(self, run: RunRecord):
         _t0_verify = time.monotonic()
@@ -571,14 +678,9 @@ class Orchestrator:
         metrics.record_run("resolved")
         await self.github.comment(run.issue_number, resolved(run));
         await self.github.close_issue(run.issue_number)
-        # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close.  RCA requires
-        # the verified Phase 1 prerequisites; legacy/recovery runs can resolve
-        # without an incident or root-cause artifact and must not crash here.
-        if self.cfg.get("rca_enabled", False) and run.incident and run.root_cause:
+        # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close
+        if self.cfg.get("rca_enabled", True):
             await self._plan_rca(run)
-        elif self.cfg.get("rca_enabled", False):
-            await self._set_state(run, RunState.PLAN_RCA_RESOLVED)
-            await self._save(run, "RCA.skipped", {"reason": "missing_phase_1_prerequisites"})
 
     # ADR-015: Phase 2 — deferred RCA synthesis (Plan_RCA)
     async def _plan_rca(self, run: RunRecord) -> None:
@@ -643,13 +745,32 @@ class Orchestrator:
 
     async def handle_comment(self, number: int, actor: str, body: str, permission: str, command,
                              comment_id: str | None = None, delivery_id: str | None = None):
+        """Process one command under a per-issue lock for first-wins idempotency."""
+        lock = self._command_locks.setdefault(number, asyncio.Lock())
+        async with lock:
+            return await self._handle_comment_unlocked(
+                number, actor, body, permission, command, comment_id, delivery_id
+            )
+
+    async def _handle_comment_unlocked(self, number: int, actor: str, body: str, permission: str, command,
+                                       comment_id: str | None = None, delivery_id: str | None = None):
         run = self.runs.get(number)
         if not run: return
         # Check terminal state: reject all commands if run is in terminal state
-        if (run.state in TERMINAL_STATES or run.state == RunState.RESOLVED) and (command is None or command.name != "resume"):
+        if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
             logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
             await self.github.comment(number,
                                       f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
+            metrics.record_webhook_delivery("rejected")
+            return
+
+        # ADR-015: RESOLVED is not in TERMINAL_STATES (allows PLAN_RCA transition)
+        # but freetext input is not meaningful on a closed incident — reject it.
+        if run.state == RunState.RESOLVED and command is None:
+            logger.info(f"Rejecting freetext on issue #{number}: run is in RESOLVED state")
+            await self.github.comment(number,
+                                      "OpsSwarm cannot process freetext on a closed incident (state: RESOLVED). Please open a new issue if needed.")
+            metrics.record_webhook_delivery("rejected")
             return
 
         # Migrate legacy executed_commands to command_outcomes for backward compatibility
@@ -665,12 +786,28 @@ class Orchestrator:
             if outcome == CommandOutcome.CONFIRMED.value:
                 logger.info(f"Skipping already executed comment {comment_id} for issue #{number}")
                 return
-            elif outcome == CommandOutcome.RECEIVED.value or outcome == CommandOutcome.EXECUTING.value or outcome == CommandOutcome.UNKNOWN.value:
-                # Command was received but not confirmed - can retry safely
+            elif outcome == CommandOutcome.UNKNOWN.value:
+                # ADR-012: UNKNOWN means the external effect may have happened.
+                # Blind retry is prohibited; require explicit reconciliation first.
+                logger.warning(
+                    "Rejecting command %s for issue #%s: outcome is UNKNOWN; "
+                    "reconciliation is required before retry",
+                    comment_id,
+                    number,
+                )
+                await self.github.comment(
+                    number,
+                    "OpsSwarm cannot safely retry this command because its external outcome is unknown. "
+                    "Reconcile the external system first, then issue a new command.",
+                )
+                metrics.record_webhook_delivery("rejected")
+                return
+            elif outcome in (CommandOutcome.RECEIVED.value, CommandOutcome.EXECUTING.value):
                 logger.info(f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}")
 
         if delivery_id and delivery_id in run.idempotency_keys:
             logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+            metrics.record_webhook_delivery("dedup_skipped")
             return
 
         # Record this comment/delivery as RECEIVED (not yet executed) - Issue #9 fix
@@ -683,6 +820,7 @@ class Orchestrator:
         # Persist immediately so crash recovery can find this command
         if comment_id or delivery_id:
             self.store.save(run)
+        metrics.record_webhook_delivery("processed")
         if not command:
             run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"});
             await self._save(run, "human.free_text", run.human_inputs[-1]);
@@ -822,9 +960,16 @@ class Orchestrator:
             await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
             metrics.record_command("approve")
             await self._execute_option(run, option)
-            # Mark command as executed (after execution completes)
-            if comment_id:
-                run.mark_command_confirmed(comment_id)
+            # Resolve the durable command outcome after the execution attempt.
+            # Ambiguous outcomes remain UNKNOWN (set during recovery); a confirmed
+            # failure is ABSENT and only a successful execution is CONFIRMED.
+            if comment_id and run.execution:
+                if run.execution.success and not run.execution.ambiguous:
+                    run.mark_command_confirmed(comment_id)
+                elif not run.execution.ambiguous:
+                    run.mark_command_absent(comment_id)
+                else:
+                    run.mark_command_unknown(comment_id)
                 self.store.save(run)
             return
         if command.name == "resume":

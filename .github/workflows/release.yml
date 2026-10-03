@@ -239,13 +239,14 @@ jobs:
           test "$(find dist -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
           test "$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
 
-      - name: Upload wheel and smoke config for downstream smoke job
-        id: upload_wheel
+      - name: Upload distributions and smoke config for downstream smoke jobs
+        id: upload_distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-wheel-${{ steps.release_ref.outputs.tag }}
+          name: release-distributions-${{ steps.release_ref.outputs.tag }}
           path: |
             dist/*.whl
+            dist/*.tar.gz
             config/test.yaml
           if-no-files-found: error
           retention-days: 1
@@ -373,35 +374,45 @@ jobs:
             artifacts/release/sbom.cdx.json
 
   smoke:
-    name: Smoke test wheel in isolated venv
+    name: Smoke test wheel and sdist in isolated venv
     needs: release
     runs-on: ubuntu-latest
     environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: wheel
+            file-pattern: "*.whl"
+            description: "wheel"
+          - artifact: sdist
+            file-pattern: "*.tar.gz"
+            description: "source distribution"
     steps:
       # The harness and safe test config are checked out only to drive the
       # consumer-side test.  The application is installed exclusively from
-      # the downloaded wheel and starts from a temporary non-repository cwd.
+      # the downloaded artifact and starts from a temporary non-repository cwd.
       - name: Checkout immutable release ref for smoke harness
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: refs/tags/${{ needs.release.outputs.tag }}
           persist-credentials: false
-      - name: Download wheel and smoke config
+      - name: Download distributions and smoke config
         uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: release-wheel-${{ needs.release.outputs.tag }}
+          name: release-distributions-${{ needs.release.outputs.tag }}
           path: smoke-input/
 
-      - name: Locate downloaded artifacts
+      - name: Locate downloaded distributions and config
         id: artifacts
         shell: bash
         run: |
           set -euo pipefail
-          wheel=$(find smoke-input/ -maxdepth 1 -name '*.whl' -type f)
+          artifact=$(find smoke-input/ -maxdepth 1 -name '${{ matrix.file-pattern }}' -type f)
           config=$(find smoke-input/ -maxdepth 1 -name '*.yaml' -type f)
-          echo "wheel=$wheel" >> "$GITHUB_OUTPUT"
+          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
           echo "config=$config" >> "$GITHUB_OUTPUT"
-          test -n "$wheel"
+          test -n "$artifact"
           test -n "$config"
 
       - name: Set up Python 3.11 managed environment
@@ -411,14 +422,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.lock
 
-      - name: Call smoke-wheel.py via the managed Python
+      - name: Call smoke-wheel.py for ${{ matrix.description }}
         shell: bash
         env:
-          WHEEL_PATH: ${{ steps.artifacts.outputs.wheel }}
+          ARTIFACT_PATH: ${{ steps.artifacts.outputs.artifact }}
           CONFIG_PATH: ${{ steps.artifacts.outputs.config }}
         run: |
           set -euo pipefail
           python scripts/smoke-wheel.py \
             --port 8765 \
-            "$WHEEL_PATH" \
+            "$ARTIFACT_PATH" \
             "$CONFIG_PATH"

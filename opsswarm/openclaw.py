@@ -6,9 +6,11 @@ import logging
 import os
 import re
 import tempfile
+import time
 from typing import Any
 
 from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log, OpenClawErrorSanitized
+from .metrics import metrics
 from .tool_allowlist import ToolAllowlist, ToolDenyError
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,14 @@ class OpenClawClient:
         once the config is loaded.  Idempotent: calling with None disables checks.
         """
         self._tool_allowlist = allowlist
+
+    def set_check_tools(self, value: bool) -> None:
+        """Enable or disable tool allowlist enforcement at runtime.
+
+        This allows the orchestrator to enable enforcement after the client is
+        constructed.  Used in conjunction with set_tool_allowlist().
+        """
+        self._check_tools = value
 
     # ------------------------------------------------------------------ #
     # Tool enforcement
@@ -111,12 +121,16 @@ class OpenClawClient:
         with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
             f.write(prompt);
             path = f.name
+        # Instrument call duration + error/timeout metrics (G2 / Issue #30)
+        start_time = time.monotonic()
+        error_hit = False
         try:
             proc = await asyncio.create_subprocess_exec(
                 self.binary, "agent", "--agent", agent, "--session-key", session_key,
                 "--message-file", path, "--json", "--timeout", str(self.timeout),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
             out, err = await asyncio.wait_for(proc.communicate(), timeout=self.timeout + 30)
+            elapsed = time.monotonic() - start_time
             if proc.returncode != 0:
                 raw_stderr = err.decode(errors="replace")
                 # Truncate before sanitization to limit log size
@@ -126,7 +140,9 @@ class OpenClawClient:
                 # never reaches GitHub comments
                 safe_stderr = sanitize_for_log(truncated_stderr)
                 logger.error(f"OpenClaw rc={proc.returncode} [{corr_id}]: {safe_stderr}")
-                # Raise with sanitised wrapper so callers can post a safe comment
+                # Record error metric; raise with sanitised wrapper so callers can post a safe comment
+                metrics.record_openclaw_error(agent)
+                error_hit = True
                 raise OpenClawErrorSanitized(
                     sanitize_for_comment(truncated_stderr),
                     correlation_id=corr_id,
@@ -134,14 +150,43 @@ class OpenClawClient:
                 )
             envelope = json.loads(out.decode())
             if not envelope.get("ok", True): raise OpenClawError(str(envelope.get("error")))
-            if isinstance(envelope.get("final"), str): return envelope["final"]
+            if isinstance(envelope.get("final"), str):
+                metrics.record_openclaw_call(agent)
+                metrics.record_openclaw_duration(agent, elapsed)
+                return envelope["final"]
             for p in envelope.get("payloads", []):
-                if isinstance(p, dict) and isinstance(p.get("text"), str): return p["text"]
+                if isinstance(p, dict) and isinstance(p.get("text"), str):
+                    metrics.record_openclaw_call(agent)
+                    metrics.record_openclaw_duration(agent, elapsed)
+                    return p["text"]
             # Gateway-backed response may nest payloads under result.
             result = envelope.get("result") or {}
             for p in result.get("payloads", []) if isinstance(result, dict) else []:
-                if isinstance(p, dict) and isinstance(p.get("text"), str): return p["text"]
+                if isinstance(p, dict) and isinstance(p.get("text"), str):
+                    metrics.record_openclaw_call(agent)
+                    metrics.record_openclaw_duration(agent, elapsed)
+                    return p["text"]
             raise OpenClawError("No assistant text in OpenClaw JSON envelope")
+        except asyncio.TimeoutError:
+            elapsed = time.monotonic() - start_time
+            metrics.record_openclaw_call(agent)
+            metrics.record_openclaw_duration(agent, elapsed)
+            metrics.record_openclaw_timeout(agent)
+            raise
+        except TimeoutError:
+            elapsed = time.monotonic() - start_time
+            metrics.record_openclaw_call(agent)
+            metrics.record_openclaw_duration(agent, elapsed)
+            metrics.record_openclaw_timeout(agent)
+            raise
+        except Exception:
+            # Non-timeout, non-ExitCode errors (JSON parse, missing fields, etc.)
+            elapsed = time.monotonic() - start_time
+            if not error_hit:
+                metrics.record_openclaw_call(agent)
+                metrics.record_openclaw_duration(agent, elapsed)
+                metrics.record_openclaw_error(agent)
+            raise
         finally:
             try:
                 os.unlink(path)

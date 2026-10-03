@@ -98,17 +98,22 @@ class TestLoadNonTerminalRuns:
         assert runs == []
 
     def test_load_non_terminal_filters_terminal(self, manager):
-        """Filters out terminal runs."""
+        """Filters out terminal runs.
+
+        ADR-015: RESOLVED is not in TERMINAL_STATES (allows PLAN_RCA).
+        PLAN_RCA_RESOLVED is the actual terminal state.
+        """
         terminal = MagicMock()
-        terminal.state = RunState.RESOLVED
+        # ADR-015: PLAN_RCA_RESOLVED is the true terminal state
+        terminal.state = RunState.PLAN_RCA_RESOLVED
         non_terminal = MagicMock()
-        non_terminal.state = RunState.INVESTIGATING
+        non_terminal.state = RunState.RESOLVED  # RESOLVED is non-terminal (allows PLAN_RCA)
 
         with patch.object(manager.store, "load_all", return_value=[terminal, non_terminal]):
             runs = manager.load_non_terminal_runs()
 
         assert len(runs) == 1
-        assert runs[0].state == RunState.INVESTIGATING
+        assert runs[0].state == RunState.RESOLVED
 
 
 class TestRecoverRun:

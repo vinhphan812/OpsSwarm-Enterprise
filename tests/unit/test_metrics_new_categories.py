@@ -243,3 +243,63 @@ class TestMetricsCardinality:
         for l in lines:
             if 'state="TRIAGE"' in l:
                 assert l.strip().endswith("0")
+
+    # ── Webhook delivery metric (G4 / Issue #30) ──────────────────────────────
+
+    def test_record_webhook_delivery_processed(self):
+        """record_webhook_delivery increments the correct kind counter."""
+        m = Metrics()
+        m.record_webhook_delivery("processed")
+        assert m.webhook_deliveries["processed"] == 1
+        assert m.webhook_deliveries["dedup_skipped"] == 0
+        assert m.webhook_deliveries["rejected"] == 0
+
+    def test_record_webhook_delivery_dedup_skipped(self):
+        """Dedup skip increments dedup_skipped bucket."""
+        m = Metrics()
+        m.record_webhook_delivery("dedup_skipped")
+        assert m.webhook_deliveries["dedup_skipped"] == 1
+
+    def test_record_webhook_delivery_rejected(self):
+        """Rejected delivery increments rejected bucket."""
+        m = Metrics()
+        m.record_webhook_delivery("rejected")
+        assert m.webhook_deliveries["rejected"] == 1
+
+    def test_record_webhook_delivery_accumulates(self):
+        """Multiple calls to the same kind accumulate correctly."""
+        m = Metrics()
+        m.record_webhook_delivery("processed")
+        m.record_webhook_delivery("processed")
+        m.record_webhook_delivery("rejected")
+        assert m.webhook_deliveries["processed"] == 2
+        assert m.webhook_deliveries["rejected"] == 1
+
+    def test_record_webhook_delivery_unknown_mapped_to_unknown(self):
+        """Unknown kind is remapped to 'unknown' with cardinality guard."""
+        m = Metrics()
+        m.record_webhook_delivery("processed")  # prime
+        m.record_webhook_delivery("malicious_input")
+        assert "malicious_input" not in m.webhook_deliveries
+        assert m.webhook_deliveries["unknown"] == 1
+        # Cardinality guard tracks 'unknown' not raw input
+        assert "malicious_input" not in m._observed_labels.get("webhook_deliveries", set())
+
+    def test_webhook_delivery_cardinality_guard(self):
+        """Cardinality guard tracks only valid label values, not raw input."""
+        m = Metrics()
+        for kind in ["processed", "dedup_skipped", "rejected"]:
+            m.record_webhook_delivery(kind)
+        observed = m._observed_labels.get("webhook_deliveries", set())
+        assert observed == {"processed", "dedup_skipped", "rejected"}
+
+    def test_webhook_deliveries_in_prometheus_output(self):
+        """opsswarm_webhook_deliveries_total{kind} appears in Prometheus output."""
+        m = Metrics()
+        m.record_webhook_delivery("processed")
+        m.record_webhook_delivery("dedup_skipped")
+        m.record_webhook_delivery("rejected")
+        output = m.to_prometheus()
+        lines = [l for l in output.splitlines() if "opsswarm_webhook_deliveries_total" in l]
+        kinds = {l.split('kind="')[1].split('"')[0] for l in lines}
+        assert kinds == {"processed", "dedup_skipped", "rejected"}

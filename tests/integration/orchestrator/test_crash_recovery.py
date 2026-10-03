@@ -285,7 +285,9 @@ class TestCrashRecovery:
         # Verify only non-terminal runs are returned
         assert "non-terminal-1" in non_terminal_ids, "WAITING_APPROVAL should be non-terminal"
         assert "non-terminal-2" in non_terminal_ids, "EXECUTING should be non-terminal"
-        assert "terminal-resolved" not in non_terminal_ids, "RESOLVED should be terminal"
+        # ADR-015: RESOLVED remains recoverable until deferred RCA reaches
+        # PLAN_RCA_RESOLVED, so it is intentionally included here.
+        assert "terminal-resolved" in non_terminal_ids, "RESOLVED should remain recoverable until RCA completes"
         assert "terminal-aborted" not in non_terminal_ids, "ABORTED should be terminal"
 
         print(f"✓ Non-terminal runs identified correctly: {non_terminal_ids}")
