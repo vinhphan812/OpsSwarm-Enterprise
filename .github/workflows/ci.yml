@@ -247,6 +247,9 @@ jobs:
             requirements.txt
             pyproject.toml
 
+      - name: Install project and test tooling
+        run: python -m pip install -e '.[dev]'
+
       - name: Run documentation validation
         run: python docs/validate.py
 
