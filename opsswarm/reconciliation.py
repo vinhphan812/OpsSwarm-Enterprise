@@ -181,7 +181,10 @@ class ReconciliationManager:
         non_terminal = []
 
         for run in all_runs:
-            if run.state not in TERMINAL_STATES and run.state != RunState.RESOLVED:
+            # ADR-015: RESOLVED is not in TERMINAL_STATES (it can transition to
+            # PLAN_RCA / PLAN_RCA_RESOLVED), so it is included here. The orchestrator's
+            # handle_comment() guards against processing new commands on PLAN_RCA_RESOLVED.
+            if run.state not in TERMINAL_STATES or run.state == RunState.RESOLVED:
                 non_terminal.append(run)
                 logger.info(f"Found non-terminal run {run.run_id} in state {run.state.value}")
             else:

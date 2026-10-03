@@ -5,7 +5,8 @@ import logging
 import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from starlette.responses import PlainTextResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import PlainTextResponse, Response
 
 from .auth import (
     _ensure_production_auth_config,
@@ -53,17 +54,36 @@ engine = Orchestrator(cfg, gh, oc, os.environ.get("OPSWARM_DATA_DIR", "runtime-d
 app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
 
 
-@app.middleware("http")
-async def correlation_middleware(request: Request, call_next):
-    """Bind a correlation ID for one request and expose it in the response."""
-    correlation_id = request.headers.get("X-Correlation-ID") or new_correlation_id()
-    token = set_corr_id(correlation_id)
-    try:
-        response = await call_next(request)
-    finally:
-        reset_corr_id(token)
-    response.headers["X-Correlation-ID"] = correlation_id
-    return response
+class CorrelationMiddleware(BaseHTTPMiddleware):
+    """Stamp every request with a correlation ID returned in response headers.
+
+    Sets ``X-Corr-ID`` and ``X-Request-ID`` on both the request log context
+    and the response.  If the client already supplied one via ``X-Correlation-ID``
+    or ``X-Request-ID`` it is reused unchanged.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next
+    ) -> Response:
+        incoming = (
+            request.headers.get("x-corr-id")
+            or request.headers.get("x-correlation-id")
+            or request.headers.get("x-request-id")
+            or ""
+        )
+        correlation_id = incoming if incoming else new_correlation_id()
+        token = set_corr_id(correlation_id)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_corr_id(token)
+        response.headers["X-Correlation-ID"] = correlation_id
+        response.headers["X-Request-ID"] = correlation_id
+        response.headers["X-Corr-ID"] = correlation_id
+        return response
+
+
+app.add_middleware(CorrelationMiddleware)
 
 
 # ---------------------------------------------------------------------------

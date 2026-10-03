@@ -384,13 +384,24 @@ class EvidenceStore:
             payload = rec.get("payload", {})
             stored_sig = rec.get("signature")
 
-            # STRICT: reject missing / non-string signatures (consistent with C-01)
+            # ADR-009-1 tolerant mode: skip records with missing/invalid signature
+            # instead of raising. Write to .corrupt sidecar; prev_sig stays unchanged
+            # so the chain resumes from the last valid record.
             if not isinstance(stored_sig, str) or not stored_sig:
-                raise MalformedEvidenceError(
-                    f"Evidence record missing or invalid signature for run {run_id} "
-                    f"at line {i + 1}: signature must be a non-empty string, "
-                    f"got {type(stored_sig).__name__ if stored_sig is not None else 'None'!r}"
+                self._corrupt_count += 1
+                logger.warning(
+                    "[ADR-009-1] Evidence record missing or invalid signature for run %s "
+                    "at line %d -- written to .corrupt sidecar",
+                    run_id,
+                    i + 1,
                 )
+                _m = _get_metrics()
+                if _m is not None:
+                    _m.record_evidence_failure("corrupt")
+                corrupt_path = self.path / f"{run_id}.corrupt"
+                with corrupt_path.open("a", encoding="utf-8") as cf:
+                    cf.write(line + "\n")
+                continue
 
             recomputed_sig = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
             if stored_sig != recomputed_sig:
