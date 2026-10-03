@@ -48,6 +48,8 @@ jobs:
     name: Python ${{ matrix.python-version }} quality gates
     needs: dependency-lock
     runs-on: ubuntu-latest
+    env:
+      OPSWARM_CONFIG: config/test.yaml  # Fix test collection: unresolved ${GITHUB_REPO} in production.yaml
     strategy:
       fail-fast: false
       matrix:
