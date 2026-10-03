@@ -113,7 +113,7 @@ class TestCommandIdempotency:
             run = RunRecord(run_id="RUN-1", issue_number=1, state=terminal_state)
 
             # Commands should be rejected in terminal states
-            assert run.state in TERMINAL_STATES or run.state == RunState.RESOLVED
+            assert run.state in TERMINAL_STATES
 
 
 class TestStateMachine:
@@ -150,11 +150,15 @@ class TestStateMachine:
             run.transition(RunState.OPEN, enforcement="strict")
 
     def test_terminal_states_reject_commands(self):
-        """Terminal states should reject commands."""
-        run = RunRecord(run_id="RUN-1", issue_number=1, state=RunState.RESOLVED)
+        """Terminal states should reject commands.
+
+        ADR-015: RESOLVED is not in TERMINAL_STATES (allows PLAN_RCA).
+        PLAN_RCA_RESOLVED is the actual terminal state.
+        """
+        run = RunRecord(run_id="RUN-1", issue_number=1, state=RunState.PLAN_RCA_RESOLVED)
 
         # Check terminal state rejection logic
-        assert run.state == RunState.RESOLVED or RunState.PLAN_RCA_RESOLVED in TERMINAL_STATES
+        assert run.state in TERMINAL_STATES
 
         # can_transition_to should return False
         assert run.can_transition_to(RunState.OPEN) is False
@@ -378,8 +382,9 @@ class TestIntegration:
         assert is_duplicate is True
 
         # Terminal state should reject
-        terminal_state = RunState.PLAN_RCA_RESOLVED
-        assert run.state == RunState.RESOLVED or RunState.PLAN_RCA_RESOLVED in TERMINAL_STATES
+        # ADR-015: PLAN_RCA_RESOLVED is the terminal state (Phase 2 complete)
+        run.state = RunState.PLAN_RCA_RESOLVED
+        assert run.state in TERMINAL_STATES
 
 
 class TestPersistenceConfig:

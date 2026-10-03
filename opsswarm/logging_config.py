@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from typing import Any
 
 from .errors import new_correlation_id
@@ -79,9 +79,14 @@ def get_corr_id() -> str:
     return val
 
 
-def set_corr_id(value: str) -> None:
-    """Bind a specific correlation ID to the current async context."""
-    corr_id_var.set(value)
+def set_corr_id(value: str) -> Token[str]:
+    """Bind a specific correlation ID and return its reset token."""
+    return corr_id_var.set(value)
+
+
+def reset_corr_id(token: Token[str]) -> None:
+    """Restore the correlation context that was active before a request."""
+    corr_id_var.reset(token)
 
 
 def bind_request_context() -> str:

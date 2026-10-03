@@ -1,6 +1,7 @@
 repo: test/example
 required_issue_label: opsswarm
 create_corrective_issues: false
+rca_enabled: false  # ADR-015: disable Phase 2 RCA in existing tests; new tests exercise RCA with explicit response
 root_cause_confidence_threshold: 0.80
 verification_confidence_threshold: 0.85
 openclaw:

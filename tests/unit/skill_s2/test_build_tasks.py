@@ -404,9 +404,8 @@ async def test_s2_f2_missing_required_fields():
     fake_response = {"tasks": [{"id": "T1"}]}  # Missing type, objective, profile
     oc = make_fake_oc(fake_response)
 
-    # Invalid structured output fails closed rather than escaping as an exception.
     result = await build_tasks(oc, "agent", "run-1", incident)
-    assert result == []
+    assert result == []  # Invalid graphs are rejected after diagnostics persistence
 
 
 @pytest.mark.unit
@@ -423,7 +422,7 @@ async def test_s2_f3_invalid_task_type():
     oc = make_fake_oc(fake_response)
 
     result = await build_tasks(oc, "agent", "run-1", incident)
-    assert result == []
+    assert result == []  # Invalid task types are rejected fail-closed
 
 
 @pytest.mark.unit
@@ -448,7 +447,7 @@ async def test_s2_f4_invalid_risk_value():
     oc = make_fake_oc(fake_response)
 
     result = await build_tasks(oc, "agent", "run-1", incident)
-    assert result == []
+    assert result == []  # Invalid task types are rejected fail-closed
 
 
 @pytest.mark.unit

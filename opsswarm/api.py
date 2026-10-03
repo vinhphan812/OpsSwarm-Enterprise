@@ -3,13 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import time
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Callable
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, Response
 
 from .auth import (
     _ensure_production_auth_config,
@@ -25,7 +22,7 @@ from .commands import parse_command
 from .config import load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import GitHubClient
-from .logging_config import bind_request_context, setup_logging
+from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
@@ -33,72 +30,12 @@ from .webhook import verify_signature
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Correlation middleware — stamps X-Request-ID / X-Corr-ID on every request
-# ---------------------------------------------------------------------------
-
-
-class CorrelationMiddleware(BaseHTTPMiddleware):
-    """Stamp every request with a correlation ID returned in response headers.
-
-    Sets ``X-Corr-ID`` (OpsSwarm convention) and ``X-Request-ID`` (standard)
-    on both the request log context and the response.  If the client already
-    supplied one via ``X-Corr-ID`` or ``X-Request-ID`` it is reused unchanged.
-    """
-
-    async def dispatch(
-        self, request: Request, call_next: Callable
-    ) -> Response:
-        incoming = (
-            request.headers.get("x-corr-id")
-            or request.headers.get("x-request-id")
-            or ""
-        )
-        corr_id = bind_request_context() if not incoming else incoming
-
-        response = await call_next(request)
-        response.headers["X-Corr-ID"] = corr_id
-        response.headers["X-Request-ID"] = corr_id
-        return response
-
-
-# ---------------------------------------------------------------------------
-# Lifespan: deferred init so middleware + logging are ready first
-# ---------------------------------------------------------------------------
-
-# Typed handle for the running application (set inside lifespan)
-_app_handle: FastAPI | None = None
-
-
-async def _lifespan_startup(app: FastAPI) -> None:
-    global _app_handle
-    _app_handle = app
-
-    # Structured logging must be configured before anything else logs
-    setup_logging()
-
-    # Reload auth config now that environment is populated
-    reload_auth_config()
-    _ensure_production_auth_config()
-
-
-async def _lifespan_shutdown(_app: FastAPI) -> None:
-    """Graceful shutdown hook. Extend as needed."""
-    pass
-
-
-@asynccontextmanager
-async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    await _lifespan_startup(app)
-    yield
-    await _lifespan_shutdown(app)
-
-
 cfg = load_config()
 
 # Deprecated: X-OpsSwarm-API-Key header (Phase 1 of migration).
 # Kept for backward compatibility during transition period.
 _deprecated_api_key = os.environ.get("OPSWARM_API_KEY", "")
+
 
 gh = GitHubClient(
     os.environ.get("GITHUB_TOKEN", ""),
@@ -114,13 +51,52 @@ oc = OpenClawClient(
     ),
 )
 engine = Orchestrator(cfg, gh, oc, os.environ.get("OPSWARM_DATA_DIR", "runtime-data"))
+app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
 
-app = FastAPI(
-    title="OpsSwarm Enterprise OpenClaw+GitHub",
-    version="2.1.0",
-    lifespan=_lifespan,
-)
+
+class CorrelationMiddleware(BaseHTTPMiddleware):
+    """Stamp every request with a correlation ID returned in response headers.
+
+    Sets ``X-Corr-ID`` and ``X-Request-ID`` on both the request log context
+    and the response.  If the client already supplied one via ``X-Correlation-ID``
+    or ``X-Request-ID`` it is reused unchanged.
+    """
+
+    async def dispatch(
+        self, request: Request, call_next
+    ) -> Response:
+        incoming = (
+            request.headers.get("x-corr-id")
+            or request.headers.get("x-correlation-id")
+            or request.headers.get("x-request-id")
+            or ""
+        )
+        correlation_id = incoming if incoming else new_correlation_id()
+        token = set_corr_id(correlation_id)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_corr_id(token)
+        response.headers["X-Correlation-ID"] = correlation_id
+        response.headers["X-Request-ID"] = correlation_id
+        response.headers["X-Corr-ID"] = correlation_id
+        return response
+
+
 app.add_middleware(CorrelationMiddleware)
+
+
+# ---------------------------------------------------------------------------
+# Lifespan: fail-closed production startup check (ADR-014 D4)
+# ---------------------------------------------------------------------------
+
+
+@app.on_event("startup")
+async def _startup_auth_check():
+    from .logging_config import setup_logging
+    setup_logging()
+    reload_auth_config()
+    _ensure_production_auth_config()
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +117,14 @@ async def get_metrics():
         sv = run.state.value if run.state else "UNKNOWN"
         state_counts[sv] = state_counts.get(sv, 0) + 1
     metrics.set_active_runs(state_counts)
+    # Log the scrape with the correlation ID for traceability
+    logger.info(
+        "Metrics scraped",
+        extra={
+            "run_count": len(engine.runs),
+            "state_counts": state_counts,
+        },
+    )
     return PlainTextResponse(metrics.to_prometheus(), media_type="text/plain")
 
 
