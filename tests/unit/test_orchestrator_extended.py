@@ -443,7 +443,7 @@ async def test_handle_comment_freetext_on_terminal_run(cfg, tmp_path):
     eng = Orchestrator(cfg, gh, oc, str(tmp_path))
 
     run = RunRecord(run_id="test-run", issue_number=1)
-    run.state = RunState.RESOLVED
+    run.state = RunState.PLAN_RCA_RESOLVED
     eng.runs[1] = run
 
     eng.github.comment = AsyncMock()

@@ -89,9 +89,7 @@ async def test_execute_task_validation_error_no_raw_input_in_finding():
                 {
                     "type": "missing",
                     "loc": ("task_id",),
-                    "msg": "Field required",
                     "input": sensitive_payload,
-                    "url": "https://errors.pydantic.dev/2.0/v/missing",
                     "ctx": {},
                 }
             ],

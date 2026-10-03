@@ -52,9 +52,11 @@ class TestEvidenceSignatureFallback:
 # ---------------------------------------------------------------------------
 
 
-class TestEvidenceListStrictSignature:
-    def test_list_rejects_missing_signature_field(self, tmp_path):
-        """list() raises MalformedEvidenceError when a record has no signature."""
+class TestEvidenceListTolerantMode:
+    """ADR-009-1: list() tolerates malformed signature records instead of raising."""
+
+    def test_list_tolerates_missing_signature_field(self, tmp_path):
+        """list() skips records with absent signature (ADR-009-1 tolerant mode)."""
         import json
 
         ev = EvidenceStore(data_dir=tmp_path)
@@ -73,11 +75,14 @@ class TestEvidenceListStrictSignature:
             + "\n",
             encoding="utf-8",
         )
-        with pytest.raises(MalformedEvidenceError, match="signature must be a non-empty string"):
-            ev.list(run_id)
+        # ADR-009-1 tolerant: no exception, record is skipped and written to .corrupt
+        records = ev.list(run_id)
+        assert records == []
+        corrupt = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt.exists()
 
-    def test_list_rejects_none_signature(self, tmp_path):
-        """list() raises MalformedEvidenceError when signature is explicitly None."""
+    def test_list_tolerates_none_signature(self, tmp_path):
+        """list() skips records with None signature (ADR-009-1 tolerant mode)."""
         import json
 
         ev = EvidenceStore(data_dir=tmp_path)
@@ -96,11 +101,14 @@ class TestEvidenceListStrictSignature:
             + "\n",
             encoding="utf-8",
         )
-        with pytest.raises(MalformedEvidenceError, match="signature must be a non-empty string"):
-            ev.list(run_id)
+        # ADR-009-1 tolerant: no exception, record is skipped
+        records = ev.list(run_id)
+        assert records == []
+        corrupt = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt.exists()
 
-    def test_list_rejects_empty_string_signature(self, tmp_path):
-        """list() raises MalformedEvidenceError when signature is an empty string."""
+    def test_list_tolerates_empty_string_signature(self, tmp_path):
+        """list() skips records with empty-string signature (ADR-009-1 tolerant mode)."""
         import json
 
         ev = EvidenceStore(data_dir=tmp_path)
@@ -119,11 +127,14 @@ class TestEvidenceListStrictSignature:
             + "\n",
             encoding="utf-8",
         )
-        with pytest.raises(MalformedEvidenceError, match="signature must be a non-empty string"):
-            ev.list(run_id)
+        # ADR-009-1 tolerant: no exception
+        records = ev.list(run_id)
+        assert records == []
+        corrupt = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt.exists()
 
-    def test_list_rejects_non_string_signature(self, tmp_path):
-        """list() raises MalformedEvidenceError when signature is not a string."""
+    def test_list_tolerates_non_string_signature(self, tmp_path):
+        """list() skips records with non-string signature (ADR-009-1 tolerant mode)."""
         import json
 
         ev = EvidenceStore(data_dir=tmp_path)
@@ -142,8 +153,11 @@ class TestEvidenceListStrictSignature:
             + "\n",
             encoding="utf-8",
         )
-        with pytest.raises(MalformedEvidenceError, match="signature must be a non-empty string"):
-            ev.list(run_id)
+        # ADR-009-1 tolerant: no exception
+        records = ev.list(run_id)
+        assert records == []
+        corrupt = tmp_path / "evidence" / f"{run_id}.corrupt"
+        assert corrupt.exists()
 
 
 # ---------------------------------------------------------------------------
