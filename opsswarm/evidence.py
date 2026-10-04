@@ -568,7 +568,7 @@ def save_skill_evidence(record: EvidenceRecord, data_dir: str | None = None) -> 
     else:
         data_dir = Path(data_dir)
 
-    evidence_dir = data_dir / "evidence"
+    evidence_dir = data_dir
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     output_path = evidence_dir / f"{record.run_id}.jsonl"
@@ -621,8 +621,7 @@ def load_skill_evidence(run_id: str, data_dir: str | None = None) -> list[dict[s
     else:
         data_dir = Path(data_dir)
 
-    evidence_dir = data_dir / "evidence"
-    evidence_file = evidence_dir / f"{run_id}.jsonl"
+    evidence_file = data_dir / f"{run_id}.jsonl"
 
     if not evidence_file.exists():
         return []
