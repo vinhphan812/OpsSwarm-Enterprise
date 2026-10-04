@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opsswarm-openclaw-github"
-version = "2.1.0"
+version = "2.2.0"
 description = "OpsSwarm Enterprise: OpenClaw + GitHub Incident Control Architecture"
 requires-python = ">=3.11"
 dependencies = [
