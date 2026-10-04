@@ -676,7 +676,7 @@ class Orchestrator:
         if delivery_id and delivery_id in run.idempotency_keys:
             logger.info(
                 "Skipping duplicate webhook delivery",
-                extra={"delivery_id": delivery_id, "issue_number": number},
+                extra={"delivery_id": sanitize_for_log_key(delivery_id), "issue_number": number},
             )
             return
 
