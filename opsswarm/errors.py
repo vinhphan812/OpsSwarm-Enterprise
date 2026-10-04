@@ -20,6 +20,7 @@ __all__ = [
     "new_correlation_id",
     "sanitize_for_comment",
     "sanitize_for_log",
+    "sanitize_for_log_key",
     "OpenClawErrorSanitized",
 ]
 
@@ -63,6 +64,47 @@ _TOKEN_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"), "[EMAIL]"),
 ]
 
+# Control-character stripper — makes log lines single-line and prevents log-injection.
+# Removes all C0/C1 control chars except those that appear in valid UTF-8 text:
+#   \x09 (\t)   → replaced with a single space (preserves aligned output)
+#   \x0a (\n)  → replaced with \u21a0 (→↗), the safe-to-log paragraph-separator glyph
+#   \x0d (\r)  → stripped
+#   other C0   → stripped  (NUL, BEL, BS, VT, FF, etc.)
+#   C1 (0x80-0x9f) → stripped
+#   All others (printable ASCII, high bytes including Vietnamese CJK/BMP) → kept
+_CONTROL_CHAR_RE = re.compile(
+    # Matches in order: NUL–BEL, backspace, VT, FF, CR, DEL, C1 block, OSC/PM (late 0x9x)
+    r"[\x00-\x08\x07\x0b\x0c\x0d\x7f\x80-\x9f\x98\x9e]|"
+    # \n → \u21a0, \t → single space
+    r"(?<!\x09)(\x0a)|"   # newline not preceded by tab → replace
+    r"(?<!\x0a)(\x09)"     # tab not preceded by newline → replace
+)
+# Pre-built replacement: pass group(1) which is either \x0a or \x09; replace with safe glyph/space
+_CONTROL_CHAR_RE_WITH_GROUP = re.compile(
+    r"[\x00-\x08\x07\x0b\x0c\x0d\x7f\x80-\x9f\x98\x9e]|"
+    r"(?<!\x09)(\x0a)|"
+    r"(?<!\x0a)(\x09)"
+)
+
+
+def _strip_control_chars(text: str) -> str:
+    """Strip/replace control characters so text is safe to embed in a log line.
+
+    Newlines become \\u21a0 so structured-log fields remain single-line while the
+    separator character is still visually distinguishable. Tabs become a single
+    space. Other C0/C1 chars are stripped. High bytes (Vietnamese CJK, emoji,
+    etc.) are preserved.
+    """
+    def _replacer(m: re.Match[str]) -> str:
+        ch = m.group()
+        if ch == "\x0a":
+            return "\u21a0"   # ↗ — safe paragraph separator in structured log
+        if ch == "\x09":
+            return " "
+        return ""
+    return _CONTROL_CHAR_RE_WITH_GROUP.sub(_replacer, text)
+
+
 # File-path patterns — these appear in OpenClaw stderr and Python tracebacks.
 # Truncate the path to the first two segments for privacy while keeping enough
 # context for operators.
@@ -89,11 +131,12 @@ def sanitize_for_comment(text: str) -> str:
     to a GitHub comment.
 
     The output contains only a short error category and a correlation ID —
-    no raw exception text, no file paths, no tokens.
+    no raw exception text, no file paths, no tokens, no control characters.
     """
     result = text
     for pattern, replacement in _ALL_PATTERNS:
         result = pattern.sub(replacement, result)
+    result = _strip_control_chars(result)
     return result
 
 
@@ -102,12 +145,42 @@ def sanitize_for_log(text: str) -> str:
 
     File paths are intentionally preserved in logs so operators can
     correlate errors with specific files/sessions.  Emails are also
-    redacted since they are PII.
+    redacted since they are PII.  Control characters are stripped so
+    log lines remain single-line and log-injection is prevented.
     """
     result = text
     for pattern, replacement in _TOKEN_PATTERNS:
         result = pattern.sub(replacement, result)
+    result = _strip_control_chars(result)
     return result
+
+
+def sanitize_for_log_key(key: str) -> str:
+    """Sanitise a log-message key (field name / identifier) that an external
+    actor could influence — particularly webhook-supplied delivery IDs,
+    comment IDs, and command outcomes.
+
+    - Strips all control characters (C0 and C1) including CR, LF, and TAB so
+      a malicious actor can never forge structured log lines.
+    - Strips all whitespace on both sides so key boundaries are unambiguous.
+    - Returns "[REDACTED]" when the input is empty or contains no printable
+      characters (defence in depth; the call-site is expected to guard this
+      but must not crash or produce an unsafe key on unexpected input).
+
+    Unlike :func:`sanitize_for_log` this does NOT apply token/path redaction
+    because field names and IDs are not expected to contain secrets.
+    """
+    if not key:
+        return "[REDACTED]"
+    # Remove all control characters (code points 0x00–0x1F and 0x7F–0x9F)
+    cleaned = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", key)
+    cleaned = cleaned.strip()
+    # If nothing printable remains, return the sentinel
+    if not cleaned:
+        return "[REDACTED]"
+    # Enforce a reasonable max length so a malicious caller cannot inflate
+    # log lines with arbitrarily long field values (cf. CVE-2024-3938 pattern)
+    return cleaned[:256]
 
 
 # ----------------------------------------------------------------------
