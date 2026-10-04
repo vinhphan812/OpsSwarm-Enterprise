@@ -61,7 +61,7 @@ class GitHubClient:
             follow_redirects=False,  # ADR-028: prevent redirect-to-arbitrary-host SSRF
             limits=_TRANSPORT_LIMITS,
             timeout=_REQUEST_TIMEOUT,
-            verify=verify,  # True (default system CA), False (skip, for test self-signed certs), or path str
+            verify=True,  # ADR-028: hardcoded — disables CodeQL py/request-without-cert-validation
         )
 
     async def _req(self, method: str, path: str, **kwargs) -> Any:
