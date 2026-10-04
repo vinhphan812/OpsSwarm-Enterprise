@@ -9,7 +9,7 @@ from typing import Any
 from . import skill_logic as S
 from .config import get_budget, get_concurrency, get_tool_allowlist, get_openclaw
 from .tool_allowlist import ToolAllowlist
-from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log
+from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log, sanitize_for_log_key
 from .evidence import EvidenceStore
 from .markdown import (
     decision_request,
@@ -350,7 +350,7 @@ class Orchestrator:
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
                 logger.info(
                     "Skipping duplicate webhook delivery",
-                    extra={"delivery_id": delivery_id, "issue_number": number},
+                    extra={"delivery_id": sanitize_for_log_key(delivery_id), "issue_number": number},
                 )
                 return existing
             if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
@@ -663,14 +663,14 @@ class Orchestrator:
             if outcome == CommandOutcome.CONFIRMED.value:
                 logger.info(
                     "Skipping already executed comment",
-                    extra={"comment_id": comment_id, "issue_number": number},
+                    extra={"comment_id": sanitize_for_log_key(comment_id), "issue_number": number},
                 )
                 return
             elif outcome == CommandOutcome.RECEIVED.value or outcome == CommandOutcome.EXECUTING.value or outcome == CommandOutcome.UNKNOWN.value:
                 # Command was received but not confirmed - can retry safely
                 logger.info(
                     "Resuming incomplete command",
-                    extra={"comment_id": comment_id, "outcome": outcome, "issue_number": number},
+                    extra={"comment_id": sanitize_for_log_key(comment_id), "outcome": outcome, "issue_number": number},
                 )
 
         if delivery_id and delivery_id in run.idempotency_keys:
