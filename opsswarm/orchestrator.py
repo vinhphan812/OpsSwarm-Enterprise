@@ -348,7 +348,10 @@ class Orchestrator:
             existing = self.runs.get(number)
             # Check idempotency: skip if this delivery was already processed
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
-                logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+                logger.info(
+                    "Skipping duplicate webhook delivery",
+                    extra={"delivery_id": delivery_id, "issue_number": number},
+                )
                 return existing
             if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
             issue = await self.github.get_issue(number)
@@ -658,14 +661,23 @@ class Orchestrator:
         if comment_id and comment_id in run.command_outcomes:
             outcome = run.command_outcomes.get(comment_id)
             if outcome == CommandOutcome.CONFIRMED.value:
-                logger.info(f"Skipping already executed comment {comment_id} for issue #{number}")
+                logger.info(
+                    "Skipping already executed comment",
+                    extra={"comment_id": comment_id, "issue_number": number},
+                )
                 return
             elif outcome == CommandOutcome.RECEIVED.value or outcome == CommandOutcome.EXECUTING.value or outcome == CommandOutcome.UNKNOWN.value:
                 # Command was received but not confirmed - can retry safely
-                logger.info(f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}")
+                logger.info(
+                    "Resuming incomplete command",
+                    extra={"comment_id": comment_id, "outcome": outcome, "issue_number": number},
+                )
 
         if delivery_id and delivery_id in run.idempotency_keys:
-            logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
+            logger.info(
+                "Skipping duplicate webhook delivery",
+                extra={"delivery_id": delivery_id, "issue_number": number},
+            )
             return
 
         # Record this comment/delivery as RECEIVED (not yet executed) - Issue #9 fix
