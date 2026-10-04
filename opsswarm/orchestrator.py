@@ -9,7 +9,7 @@ from typing import Any
 from . import skill_logic as S
 from .config import get_budget, get_concurrency, get_tool_allowlist, get_openclaw
 from .tool_allowlist import ToolAllowlist
-from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log
+from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log, sanitize_for_log_key
 from .evidence import EvidenceStore
 from .markdown import (
     decision_request,
@@ -315,6 +315,10 @@ class Orchestrator:
             rca_label = cfg.get("rca_label", "phase:rca")
             await self.github.add_label(run.issue_number, rca_label)
 
+        # G5 (Issue #30): record ABORTED terminal state in runs counter
+        if state == RunState.ABORTED:
+            metrics.record_run("aborted")
+
     async def _budget_preflight(self, run: RunRecord, budget: RunBudget) -> bool:
         budget.wall_clock_seconds = budget.elapsed_seconds()
         exceeded, reason = budget.check()
@@ -373,8 +377,7 @@ class Orchestrator:
             existing = self.runs.get(number)
             # Check idempotency: skip if this delivery was already processed
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
-                logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
-                metrics.record_webhook_delivery("dedup_skipped")
+                logger.info("Skipping duplicate webhook delivery", extra={"delivery_id": sanitize_for_log_key(delivery_id), "issue_number": number})
                 return existing
             if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
             issue = await self.github.get_issue(number)
@@ -784,7 +787,7 @@ class Orchestrator:
         if comment_id and comment_id in run.command_outcomes:
             outcome = run.command_outcomes.get(comment_id)
             if outcome == CommandOutcome.CONFIRMED.value:
-                logger.info(f"Skipping already executed comment {comment_id} for issue #{number}")
+                logger.info("Skipping already executed comment", extra={"comment_id": sanitize_for_log_key(comment_id), "issue_number": number})
                 return
             elif outcome == CommandOutcome.UNKNOWN.value:
                 # ADR-012: UNKNOWN means the external effect may have happened.
@@ -803,11 +806,10 @@ class Orchestrator:
                 metrics.record_webhook_delivery("rejected")
                 return
             elif outcome in (CommandOutcome.RECEIVED.value, CommandOutcome.EXECUTING.value):
-                logger.info(f"Resuming incomplete command {comment_id} (outcome: {outcome}) for issue #{number}")
+                logger.info("Resuming incomplete command", extra={"comment_id": sanitize_for_log_key(comment_id), "outcome": outcome, "issue_number": number})
 
         if delivery_id and delivery_id in run.idempotency_keys:
-            logger.info(f"Skipping duplicate webhook delivery {delivery_id} for issue #{number}")
-            metrics.record_webhook_delivery("dedup_skipped")
+            logger.info("Skipping duplicate webhook delivery", extra={"delivery_id": sanitize_for_log_key(delivery_id), "issue_number": number})
             return
 
         # Record this comment/delivery as RECEIVED (not yet executed) - Issue #9 fix

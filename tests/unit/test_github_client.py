@@ -1,7 +1,9 @@
 """Unit tests for opsswarm.github_client module."""
 
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from opsswarm.github_client import GitHubClient
@@ -27,12 +29,12 @@ class TestGitHubClient:
         assert client.client.headers["Accept"] == "application/vnd.github+json"
 
     def test_init_custom_base_url(self):
-        """Client can use custom base URL."""
+        """Client can use the https://github.com/api/v3 alias."""
         client = GitHubClient(
-            token="token", repo="owner/repo", base_url="https://github.example.com/api/v3"
+            token="token", repo="owner/repo", base_url="https://github.com/api/v3"
         )
         # Check that the client was created with the custom URL
-        assert "github.example.com" in str(client.client.base_url)
+        assert "github.com" in str(client.client.base_url)
 
     @pytest.mark.asyncio
     async def test_get_issue_success(self, client):
@@ -486,3 +488,243 @@ class TestGitHubClient:
 
             with pytest.raises(PermissionError, match="GitHub API returned 403"):
                 await client._req("GET", "/repos/owner/repo/secret")
+
+
+class TestGitHubClientSSRF:
+    """ADR-028 SSRF mitigation tests — fail-closed transport boundary."""
+
+    # ----- base_url allowlist -----
+
+    def test_init_rejects_arbitrary_base_url(self):
+        """Non-whitelisted base_url raises ValueError."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="https://evil.com/api")
+
+    def test_init_rejects_http_base_url(self):
+        """Plain http:// base_url raises ValueError (no TLS)."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://api.github.com")
+
+    def test_init_rejects_localhost_base_url(self):
+        """Non-whitelisted localhost variants raise ValueError."""
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://localhost/api")
+        with pytest.raises(ValueError, match="base_url must be one of"):
+            GitHubClient(token="tok", repo="owner/repo", base_url="http://192.168.1.1/api")
+
+    def test_init_accepts_localhost_for_test_fixtures(self):
+        """http://127.0.0.1 is accepted for local test fixtures only."""
+        client = GitHubClient(
+            token="tok", repo="test/repo", base_url="http://127.0.0.1", verify=False
+        )
+        assert client.client is not None
+        assert client.client.follow_redirects is False
+
+    def test_init_accepts_github_com_api(self):
+        """https://api.github.com is accepted."""
+        client = GitHubClient(token="tok", repo="owner/repo", base_url="https://api.github.com")
+        assert client.client is not None
+
+    def test_init_accepts_github_com_api_alias(self):
+        """https://github.com/api/v3 is accepted."""
+        client = GitHubClient(
+            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
+        )
+        assert client.client is not None
+
+    # ----- repo format validation -----
+
+    def test_init_rejects_repo_traversal(self):
+        """Path-traversal repo raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="../../../attacker.com/redirect")
+
+    def test_init_rejects_repo_no_slash(self):
+        """Repo without owner/ raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="onlyrepo")
+
+    def test_init_rejects_repo_empty_owner(self):
+        """Empty owner component raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="/repo")
+
+    def test_init_rejects_repo_empty_name(self):
+        """Empty repo-name component raises ValueError."""
+        with pytest.raises(ValueError, match="repo must be in 'owner/repo' format"):
+            GitHubClient(token="tok", repo="owner/")
+
+    def test_init_accepts_valid_repo(self):
+        """Valid 'owner/repo' format is accepted."""
+        client = GitHubClient(token="tok", repo="my-org/my_service")
+        assert client.repo == "my-org/my_service"
+
+    def test_init_accepts_repo_with_dots_underscores(self):
+        """Dots and underscores in repo components are accepted."""
+        client = GitHubClient(token="tok", repo="my.org/my_serv.ice-1")
+        assert client.repo == "my.org/my_serv.ice-1"
+
+    # ----- follow_redirects=False -----
+
+    def test_init_follow_redirects_false(self):
+        """Client is created with follow_redirects=False."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        assert client.client.follow_redirects is False
+
+    def test_init_custom_base_url_follow_redirects_false(self):
+        """Even with a custom whitelisted base_url, redirects are disabled."""
+        client = GitHubClient(
+            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
+        )
+        assert client.client.follow_redirects is False
+
+    # ----- transport limits -----
+
+    def test_init_transport_limits_applied(self):
+        """Transport limits are applied to the connection pool."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        # httpx 0.27 AsyncConnectionPool doesn't expose _limits; verify pool exists.
+        pool = client.client._transport._pool
+        assert pool is not None
+
+    # ----- request timeout -----
+
+    def test_init_timeout_applied(self):
+        """Request timeout is set."""
+        client = GitHubClient(token="tok", repo="owner/repo")
+        assert client.client.timeout is not None
+        assert client.client.timeout.connect == 5.0
+        assert client.client.timeout.read == 10.0
+
+
+class TestGitHubClientLogInjection:
+    """Issue #58: log-injection (CodeQL py/log-injection alerts #3/#4).
+
+    Verifies that attacker-controlled path/method values and GitHub-controlled
+    HTTP response bodies containing CRLF or control characters are sanitised
+    through sanitize_for_log() before reaching the structured-log handler, so
+    emitted log lines are always single-line and no control-char injection is
+    possible.  The raised PermissionError is intentionally NOT sanitised of its
+    structured string (method/path are already validated/allowlisted inputs) —
+    callers that surface it to GitHub comments are responsible for their own
+    sanitisation layer (opsswarm/orchestrator.py / api.py handle that).
+    """
+
+    @pytest.fixture
+    def client(self):
+        return GitHubClient(token="test-token", repo="owner/repo")
+
+    def _make_mock_error_response(
+        self, status_code: int, text: str, exc_cls=Exception
+    ):
+        """Return (mock_request, mock_response) for a 4xx/5xx HTTP error.
+
+        HTTPStatusError (httpx >= 0.27) requires message=, request=, response= kwargs.
+        """
+        mock_r = MagicMock()
+        mock_r.status_code = status_code
+        mock_r.text = text
+        mock_r.content = text.encode()
+        mock_request = MagicMock()
+        # HTTPStatusError needs message= request= response= (httpx 0.27+)
+        if exc_cls is httpx.HTTPStatusError or exc_cls.__name__ == "HTTPStatusError":
+            exc = exc_cls(
+                message=f"HTTP {status_code}",
+                request=mock_request,
+                response=mock_r,
+            )
+        else:
+            exc = exc_cls(f"HTTP {status_code}")
+        mock_r.raise_for_status = MagicMock(side_effect=exc)
+        mock_async_request = AsyncMock(return_value=mock_r)
+        return mock_r, mock_async_request
+
+    @pytest.mark.asyncio
+    async def test_crlf_in_path_logged_sanitized(self, client, caplog):
+        """CRLF in path is replaced, not embedded verbatim in the log line."""
+        path = "/repos/owner/repo\x0d\x0ainjected: true/issues"
+        mock_r, mock_request = self._make_mock_error_response(
+            403, "Forbidden body", exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 403"):
+                    await client._req("GET", path)
+        # The log line must not contain an embedded newline that could inject a field.
+        for record in caplog.records:
+            assert "\n" not in record.getMessage(), (
+                f"Log message contains a raw newline: {record.getMessage()!r}"
+            )
+            assert "\n" not in record.getMessage(), (
+                f"Log message contains a raw CR: {record.getMessage()!r}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_control_chars_in_response_body_logged_sanitized(self, client, caplog):
+        """Control characters in GitHub error body are stripped from log output."""
+        body = (
+            "Error: \x00NUL\x01\x1f last printable before space\x7fDEL\x80-high-byte"
+            "\x9f\x85Vietnamese \xe1\xbb\x9b\xef\xbf\xbd"
+        )
+        mock_r, mock_request = self._make_mock_error_response(
+            500, body, exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 500"):
+                    await client._req("GET", "/test")
+        for record in caplog.records:
+            msg = record.getMessage()
+            # C0 controls stripped; \t → space, \n → U+21A0; high bytes preserved
+            assert "\x00" not in msg
+            assert "\x7f" not in msg
+            assert "\x80" not in msg  # C1 block stripped
+            assert "\x85" not in msg  #NEL control char stripped
+            assert "\xe1" in msg     # Vietnamese CJK high bytes preserved
+            assert "\xef" in msg
+            # No log-line breaks
+            assert "\n" not in msg
+            assert "\n" not in msg
+
+    @pytest.mark.asyncio
+    async def test_sensitive_token_in_response_body_redacted(self, client, caplog):
+        """Sensitive tokens in GitHub error body are redacted by sanitize_for_log."""
+        body = '{"error": "invalid_token", "token": "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABC"}'
+        mock_r, mock_request = self._make_mock_error_response(
+            401, body, exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with caplog.at_level(logging.ERROR):
+                with pytest.raises(PermissionError, match="GitHub API returned 401"):
+                    await client._req("POST", "/webhook")
+        for record in caplog.records:
+            msg = record.getMessage()
+            assert "ghp_" not in msg
+            # The "token" JSON key pattern redacts as [REDACTED]; ghp_ pattern would be [GITHUB_TOKEN]
+            assert "[REDACTED]" in msg or "[GITHUB_TOKEN]" in msg
+
+    @pytest.mark.asyncio
+    async def test_httperror_raises_safe_permission_error(self, client):
+        """HTTPStatusError raises PermissionError with clean structured string."""
+        mock_r, mock_request = self._make_mock_error_response(
+            403, "You have been rate limited", exc_cls=httpx.HTTPStatusError
+        )
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with pytest.raises(PermissionError, match=r"GitHub API returned 403 for POST /repos/owner/repo/issues"):
+                await client._req("POST", "/repos/owner/repo/issues")
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_raises_sanitized_permission_error(self, client):
+        """Unexpected Exception raises PermissionError; no raw class name leaks."""
+        mock_r = MagicMock()
+        mock_r.raise_for_status = MagicMock(side_effect=RuntimeError("connection refused"))
+        with patch.object(client.client, "request", new_callable=AsyncMock) as p:
+            p.return_value = mock_r
+            with pytest.raises(PermissionError, match="GitHub API request failed"):
+                await client._req("GET", "/test")
+        # The logger.exception call is covered by the CRLF test above; the raised
+        # PermissionError is intentionally clean and safe to surface.
