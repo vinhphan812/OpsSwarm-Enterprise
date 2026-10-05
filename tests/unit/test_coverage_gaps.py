@@ -170,9 +170,9 @@ class TestLoadSkillEvidenceDecodeError:
         """load_skill_evidence() skips lines that fail JSON parsing."""
         from opsswarm.evidence import load_skill_evidence
 
-        # load_skill_evidence defaults data_dir to
-        # Path(__file__).parent.parent / "runtime-data" / "evidence"
-        # but accepts an override — use tmp_path as the evidence root.
+        # After the #28 AC6 fix, load_skill_evidence does NOT append "evidence" to an
+        # explicit data_dir that is already an evidence directory.
+        # Write the JSONL file at the location load_skill_evidence will look for.
         ev_dir = tmp_path / "evidence"
         ev_dir.mkdir(parents=True, exist_ok=True)
         ev_file = ev_dir / "test-run.jsonl"
@@ -186,8 +186,8 @@ class TestLoadSkillEvidenceDecodeError:
             '"skills_validated": ["s2"], "results": [], "overall_pass": true}\n',
             encoding="utf-8",
         )
-        # Pass tmp_path as data_dir — load_skill_evidence joins "evidence" internally
-        records = load_skill_evidence("test-run", data_dir=str(tmp_path))
+        # Pass the evidence directory directly (not a parent) so no extra nesting is added.
+        records = load_skill_evidence("test-run", data_dir=str(ev_dir))
         assert len(records) == 2
 
 
