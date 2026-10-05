@@ -11,6 +11,8 @@ from starlette.responses import PlainTextResponse, Response
 from .__version__ import __version__
 from .auth import (
     _ensure_production_auth_config,
+    _get_real_client_ip,
+    _probe_scope_from_bearer,
     admin_scope,
     check_monitoring_body_size,
     check_monitoring_rate_limit,
@@ -20,7 +22,7 @@ from .auth import (
     write_scope,
 )
 from .commands import parse_command
-from .config import get_github, load_config
+from .config import get_github, get_monitoring, load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import (
     GitHubClient,
@@ -309,13 +311,21 @@ async def monitoring_event(request: Request):
     raw_body = await request.body()
     check_monitoring_body_size(len(raw_body))
 
-    # --- Rate limit check ---
-    source_ip = (
-        request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or request.headers.get("x-real-ip", "")
-        or "anonymous"
-    )
-    allowed, retry_after = check_monitoring_rate_limit(source_ip)
+    # --- Rate limit check (ADR-014-2: proxy-aware, auth-identity fallback) ---
+    auth = request.headers.get("Authorization", "")
+    source_ip = _get_real_client_ip(request, cfg)
+
+    # Probe the scope (non-registering) so authenticated callers get a stable quota.
+    scope_identity = await _probe_scope_from_bearer(request, auth)
+
+    if scope_identity:
+        # Primary: authenticated scope identity (stable, not spoofable)
+        rate_key = f"scope:{scope_identity}"
+    else:
+        # Fallback: client IP (proxy-aware)
+        rate_key = source_ip
+
+    allowed, retry_after = check_monitoring_rate_limit(rate_key)
     if not allowed:
         raise HTTPException(
             status_code=429,

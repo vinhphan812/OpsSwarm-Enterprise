@@ -96,3 +96,22 @@ def get_github(cfg: dict) -> dict:
 def get_openclaw(cfg: dict) -> dict:
     """Return the openclaw section from config."""
     return cfg.get("openclaw", {})
+
+
+# ----------------------------------------------------------------------
+# Issue #85 — Proxy-aware monitoring ingress (ADR-014-2)
+# ----------------------------------------------------------------------
+
+# Reasonable defaults.  trusted_proxies=[] means "never trust X-Forwarded-For"
+# (D1 from ADR-014-2).  max_buckets=10 000 is the safe default for a single-
+# process in-memory limiter.
+DEFAULT_MONITORING = {
+    "trusted_proxies": [],  # list of CIDR strings, e.g. ["10.0.0.0/8", "172.16.0.0/12"]
+    "max_proxy_hops": 4,  # max X-Forwarded-For chain length to accept
+    "rate_limit_buckets_max": 10_000,  # cap on _SimpleRateLimiter._hits cardinality
+}
+
+
+def get_monitoring(cfg: dict) -> dict:
+    """Return the monitoring section from config, merged with defaults."""
+    return {**DEFAULT_MONITORING, **cfg.get("monitoring", {})}

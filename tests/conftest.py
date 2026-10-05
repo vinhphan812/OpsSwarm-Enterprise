@@ -9,8 +9,25 @@ import os
 # ----------------------------------------------------------------------
 def pytest_sessionstart(session):
     os.environ.setdefault("OPSWARM_RUNTIME_SECRET", "test-secret")
+
+    # Suppress GitHubClient fail-closed validation so opsswarm.api can be
+    # imported safely in tests that mock gh/engine/oc after import.
+    try:
+        from opsswarm.github_client import GitHubClient
+
+        _orig_init = GitHubClient.__init__
+
+        def _patched_init(self, *args, **kwargs):
+            # Skip the repo/allowed-origins fail-closed checks; mock the client
+            self._patched = True
+
+        GitHubClient.__init__ = _patched_init
+    except ImportError:
+        pass
+
     try:
         import opsswarm.auth as _auth_mod
+
         _auth_mod.reload_auth_config()
     except ImportError:
         pass  # opsswarm not installed in conftest env
