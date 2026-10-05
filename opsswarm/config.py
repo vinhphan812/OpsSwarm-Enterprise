@@ -73,6 +73,26 @@ def get_tool_allowlist(cfg: dict) -> dict:
     return {**DEFAULT_TOOL_ALLOWLIST, **cfg.get("tool_allowlist", {})}
 
 
+# ----------------------------------------------------------------------
+# Issue #72 — GitHub API origins (ADR-028 superseding SSRF-hardened config)
+# ----------------------------------------------------------------------
+
+DEFAULT_GITHUB = {
+    # Approved API origins — only these hostnames are permitted (SSRF hardening).
+    # HTTPS is mandatory in production; HTTP origins are only accepted in test/dev profiles.
+    "origins": ["https://api.github.com"],
+    # Optional path to an enterprise CA bundle PEM file.
+    # When set, TLS verification uses this bundle instead of the system store.
+    # Must be a readable PEM file; left empty to use the system default.
+    "ca_bundle": "",
+}
+
+
+def get_github(cfg: dict) -> dict:
+    """Return the github section from config, merged with defaults."""
+    return {**DEFAULT_GITHUB, **cfg.get("github", {})}
+
+
 def get_openclaw(cfg: dict) -> dict:
     """Return the openclaw section from config."""
     return cfg.get("openclaw", {})

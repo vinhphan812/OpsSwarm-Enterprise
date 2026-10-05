@@ -491,31 +491,36 @@ class TestGitHubClient:
 
 
 class TestGitHubClientSSRF:
-    """ADR-028 SSRF mitigation tests — fail-closed transport boundary."""
+    """ADR-028 SSRF mitigation tests — fail-closed transport boundary (Issue #72)."""
 
     # ----- base_url allowlist -----
 
     def test_init_rejects_arbitrary_base_url(self):
         """Non-whitelisted base_url raises ValueError."""
-        with pytest.raises(ValueError, match="base_url must be one of"):
+        with pytest.raises(ValueError, match="not in the approved origins list"):
             GitHubClient(token="tok", repo="owner/repo", base_url="https://evil.com/api")
 
     def test_init_rejects_http_base_url(self):
-        """Plain http:// base_url raises ValueError (no TLS)."""
-        with pytest.raises(ValueError, match="base_url must be one of"):
+        """Plain http:// base_url is not in the approved origins list."""
+        with pytest.raises(ValueError, match="not in the approved origins list"):
             GitHubClient(token="tok", repo="owner/repo", base_url="http://api.github.com")
 
     def test_init_rejects_localhost_base_url(self):
-        """Non-whitelisted localhost variants raise ValueError."""
-        with pytest.raises(ValueError, match="base_url must be one of"):
+        """Non-whitelisted localhost variants are not in the approved origins list."""
+        with pytest.raises(ValueError, match="not in the approved origins list"):
             GitHubClient(token="tok", repo="owner/repo", base_url="http://localhost/api")
-        with pytest.raises(ValueError, match="base_url must be one of"):
+        with pytest.raises(ValueError, match="not in the approved origins list"):
             GitHubClient(token="tok", repo="owner/repo", base_url="http://192.168.1.1/api")
 
     def test_init_accepts_localhost_for_test_fixtures(self):
-        """http://127.0.0.1 is accepted for local test fixtures only."""
+        """http://127.0.0.1 is accepted for local test fixtures only in test/dev profile."""
         client = GitHubClient(
-            token="tok", repo="test/repo", base_url="http://127.0.0.1", verify=False
+            token="tok",
+            repo="test/repo",
+            base_url="http://127.0.0.1",
+            allowed_origins=frozenset({"http://127.0.0.1"}),
+            verify=False,
+            profile="test",
         )
         assert client.client is not None
         assert client.client.follow_redirects is False
@@ -526,9 +531,12 @@ class TestGitHubClientSSRF:
         assert client.client is not None
 
     def test_init_accepts_github_com_api_alias(self):
-        """https://github.com/api/v3 is accepted."""
+        """https://github.com/api/v3 is accepted (must be in allowed_origins)."""
         client = GitHubClient(
-            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
+            token="tok",
+            repo="owner/repo",
+            base_url="https://github.com/api/v3",
+            allowed_origins=frozenset({"https://api.github.com", "https://github.com/api/v3"}),
         )
         assert client.client is not None
 

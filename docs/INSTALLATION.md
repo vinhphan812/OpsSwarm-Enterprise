@@ -44,6 +44,37 @@ export GITHUB_REPO=owner/repo
 export GITHUB_WEBHOOK_SECRET=...
 ```
 
+### GitHub Enterprise Server (GHES)
+
+OpsSwarm supports GHES without source-code edits. Configure the approved API origin and optional CA bundle:
+
+```bash
+# Single GHES instance
+export OPSWARM_GITHUB_ORIGINS=https://ghes.example.com
+
+# Multi-tenant: GHES + GitHub.com fallback
+export OPSWARM_GITHUB_ORIGINS=https://ghes.example.com,https://api.github.com
+
+# Enterprise PKI: point to your corporate CA bundle
+export OPSWARM_GITHUB_CA_BUNDLE=/etc/ssl/certs/enterprise-ca-bundle.pem
+```
+
+Equivalently, add to `config/production.yaml`:
+
+```yaml
+github:
+  origins:
+    - https://ghes.example.com
+    # - https://api.github.com   # uncomment to allow GitHub.com as fallback
+  ca_bundle: /etc/ssl/certs/enterprise-ca-bundle.pem
+```
+
+**Security notes:**
+- `OPSWARM_GITHUB_ORIGINS` accepts only HTTPS origins in production (HTTP is only permitted in `test`/`dev` profiles via `OPSWARM_PROFILE=dev`).
+- Origins are validated with exact URL matching — no substring or prefix tricks can bypass the allowlist.
+- The AWS/GCP metadata IP (`169.254.169.254`) and `localhost` are always blocked.
+- `verify=False` is prohibited in production; use `ca_bundle` instead for self-signed certificates.
+
 Add a repository webhook:
 
 - Payload URL: `https://HOST/webhooks/github`

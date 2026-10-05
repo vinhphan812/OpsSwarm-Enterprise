@@ -19,9 +19,13 @@ from .auth import (
     write_scope,
 )
 from .commands import parse_command
-from .config import load_config
+from .config import get_github, load_config
 from .errors import new_correlation_id, sanitize_for_log
-from .github_client import GitHubClient
+from .github_client import (
+    GitHubClient,
+    build_allowed_origins_set,
+    get_effective_origin_diagnostic,
+)
 from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
@@ -36,10 +40,45 @@ cfg = load_config()
 # Kept for backward compatibility during transition period.
 _deprecated_api_key = os.environ.get("OPSWARM_API_KEY", "")
 
+# ----------------------------------------------------------------------
+# GitHub client — Issue #72 / ADR-028
+# Build the approved-origins set and CA bundle from config + env vars.
+# Raises ValueError at startup (fail-closed) if any origin fails SSRF validation.
+# ----------------------------------------------------------------------
+_OPSWARM_PROFILE = os.environ.get("OPSWARM_PROFILE", "production")
+
+_gh_cfg = get_github(cfg)
+# Allow operator to override origins via env var (comma-separated, no spaces).
+_env_origins_raw = os.environ.get("OPSWARM_GITHUB_ORIGINS", "").strip()
+_config_origins: list[str] = _gh_cfg.get("origins", ["https://api.github.com"])
+_origins: list[str] = (
+    [o.strip() for o in _env_origins_raw.split(",") if o.strip()]
+    if _env_origins_raw
+    else _config_origins
+)
+_allowed_origins = build_allowed_origins_set(_origins, profile=_OPSWARM_PROFILE)
+
+_gh_ca_bundle: str = os.environ.get(
+    "OPSWARM_GITHUB_CA_BUNDLE", _gh_cfg.get("ca_bundle", "")
+).strip()
+if _allowed_origins and _allowed_origins != frozenset({"https://api.github.com"}):
+    _primary_origin = next(iter(_allowed_origins))
+else:
+    _primary_origin = "https://api.github.com"
+
+logger.info(
+    "GitHub origins configured: %s  (ca_bundle=%s)",
+    get_effective_origin_diagnostic(_origins),
+    "custom=" + _gh_ca_bundle if _gh_ca_bundle else "system",
+)
 
 gh = GitHubClient(
     os.environ.get("GITHUB_TOKEN", ""),
     os.environ.get("GITHUB_REPO", cfg.get("repo", "")),
+    base_url=_primary_origin,
+    allowed_origins=_allowed_origins,
+    verify=_gh_ca_bundle or True,
+    profile=_OPSWARM_PROFILE,
 )
 oc = OpenClawClient(
     os.environ.get("OPSWARM_OPENCLAW_BIN", "openclaw"),
@@ -62,9 +101,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
     or ``X-Request-ID`` it is reused unchanged.
     """
 
-    async def dispatch(
-        self, request: Request, call_next
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next) -> Response:
         incoming = (
             request.headers.get("x-corr-id")
             or request.headers.get("x-correlation-id")
@@ -94,6 +131,7 @@ app.add_middleware(CorrelationMiddleware)
 @app.on_event("startup")
 async def _startup_auth_check():
     from .logging_config import setup_logging
+
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
