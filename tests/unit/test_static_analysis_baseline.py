@@ -6,8 +6,8 @@ errors in categories already audited as fixable without CI-unfeasible churn.
 
 Run locally before pushing:
     python -m pytest tests/unit/test_static_analysis_baseline.py -v
-    uv run ruff check opsswarm/ tests/ --select=E,F,I,B,RUF
-    uv run mypy opsswarm/
+    python -m ruff check opsswarm/ tests/ --select=E,F,I,B,RUF
+    python -m mypy opsswarm/
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ SCRUB_SENTINEL = "opsswarm/"
 # Ruff: Stage-1 error-code baselines (E, F, I, B, RUF subset)
 # ---------------------------------------------------------------------------
 # At enablement time (origin/master 5428526), the current Ruff config
-# [E9, F63, F7, F82] produces zero errors.  Ruff is run via `uv run` so
-# any new violations in these categories will cause CI to fail.
+# [E9, F63, F7, F82] produces zero errors.  The test uses `sys.executable -m ruff`
+# so it works in CI without requiring uv.
 #
 # Baseline  : 0 errors
 # Config    : pyproject.toml [tool.ruff.lint.select] = ["E9","F63","F7","F82"]
@@ -41,10 +41,10 @@ RUFF_ERROR_CODES_STAGE1: list[str] = []
 @pytest.mark.unit
 def test_ruff_stage1_zero_errors():
     """Ruff E9/F7/F82/F63 must produce zero errors on opsswarm/ (origin/master baseline)."""
-    # Run via 'uv run ruff' from the repo root so uv resolves the project venv.
+    # Use sys.executable -m ruff so the test works in CI (no uv required).
     result = subprocess.run(
         [
-            "uv", "run", "ruff", "check", "opsswarm/", "tests/",
+            sys.executable, "-m", "ruff", "check", "opsswarm/", "tests/",
             "--select=E9,F63,F7,F82",
             "--output-format=concise",
         ],
