@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse, Response
 
+from .__version__ import __version__
 from .auth import (
     _ensure_production_auth_config,
     admin_scope,
@@ -51,7 +52,7 @@ oc = OpenClawClient(
     ),
 )
 engine = Orchestrator(cfg, gh, oc, os.environ.get("OPSWARM_DATA_DIR", "runtime-data"))
-app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version="2.1.0")
+app = FastAPI(title="OpsSwarm Enterprise OpenClaw+GitHub", version=__version__)
 
 
 class CorrelationMiddleware(BaseHTTPMiddleware):
@@ -106,7 +107,7 @@ async def _startup_auth_check():
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "version": "2.1.0", "architecture": "openclaw+github"}
+    return {"ok": True, "version": __version__, "architecture": "openclaw+github"}
 
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])

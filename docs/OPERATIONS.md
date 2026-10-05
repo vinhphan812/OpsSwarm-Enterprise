@@ -55,9 +55,62 @@ endpoint exposes internal operational state and must not be world-readable in
 production.
 
 The `/health` endpoint (`GET /health`) requires no authentication and always
-returns `{"ok": true, "version": "2.1.0"}` — safe for liveness probes and load
+returns `{"ok": true, "version": "<version>"}` — safe for liveness probes and load
 balancers.
 
 For the production integration boundary, Prometheus scrape configuration, metric definitions, and
 external operations ownership (dashboards, alerts, tracing, persistence), see the
 [Metrics Integration Guide](guides/METRICS_INTEGRATION.md).
+
+## Dependency failures (GitHub API)
+
+When GitHub API calls fail, OpsSwarm raises typed exceptions so the failure mode is
+immediately identifiable.  These are visible in logs and the `/metrics` endpoint.
+
+### Failure taxonomy
+
+| Error slug | HTTP / transport cause | Retry? | Operator action |
+|---|---|---|---|
+| `auth_denied` | 401 / 403 | Never | Check `GITHUB_TOKEN` is valid and has `repo` scope |
+| `rate_limited` | 429 | After `Retry-After` delay | Check `opsswarm_github_api_remaining` in metrics; wait |
+| `dependency_timeout` | ConnectTimeout / ReadTimeout / pool exhausted | Bounded (3x) for GETs only | Check GitHub status page; circuit may open |
+| `dependency_unavailable` | 5xx | Bounded (3x) for GETs only | Check GitHub status page; circuit may open |
+| `invalid_response` | 4xx (non-auth), malformed JSON | Never | Likely a code bug — check logs for correlation ID |
+| `ambiguous_write` | Write response lost (network drop mid-response) | Never | Check GitHub directly; issue may be open |
+| `circuit_open` | Consecutive failures exceeded threshold | Automatic after TTL | Check `opsswarm_circuit_state_transitions` metric |
+
+### Circuit-breaker
+
+The GitHub client has a per-repo circuit-breaker.  After 5 consecutive failures the circuit
+opens (fail-fast) for 30 seconds.  While open, every API call immediately raises
+`circuit_open`.  The circuit half-opens after 30 seconds and closes on the first
+successful probe call.
+
+Monitor circuit state in Prometheus:
+
+```
+opsswarm_circuit_state_transitions{dependency="github:owner/repo",state="OPEN"}
+```
+
+### Ambiguous writes
+
+When a write (POST / PATCH / PUT) fails with network loss, OpsSwarm raises
+`ambiguous_write` instead of retrying.  The write may or may not have succeeded.
+Check GitHub directly to determine the actual state, then update or close the issue manually.
+
+### Metrics to watch
+
+```bash
+# Rate-limit occurrences
+opsswarm_rate_limited_total
+
+# Circuit-breaker transitions
+opsswarm_circuit_state_transitions{state="OPEN"}
+opsswarm_circuit_state_transitions{state="HALF_OPEN"}
+
+# Retry exhaustion (all attempts failed — investigate)
+opsswarm_dependency_retry_exhausted_total{operation="GET:/repos/..."}
+
+# Ambiguous writes (writes whose outcome is unknown — check GitHub)
+opsswarm_execution_ambiguous_total
+```

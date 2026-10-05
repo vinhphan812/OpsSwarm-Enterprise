@@ -36,7 +36,9 @@ import time
 import venv
 from pathlib import Path
 
-EXPECTED_HEALTH = {"ok": True, "version": "2.1.0", "architecture": "openclaw+github"}
+import opsswarm
+
+EXPECTED_HEALTH = {"ok": True, "version": opsswarm.__version__, "architecture": "openclaw+github"}
 
 
 def parse_args() -> tuple[Path, Path, int]:
