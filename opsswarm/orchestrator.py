@@ -29,6 +29,14 @@ from .validators import validate_task_graph, TaskGraphError
 logger = logging.getLogger(__name__)
 
 
+# Human-gate states whose wait duration is tracked as G1 (Issue #30)
+HUMAN_GATE_STATES: set[RunState] = {
+    RunState.WAITING_APPROVAL,
+    RunState.WAITING_DECISION,
+    RunState.WAITING_INPUT,
+}
+
+
 class RunBudget:
     """Per-run counters with fail-closed limits."""
 
@@ -153,12 +161,17 @@ class Orchestrator:
             self._tool_allowlist = ToolAllowlist.from_config(cfg)
             check_tools = get_openclaw(cfg).get("check_tools", False)
             if self._tool_allowlist is not None:
-                self._tool_allowlist = self._tool_allowlist
+                # ADR-027 Fix B: propagate check_tools flag to the client so
+                # _check_tool_access() actually raises instead of no-op.
+                # Must set check_tools BEFORE set_tool_allowlist so the
+                # enforcement gate is active when set_tool_allowlist is called.
+                check_tools = get_openclaw(cfg).get("check_tools", False)
+                self.oc.set_check_tools(check_tools)
                 self.oc.set_tool_allowlist(self._tool_allowlist)
                 logger.info(
                     "[ADR-027] Tool allowlist enabled (check_tools=%s, profiles=%s)",
                     check_tools,
-                    self._tool_allowlist.profile_names() if self._tool_allowlist else [],
+                    self._tool_allowlist.profile_names(),
                 )
             else:
                 logger.warning("[ADR-027] Tool allowlist enabled but failed to load — all tools permitted")
@@ -173,6 +186,7 @@ class Orchestrator:
                                 budget_cfg.get("max_steps_per_agent", 50))
         self._max_parallel = get_concurrency(cfg)["max_parallel_specialists"]
         self._active_budgets: dict[str, RunBudget] = {}
+        self._command_locks: dict[int, asyncio.Lock] = {}
 
         # Run crash recovery on startup if enabled
         if enable_recovery:
@@ -268,6 +282,18 @@ class Orchestrator:
         prev_state = run.state
         prev_time = getattr(run, "_state_entered_at", None)
         now = time.monotonic()
+
+        # G1: human-gate wait duration (Issue #30)
+        if prev_state in HUMAN_GATE_STATES and prev_time is not None:
+            gate_kind_map = {
+                RunState.WAITING_APPROVAL: "approval",
+                RunState.WAITING_DECISION: "decision",
+                RunState.WAITING_INPUT: "input",
+            }
+            gate_kind = gate_kind_map.get(prev_state)
+            if gate_kind is not None:
+                metrics.record_human_gate(gate_kind, now - prev_time)
+
         if prev_state is not None and prev_time is not None:
             duration = now - prev_time
             metrics.record_transition(prev_state, state, duration)
@@ -516,6 +542,7 @@ class Orchestrator:
             "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
         })
         if run.execution.ambiguous:
+            metrics.record_ambiguous_write()
             run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
                                            reason="The write outcome is ambiguous. Blind retry is prohibited.",
                                            options=[],
@@ -534,6 +561,67 @@ class Orchestrator:
                                      f"## OpsSwarm — Recovery failed\n\n{safe_summary}\n\nRef: {corr_id}");
             return
         await self._verify(run)
+
+    async def _execute_governed_remediation(
+        self,
+        run: RunRecord,
+        option: RemediationOption,
+        *,
+        approved_by: str | None = None,
+        branch: str | None = None,
+        base: str = "main",
+    ) -> RemediationExecution:
+        """Prepare and merge a governed code/service remediation PR."""
+        branch_name = branch or f"opsswarm/{run.issue_number}/{option.id}"
+        execution = RemediationExecution(
+            kind=RemediationExecutionKind.OPENCLAW_APPLIED,
+            option_id=option.id,
+            action=option.action,
+            parameters=option.parameters,
+            approved_by=approved_by,
+            branch_ref=BranchRef(name=branch_name, base=base),
+        )
+        try:
+            await self.github.create_branch(branch_name, from_ref=base)
+            logger.info("Governed remediation branch created: %s", branch_name)
+        except PermissionError as e:
+            execution.status = "failed"
+            execution.error = str(e)
+            await self._save_governed_execution(run, execution)
+            return execution
+
+        try:
+            pr_title = f"fix: governed remediation for issue #{run.issue_number}"
+            pr_body = (
+                f"## OpsSwarm Governed Remediation\n\n"
+                f"- Run: {run.run_id}\n"
+                f"- Option: {option.id}\n"
+                f"- Action: {option.action}\n"
+                f"- Approved-by: {approved_by or 'system'}\n\n"
+                f"This PR was prepared by the governed remediation subflow (ADR-016). "
+                f"Human approval binds to this exact head SHA and deployment parameters."
+            )
+            pr = await self.github.open_pr(
+                title=pr_title, body=pr_body, head=branch_name, base=base, draft=True
+            )
+            pr_number = pr.get("number")
+            pr_url = pr.get("html_url", f"https://github.com/{self.github.repo}/pull/{pr_number}")
+            execution.pr_ref = PullRequestRef(number=pr_number, url=pr_url)
+            logger.info("Governed remediation PR opened: #%s at %s", pr_number, pr_url)
+        except PermissionError as e:
+            execution.status = "failed"
+            execution.error = f"Failed to open PR: {e}"
+            await self._save_governed_execution(run, execution)
+            return execution
+
+        execution.status = "pending_approval"
+        await self._save_governed_execution(run, execution)
+        return execution
+
+    async def _save_governed_execution(self, run: RunRecord, execution: RemediationExecution) -> None:
+        """Persist governed remediation state and its evidence."""
+        run.governed_remediation = execution
+        await self._save(run, "S5.governed_remediation", execution.model_dump())
 
     async def _verify(self, run: RunRecord):
         _t0_verify = time.monotonic()
