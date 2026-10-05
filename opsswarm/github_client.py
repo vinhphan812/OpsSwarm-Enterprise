@@ -22,15 +22,17 @@ _REQUEST_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 _REPO_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9._-]+$")
 
 # Reserved hostnames never permitted regardless of config (fail-closed).
-_RESERVED_BLOCKLIST: frozenset[str] = frozenset({
-    "localhost",
-    "127.0.0.1",
-    "0.0.0.0",
-    "[::1]",
-    "169.254.169.254",   # AWS IMDS — cloud metadata exfiltration
-    "metadata.google.internal",  # GCP metadata
-    "metadata.azure.com",
-})
+_RESERVED_BLOCKLIST: frozenset[str] = frozenset(
+    {
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",  # nosec: B104  # security blocklist — NOT a bind address
+        "[::1]",
+        "169.254.169.254",  # AWS IMDS — cloud metadata exfiltration
+        "metadata.google.internal",  # GCP metadata
+        "metadata.azure.com",
+    }
+)
 
 # Profiles where HTTP origins and localhost are permitted (local dev/test fixtures only).
 # This is NOT a production setting.
@@ -68,7 +70,7 @@ def _is_safe_origin(origin: str, *, profile: str = "production") -> tuple[bool, 
 
     scheme_end = origin.index("://")
     scheme = origin[:scheme_end].lower()
-    rest = origin[scheme_end + 3:]
+    rest = origin[scheme_end + 3 :]
 
     if scheme == "http":
         if profile not in _DEV_PROFILES:
@@ -131,7 +133,7 @@ def _is_safe_origin(origin: str, *, profile: str = "production") -> tuple[bool, 
     # We check IP addresses here too, merged with the blocklist for profile-aware handling.
     _IP_RE = re.compile(
         r"^(?:"
-        r"\d{1,3}(?:\.\d{1,3}){3}"       # IPv4 dotted
+        r"\d{1,3}(?:\.\d{1,3}){3}"  # IPv4 dotted
         r"|\[(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\]"  # IPv6
         r")$"
     )
@@ -149,7 +151,7 @@ def _is_safe_origin(origin: str, *, profile: str = "production") -> tuple[bool, 
 
     # Non-IP hostnames: block reserved names (localhost, etc.) in production
     if host_lower in _RESERVED_BLOCKLIST:
-        _DEVBAN_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "[::1]"})
+        _DEVBAN_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "[::1]"})  # nosec: B104  # security blocklist — NOT a bind address
         if host_lower in _DEVBAN_HOSTS:
             if profile not in _DEV_PROFILES:
                 return False, f"reserved hostname not permitted: {host!r}"
@@ -227,10 +229,12 @@ _DEFAULT_ORIGIN = "https://api.github.com"
 
 # Default allowed_origins when not provided: both GitHub.com API URLs are permitted.
 # This preserves backward compatibility for existing tests and ad-hoc usage.
-_DEFAULT_ALLOWED_ORIGINS: frozenset[str] = frozenset({
-    "https://api.github.com",
-    "https://github.com/api/v3",
-})
+_DEFAULT_ALLOWED_ORIGINS: frozenset[str] = frozenset(
+    {
+        "https://api.github.com",
+        "https://github.com/api/v3",
+    }
+)
 
 # Default profile when $OPSWARM_PROFILE is unset.
 _DEFAULT_PROFILE = "production"
@@ -332,7 +336,9 @@ class GitHubClient:
             "GitHubClient initialised: repo=%s base_url=%s verify=%s",
             repo,
             base_url,
-            "system" if resolved_verify is True else ("custom CA" if isinstance(resolved_verify, str) else resolved_verify),
+            "system"
+            if resolved_verify is True
+            else ("custom CA" if isinstance(resolved_verify, str) else resolved_verify),
         )
 
     async def _req(self, method: str, path: str, **kwargs) -> Any:
@@ -414,14 +420,20 @@ class GitHubClient:
         """Return PR mergeability and aggregate check status."""
         pr = await self._req("GET", f"/repos/{self.repo}/pulls/{number}")
         sha = (pr.get("head") or {}).get("sha")
-        checks = await self._req(
-            "GET", f"/repos/{self.repo}/commits/{sha}/check-runs"
-        ) if sha else {"check_runs": []}
+        checks = (
+            await self._req("GET", f"/repos/{self.repo}/commits/{sha}/check-runs")
+            if sha
+            else {"check_runs": []}
+        )
         runs = checks.get("check_runs", []) if isinstance(checks, dict) else []
         conclusions = [r.get("conclusion") for r in runs]
         checks_state = (
-            "failure" if any(c in {"failure", "cancelled", "timed_out", "action_required"} for c in conclusions)
-            else "success" if runs and all(c == "success" for c in conclusions)
+            "failure"
+            if any(
+                c in {"failure", "cancelled", "timed_out", "action_required"} for c in conclusions
+            )
+            else "success"
+            if runs and all(c == "success" for c in conclusions)
             else "pending"
         )
         return {
