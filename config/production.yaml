@@ -4,6 +4,14 @@ create_corrective_issues: true
 root_cause_confidence_threshold: 0.80
 verification_confidence_threshold: 0.85
 
+# Issue #72 — GitHub API origins (ADR-028 / SSRF hardening)
+# Override origins and ca_bundle via environment variables:
+#   OPSWARM_GITHUB_ORIGINS  — comma-separated list of approved API base URLs
+#   OPSWARM_GITHUB_CA_BUNDLE — path to enterprise CA bundle PEM file
+github:
+  origins:
+    - https://api.github.com
+
 openclaw:
   main_agent: opsswarm-incident-manager
   timeout_seconds: 600
