@@ -102,9 +102,7 @@ class CorrelationMiddleware(BaseHTTPMiddleware):
     or ``X-Request-ID`` it is reused unchanged.
     """
 
-    async def dispatch(
-        self, request: Request, call_next
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next) -> Response:
         incoming = (
             request.headers.get("x-corr-id")
             or request.headers.get("x-correlation-id")
@@ -134,6 +132,7 @@ app.add_middleware(CorrelationMiddleware)
 @app.on_event("startup")
 async def _startup_auth_check():
     from .logging_config import setup_logging
+
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
