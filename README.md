@@ -273,7 +273,7 @@ curl http://localhost:8088/health
 Expected shape:
 
 ```json
-{ "ok": true, "version": "2.1.0", "architecture": "openclaw+github" }
+{ "ok": true, "version": "2.2.0", "architecture": "openclaw+github" }
 ```
 
 ## GitHub webhook setup
