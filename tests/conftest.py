@@ -10,20 +10,33 @@ import os
 def pytest_sessionstart(session):
     os.environ.setdefault("OPSWARM_RUNTIME_SECRET", "test-secret")
 
-    # Suppress GitHubClient fail-closed validation so opsswarm.api can be
-    # imported safely in tests that mock gh/engine/oc after import.
+    # Provide minimal env so opsswarm.api's module-level GitHubClient(...)
+    # construction does not fail with a ValueError (fail-closed on empty repo
+    # and no approved origins).  The real gh object is fully constructed; we
+    # replace it with a dummy immediately after so that tests that import
+    # opsswarm.api get a harmless no-op instead of a live client.
+    # Patching api.gh (instead of GitHubClient.__init__) keeps the real
+    # GitHubClient.__init__ intact so the 62 tests that directly instantiate
+    # GitHubClient(...) still receive a fully-formed client with .repo /
+    # .base_url / .client attributes.
+    os.environ.setdefault("GITHUB_TOKEN", "test-token")
+    os.environ.setdefault("GITHUB_REPO", "test/test-repo")
+    os.environ.setdefault("OPSWARM_GITHUB_ORIGINS", "https://api.github.com")
+    os.environ.setdefault("OPSWARM_OPENCLAW_BIN", "openclaw")
+    os.environ.setdefault("OPSWARM_OPENCLAW_TIMEOUT", "600")
+    os.environ.setdefault("OPSWARM_DATA_DIR", "runtime-data")
+
     try:
-        from opsswarm.github_client import GitHubClient
+        import opsswarm.api as _api_mod
 
-        _orig_init = GitHubClient.__init__
+        class _DummyGH:
+            """Minimal stand-in for GitHubClient — satisfies attribute access."""
 
-        def _patched_init(self, *args, **kwargs):
-            # Skip the repo/allowed-origins fail-closed checks; mock the client
-            self._patched = True
+            _patched = True
 
-        GitHubClient.__init__ = _patched_init
+        _api_mod.gh = _DummyGH()
     except ImportError:
-        pass
+        pass  # opsswarm not installed in conftest env
 
     try:
         import opsswarm.auth as _auth_mod
