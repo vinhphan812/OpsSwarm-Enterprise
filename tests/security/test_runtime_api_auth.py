@@ -1207,3 +1207,327 @@ class TestAuthenticatedIdentityQuota:
         # This confirms spoofing does not help the attacker.
         allowed_new_ip, _ = auth_module.check_monitoring_rate_limit("1.2.3.4")
         assert allowed_new_ip, "Different IP should have its own independent quota"
+
+
+# ---------------------------------------------------------------------------
+# Cross-scope depletion regression tests — PR #86 review finding
+# ---------------------------------------------------------------------------
+
+
+class TestCrossScopeDepletion:
+    """
+    Regression tests for the cross-scope depletion / availability coupling
+    flaw reported in PR #86 review:
+
+    _probe_scope_from_bearer returned ANY valid bearer scope, and
+    api.py used that as the rate-limit key regardless of whether the scope
+    actually authorised POST /hooks/monitoring.  A valid opsswarm:read token
+    could pollute the monitoring limiter (evicting the monitor/admin bucket
+    under LRU pressure) and receive a 403 — draining the monitoring bucket
+    without ever being authorised for it.
+
+    The fix restricts scope-based rate-limit keys to scopes that DO authorise
+    POST /hooks/monitoring (opsswarm:monitor, opsswarm:admin).  All other
+    valid tokens fall through to IP-based limiting, keeping the monitoring
+    limiter's LRU state bounded to monitor/admin callers only.
+    """
+
+    def _make_payload(self):
+        return {"service": "test-svc", "symptom": "depletion-test"}
+
+    # ------------------------------------------------------------------ #
+    # T1: Authorised monitor token — gets scope-based key
+    # ------------------------------------------------------------------ #
+
+    def test_monitor_token_uses_scope_based_key(self, client):
+        """opsswarm:monitor token on /hooks/monitoring → scope:{scope} rate-limit key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:monitor", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        # 200 (gh.create_issue mocked) — auth succeeds
+        assert r.status_code == 200
+
+        # Scope-based key must be present in limiter
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:monitor",), []
+        )
+        assert len(scope_key_hits) == 1, (
+            "opsswarm:monitor token should register scope:opsswarm:monitor key"
+        )
+        # IP-based key must also be present (both are always recorded by the endpoint)
+        assert len(auth_module._monitoring_limiter._hits) >= 1
+
+    # ------------------------------------------------------------------ #
+    # T2: Authorised admin token — gets scope-based key
+    # ------------------------------------------------------------------ #
+
+    def test_admin_token_uses_scope_based_key(self, client):
+        """opsswarm:admin token on /hooks/monitoring → scope:{scope} rate-limit key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:admin", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 1
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        assert r.status_code in (200, 400)  # 400 = gh.create_issue mocked rejection
+
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:admin",), []
+        )
+        assert len(scope_key_hits) == 1, (
+            "opsswarm:admin token should register scope:opsswarm:admin key"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T3: Non-monitor token MUST NOT consume monitor quota
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_does_not_consume_monitor_quota(self, client):
+        """
+        opsswarm:read token (valid but unauthorised for monitoring) must NOT
+        register scope:opsswarm:read in the monitoring limiter — it must fall
+        through to IP-based limiting.  It must not be able to deplete the
+        monitor bucket's 20 req/min quota.
+        """
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:read", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 2
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        # 403 — scope doesn't cover POST /hooks/monitoring
+        assert r.status_code == 403
+
+        # CRITICAL: scope:opsswarm:read must NOT appear in the monitoring limiter
+        read_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:read",), []
+        )
+        assert len(read_scope_key_hits) == 0, (
+            "opsswarm:read token must NOT register scope:opsswarm:read key "
+            "in the monitoring limiter — cross-scope depletion prevented"
+        )
+        # Only IP-based key is expected
+        ip_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if not k[0].startswith("scope:")
+        ]
+        assert len(ip_keys) >= 1, "IP-based key should be recorded"
+
+    def test_write_token_does_not_consume_monitor_quota(self, client):
+        """
+        opsswarm:write token (valid but unauthorised for monitoring) must NOT
+        register scope:opsswarm:write in the monitoring limiter.
+        """
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:write", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 3
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        assert r.status_code == 403
+
+        write_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:write",), []
+        )
+        assert len(write_scope_key_hits) == 0, (
+            "opsswarm:write token must NOT register scope:opsswarm:write key "
+            "in the monitoring limiter — cross-scope depletion prevented"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T4: Read token cannot exhaust monitor quota via repeated attempts
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_cannot_exhaust_monitor_bucket(self):
+        """
+        opsswarm:read tokens (valid but unauthorised for monitoring) must NOT
+        register scope-based keys in the monitoring limiter — they fall through
+        to IP-based limiting only.  Even after many such tokens, the
+        scope:opsswarm:monitor bucket is never polluted.
+        """
+        import opsswarm.auth as auth_module
+        import opsswarm.api as api_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+
+        # 20 requests with opsswarm:read tokens (unique timestamps to avoid
+        # anti-replay; timestamps from `now` stay within the ±SKEW_TOLERANCE_SECS
+        # verification window so every token is structurally valid).
+        for i in range(20):
+            token = _generate_bearer(
+                "opsswarm:read",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
+                timestamp=now + i,
+            )
+            with TestClient(api_module.app) as tc:
+                r = tc.post(
+                    "/hooks/monitoring",
+                    json=self._make_payload(),
+                    headers={**_auth_header(token), "Content-Type": "application/json"},
+                )
+            # All get 403 (scope not authorised for /hooks/monitoring)
+            assert r.status_code == 403, f"Request {i}: expected 403, got {r.status_code}"
+
+        # CRITICAL: scope:opsswarm:read and scope:opsswarm:write must NOT appear
+        # in the monitoring limiter
+        assert ("scope:opsswarm:read",) not in auth_module._monitoring_limiter._hits, (
+            "scope:opsswarm:read must never enter the monitoring limiter"
+        )
+        assert ("scope:opsswarm:write",) not in auth_module._monitoring_limiter._hits, (
+            "scope:opsswarm:write must never enter the monitoring limiter"
+        )
+        # IP-based keys may appear; no scope keys must appear
+        scope_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if k[0].startswith("scope:")
+        ]
+        assert len(scope_keys) == 0, (
+            f"Found unexpected scope keys in monitoring limiter: {scope_keys}"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T5: Invalid bearer / HMAC still rate-limited safely (IP path)
+    # ------------------------------------------------------------------ #
+
+    def test_invalid_bearer_still_rate_limited(self, client):
+        """Invalid bearer token falls back to IP rate limiting — no scope key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        # Valid format but wrong HMAC — _probe_scope_from_bearer returns None
+        bad_token = _generate_bearer(
+            "opsswarm:monitor",
+            "wrong-secret",
+            "POST",
+            "/hooks/monitoring",
+            timestamp=now + 5,
+        )
+        for i in range(21):
+            ts = now + 300 + i
+            # Generate fresh invalid tokens to avoid anti-replay
+            token = _generate_bearer(
+                "opsswarm:monitor",
+                "wrong-secret",
+                "POST",
+                "/hooks/monitoring",
+                timestamp=ts,
+            )
+            r = client.post(
+                "/hooks/monitoring",
+                json=self._make_payload(),
+                headers={**_auth_header(token), "Content-Type": "application/json"},
+            )
+            if i < 20:
+                assert r.status_code == 401, f"Request {i} should get 401 (unauthenticated)"
+            else:
+                assert r.status_code == 429, (
+                    "Request 21 should get 429 (IP rate limit exceeded)"
+                )
+
+        # No scope-based keys should be in the limiter
+        scope_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if k[0].startswith("scope:")
+        ]
+        assert len(scope_keys) == 0, (
+            "Invalid bearer tokens must not register scope keys"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T6: Direct and trusted-proxy source paths — both use IP fallback
+    #     for non-monitor scopes
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_behind_trusted_proxy_does_not_consume_monitor_quota(self):
+        """
+        opsswarm:read token from behind a trusted proxy: XFF is honoured,
+        but the read token still must NOT use a scope-based monitoring key.
+        """
+        import opsswarm.auth as auth_module
+        import opsswarm.api as api_module
+
+        # Configure trusted proxy so XFF is honoured
+        orig_cfg = dict(api_module.cfg)
+        api_module.cfg["monitoring"] = {
+            "trusted_proxies": ["10.0.0.0/24"],
+            "max_proxy_hops": 4,
+        }
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        try:
+            now = int(time.time())
+            token = _generate_bearer(
+                "opsswarm:read",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
+                timestamp=now + 6,
+            )
+            with TestClient(api_module.app) as tc:
+                r = tc.post(
+                    "/hooks/monitoring",
+                    json=self._make_payload(),
+                    headers={
+                        **_auth_header(token),
+                        "Content-Type": "application/json",
+                        # Simulate request from behind trusted proxy
+                        "X-Forwarded-For": "203.0.113.50, 10.0.0.1",
+                    },
+                )
+            assert r.status_code == 403
+
+            # scope:opsswarm:read must NOT be in the limiter
+            read_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+                ("scope:opsswarm:read",), []
+            )
+            assert len(read_scope_key_hits) == 0, (
+                "read token behind trusted proxy must not consume monitor quota"
+            )
+        finally:
+            api_module.cfg.clear()
+            api_module.cfg.update(orig_cfg)

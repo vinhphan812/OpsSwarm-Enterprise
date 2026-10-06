@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import PlainTextResponse, Response
 
 from .__version__ import __version__
+import opsswarm.auth as auth_module
 from .auth import (
     _ensure_production_auth_config,
     _get_real_client_ip,
@@ -316,9 +317,15 @@ async def monitoring_event(request: Request):
     source_ip = _get_real_client_ip(request, cfg)
 
     # Probe the scope (non-registering) so authenticated callers get a stable quota.
+    # Only scopes that authorize POST /hooks/monitoring (opsswarm:monitor or
+    # opsswarm:admin) get a scope-based rate-limit key.  Other valid tokens
+    # (opsswarm:read, opsswarm:write) fall through to IP-based limiting so they
+    # cannot pollute the monitoring limiter's LRU-bounded state and cannot
+    # evict the legitimate monitor/admin bucket.  This closes the cross-scope
+    # depletion / availability coupling reported in PR #86 review.
     scope_identity = await _probe_scope_from_bearer(request, auth)
 
-    if scope_identity:
+    if scope_identity and scope_identity in (auth_module.SCOPE_MONITOR, auth_module.SCOPE_ADMIN):
         # Primary: authenticated scope identity (stable, not spoofable)
         rate_key = f"scope:{scope_identity}"
     else:
