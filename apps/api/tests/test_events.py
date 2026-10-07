@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 VALID_EVENT = {
     "event_id": "evt-000123",
     "correlation_id": "run-20261007-001",
@@ -28,19 +30,57 @@ def test_event_is_accepted_and_does_not_change_inventory(client) -> None:
     assert client.get("/inventory/P001").json() == before
 
 
-def test_duplicate_event_id_keeps_the_first_body(client) -> None:
+def test_exact_duplicate_is_idempotent(client) -> None:
     first = client.post("/events", json=VALID_EVENT)
-    replay = dict(VALID_EVENT)
-    replay["quantity"] = 9
-    replay["correlation_id"] = "run-other"
-
-    second = client.post("/events", json=replay)
+    second = client.post("/events", json=dict(VALID_EVENT))
 
     assert first.status_code == 201
     assert second.status_code == 200
     assert second.json()["duplicate"] is True
     assert second.json()["event"]["quantity"] == 3
     assert second.json()["event"]["correlation_id"] == "run-20261007-001"
+    assert client.get("/inventory/P001").json()["shelf_quantity"] == 8
+
+
+def test_same_instant_with_an_explicit_offset_is_a_duplicate(client) -> None:
+    client.post("/events", json=VALID_EVENT)
+    replay = dict(VALID_EVENT)
+    replay["occurred_at"] = "2026-10-07T08:01:00+00:00"
+
+    response = client.post("/events", json=replay)
+
+    assert response.status_code == 200
+    assert response.json()["duplicate"] is True
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"quantity": 9},
+        {"sku": "P017"},
+        {"correlation_id": "run-other"},
+        {"occurred_at": "2026-10-07T09:00:00Z"},
+        {"source": "other-pos"},
+    ],
+)
+def test_same_event_id_with_a_different_payload_conflicts(client, patch: dict[str, object]) -> None:
+    assert client.post("/events", json=VALID_EVENT).status_code == 201
+    payload = dict(VALID_EVENT)
+    payload.update(patch)
+
+    response = client.post("/events", json=payload)
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "event_id_conflict",
+            "message": "Event 'evt-000123' already exists with a different payload.",
+        }
+    }
+    assert client.get("/inventory/P001").json()["shelf_quantity"] == 8
+    replay = client.post("/events", json=VALID_EVENT)
+    assert replay.status_code == 200
+    assert replay.json()["event"]["quantity"] == 3
 
 
 def test_unknown_sku_event_is_rejected(client) -> None:
