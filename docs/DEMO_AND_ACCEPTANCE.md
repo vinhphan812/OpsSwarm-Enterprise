@@ -1,0 +1,150 @@
+# RetailTwin AI — Demo, Testing and Acceptance
+
+## 1. Demo purpose
+
+The demo must prove that RetailTwin AI is an autonomous, context-guarded retail operator—not a chatbot attached to a 3D scene.
+
+The audience should understand within seconds:
+- the store is live state;
+- an event triggered AI automatically;
+- AI gathered evidence;
+- alternatives were simulated;
+- stale context was rejected;
+- AI recovered automatically;
+- only a valid decision changed the Live Twin.
+
+## 2. Recommended 3-minute story
+
+**0:00–0:10** — 3D store running, AUTOPILOT ON.  
+**0:10–0:20** — Weekend demand spike appears for P017.  
+**0:20–0:35** — Agent Activity shows evidence collection and diagnosis.  
+**0:35–0:50** — Candidate A/B/C plans appear.  
+**0:50–1:05** — Simulation Twin and KPI comparison.  
+**1:05–1:20** — Context changes intentionally; DCG blocks stale decision.  
+**1:20–1:35** — Agent refreshes evidence/replans automatically.  
+**1:35–1:50** — DCG passes new decision; Executor commits.  
+**1:50–2:05** — Live 3D shelf/facings/replenishment visibly change.  
+**2:05–2:20** — Verifier reports PASS.  
+**2:20–2:45** — Brief architecture/Google Cloud/DCG explanation.  
+**2:45–3:00** — impact and closing statement.
+
+Closing concept:
+
+> RetailTwin AI does not just let AI manage a store. It ensures every autonomous action is still valid at the exact moment it reaches the live store.
+
+## 3. Demo Scenario Mode
+
+For reliability, provide a deterministic scenario controller.
+
+It may control:
+- random seed;
+- event timing;
+- initial state reset;
+- the deliberate stale-context mutation.
+
+It must **not** fake:
+- Gemini tool calls;
+- Firestore state;
+- Simulation Twin;
+- DCG result;
+- Executor live mutation;
+- verification.
+
+A deterministic test scenario is acceptable; a prerecorded/faked backend result is not.
+
+## 4. G04 stale-context acceptance
+
+Precondition: Decision D1 was created from context version N.
+
+Test:
+1. simulate D1;
+2. mutate a relevant live entity to version N+1;
+3. submit D1;
+4. DCG compares versions;
+5. DCG returns `REFRESH_REQUIRED` or `DENY`;
+6. no usable commit authorization exists;
+7. Executor performs no live mutation;
+8. UI/audit shows why;
+9. Agent refreshes evidence and creates D2.
+
+PASS only if the old decision cannot alter Live Twin.
+
+## 5. G05 valid commit acceptance
+
+1. Candidate is simulated.
+2. Decision is tied to current context.
+3. DCG returns `ALLOW`.
+4. Short-lived authorization is issued for exact actions.
+5. Executor validates authorization.
+6. Exact action changes Live Twin.
+7. Live version increments.
+8. 3D Live view reflects state.
+9. Audit record is written.
+10. Verifier checks result.
+
+## 6. G06 submission acceptance
+
+Run the full flagship scenario **20 consecutive times** from deterministic reset.
+
+For each run record:
+- run ID;
+- start/end time;
+- event ID;
+- decision IDs;
+- simulation ID;
+- DCG stale result;
+- replacement decision;
+- final guard result;
+- action ID;
+- verifier result;
+- total duration;
+- PASS/FAIL;
+- failure stage/notes.
+
+A failure breaks the consecutive streak. Fix the defect, reset, and start the 20-run streak again.
+
+## 7. Required failure tests
+
+At minimum test:
+- duplicate Pub/Sub event;
+- missing mandatory evidence;
+- malformed/forbidden tool call;
+- stale context;
+- expired commit authorization;
+- altered action after authorization;
+- insufficient inventory;
+- shelf capacity violation;
+- backend/tool timeout;
+- post-action verification mismatch.
+
+## 8. Judge-visible evidence
+
+The UI should show concise, factual activity such as:
+
+```text
+16:01:02 Trigger      Demand surge detected: P017
+16:01:03 Evidence     Shelf qty 8; backroom 54; velocity +46%
+16:01:05 Diagnosis    Shelf allocation likely insufficient
+16:01:07 Simulation   A/B/C evaluated
+16:01:08 Selection    Scenario B selected
+16:01:09 Guard        REFRESH_REQUIRED — inventory version changed
+16:01:11 Evidence     Context refreshed
+16:01:14 Guard        ALLOW
+16:01:15 Action       Facings 2→4; replenish +12
+16:01:17 Verification PASS
+```
+
+These are evidence/action summaries, not model chain-of-thought.
+
+## 9. Final submission checklist
+
+- deployed working URL;
+- public repository when competition submission requires it;
+- no secrets in repository/history;
+- README and architecture docs current;
+- demo video under required duration;
+- presentation deck;
+- clear Google AI/Google Cloud usage;
+- reproducible flagship scenario;
+- G06 passed;
+- final release/tag created.
