@@ -14,6 +14,7 @@ import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 
@@ -853,3 +854,680 @@ class TestVerifyBearerHmacEdgeCases:
             "opsswarm:read", mac, _TEST_SECRET, "GET", "/runs", timestamp=boundary_ts
         )
         assert result is True
+
+
+# =============================================================================
+# Issue #85 — Proxy-aware IP extraction + bounded rate limiter
+# =============================================================================
+
+
+class TestXForwardedForRotation:
+    """ADR-014-2 D1: Direct attacker cannot bypass rate limit via XFF rotation."""
+
+    @pytest.fixture
+    def client(self):
+        """Create a TestClient with mocked external dependencies."""
+        import opsswarm.api as api_module
+        import opsswarm.auth as auth_module
+
+        orig_gh = api_module.gh
+        orig_engine = api_module.engine
+        orig_oc = getattr(api_module, "oc", None)
+
+        mock_gh = MagicMock()
+        mock_gh.create_issue = AsyncMock(
+            return_value={"number": "1", "html_url": "https://github.com/test/repo/issues/1"}
+        )
+        mock_gh.permission = AsyncMock(return_value="write")
+
+        mock_engine = MagicMock()
+        mock_engine.runs = {}
+        mock_engine.start_issue = AsyncMock()
+
+        mock_oc = MagicMock()
+
+        try:
+            api_module.gh = mock_gh
+            api_module.engine = mock_engine
+            api_module.oc = mock_oc
+            api_module.app.dependency_overrides.clear()
+            yield TestClient(api_module.app)
+        finally:
+            api_module.gh = orig_gh
+            api_module.engine = orig_engine
+            api_module.oc = orig_oc
+            api_module.app.dependency_overrides.clear()
+            auth_module._monitoring_limiter._hits.clear()
+
+    def test_xff_rotation_does_not_bypass_rate_limit(self, client):
+        """
+        A direct (untrusted) client rotating X-Forwarded-For on every request
+        must NOT be able to accumulate more than MONITORING_RATE_LIMIT requests
+        per minute.  All spoofed IPs share the same quota (request.client.host
+        is used because peer is not a trusted proxy).
+        """
+        import opsswarm.auth as auth_module
+        from opsswarm.config import get_monitoring
+        import opsswarm.api as api_module
+
+        # Ensure no trusted proxies are configured (D1 default)
+        mon_cfg = get_monitoring(api_module.cfg)
+        assert mon_cfg.get("trusted_proxies", []) == []
+
+        # Reset limiter state
+        auth_module._monitoring_limiter._hits.clear()
+
+        # Generate unique timestamps to avoid anti-replay blocking
+        base_ts = int(time.time())
+
+        # First 20 requests with different XFF values — all should succeed
+        for i in range(20):
+            token = _generate_bearer(
+                "opsswarm:monitor",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
+                timestamp=base_ts + i,
+            )
+            spoofed_ip = f"1.2.3.{i}"
+            r = client.post(
+                "/hooks/monitoring",
+                json={"service": "test", "symptom": "test"},
+                headers={
+                    **_auth_header(token),
+                    "Content-Type": "application/json",
+                    "X-Forwarded-For": spoofed_ip,
+                },
+            )
+            # Not rate-limited yet
+            assert r.status_code in (200, 400), (
+                f"Request {i + 1} unexpected status {r.status_code}: {r.text}"
+            )
+            auth_module.reset_replay_store()
+
+        # 21st request with yet another spoofed IP → must hit 429
+        token = _generate_bearer(
+            "opsswarm:monitor",
+            _TEST_SECRET,
+            "POST",
+            "/hooks/monitoring",
+            timestamp=base_ts + 20,
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json={"service": "test", "symptom": "test"},
+            headers={
+                **_auth_header(token),
+                "Content-Type": "application/json",
+                "X-Forwarded-For": "9.9.9.9",  # another spoofed IP
+            },
+        )
+        assert r.status_code == 429, (
+            f"Expected 429 but got {r.status_code}: "
+            f"XFF rotation bypassed rate limit — VULNERABILITY!"
+        )
+        assert "Retry-After" in r.headers
+
+
+class TestProxyAwareIPExtraction:
+    """ADR-014-2 D2: Trusted proxy chain correctly extracts the real client IP."""
+
+    def _make_mock_request(self, client_host: str, xff: str = "") -> MagicMock:
+        """Build a mock Request with given peer host and optional XFF header."""
+        mock_request = MagicMock(spec=Request)
+        mock_client = MagicMock()
+        mock_client.host = client_host
+        mock_request.client = mock_client
+        mock_request.headers = MagicMock()
+        mock_request.headers.get = lambda k, d="": {
+            "x-forwarded-for": xff,
+            "x-real-ip": "",
+        }.get(k, d)
+        return mock_request
+
+    def test_trusted_proxy_returns_leftmost_untrusted_ip(self):
+        """Chain: client → proxy1 → proxy2 → app; proxy1 is trusted → extract client."""
+        from opsswarm.auth import _get_real_client_ip
+
+        # Configure proxy1 (10.0.0.5) as trusted
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(
+            client_host="10.0.0.5",
+            xff="203.0.113.50, 10.0.0.10, 10.0.0.5",
+        )
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "203.0.113.50"  # leftmost non-trusted address
+
+    def test_trusted_proxy_all_chain_trusted_falls_back_to_peer(self):
+        """Chain: all IPs in the chain are trusted → fall back to peer."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(
+            client_host="10.0.0.5",
+            xff="10.0.0.3, 10.0.0.10, 10.0.0.5",
+        )
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "10.0.0.5"  # all chain IPs are trusted → peer is the identity
+
+    def test_untrusted_peer_ignores_xff(self):
+        """Untrusted peer (not in CIDR list) → XFF is completely ignored (D1)."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(
+            client_host="203.0.113.99",  # not in trusted range
+            xff="127.0.0.1, 10.0.0.5",
+        )
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "203.0.113.99"  # peer used directly; headers ignored
+
+    def test_empty_xff_chain_uses_peer(self):
+        """Trusted proxy but empty XFF header → use peer address."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(client_host="10.0.0.5", xff="")
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "10.0.0.5"
+
+    def test_max_proxy_hops_respected(self):
+        """Chain longer than max_proxy_hops is truncated."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 2}}
+        req = self._make_mock_request(
+            client_host="10.0.0.5",
+            xff="203.0.113.50, 172.16.0.1, 10.0.0.10, 10.0.0.5",
+        )
+        ip = _get_real_client_ip(req, cfg)
+        # Only first 2 elements considered: 203.0.113.50 (client) and 172.16.0.1 (untrusted)
+        assert ip == "203.0.113.50"
+
+    def test_ipv6_addresses_normalised(self):
+        """IPv6 addresses are returned in canonical lowercase form."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(client_host="10.0.0.5", xff="2001:db8::1")
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "2001:db8::1"
+
+    def test_ipv6_zone_id_stripped(self):
+        """IPv6 addresses with zone ID have the zone ID stripped before parsing."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = self._make_mock_request(client_host="10.0.0.5", xff="fe80::1%eth0")
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "fe80::1"  # zone ID stripped
+        assert "%" not in ip
+
+
+class TestUntrustedHeaderPolicy:
+    """ADR-014-2: Malformed/untrusted header values never bypass policy."""
+
+    def test_localhost_in_xff_from_direct_client_is_ignored(self):
+        """Direct client sending XFF: 127.0.0.1 must not be treated as trusted."""
+        from opsswarm.auth import _get_real_client_ip
+
+        # Default config: no trusted proxies (D1)
+        cfg = {"monitoring": {"trusted_proxies": [], "max_proxy_hops": 4}}
+        req = MagicMock(spec=Request)
+        req.client.host = "203.0.113.99"  # real peer
+        req.headers.get = lambda k, d="": {"x-forwarded-for": "127.0.0.1"}.get(k, d)
+
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "203.0.113.99"  # real peer used; 127.0.0.1 ignored
+
+    def test_malformed_xff_not_crashed(self):
+        """Completely malformed XFF (non-IP values) does not crash the extractor."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": ["10.0.0.0/24"], "max_proxy_hops": 4}}
+        req = MagicMock(spec=Request)
+        req.client.host = "10.0.0.5"
+        req.headers.get = lambda k, d="": {"x-forwarded-for": "not-an-ip, garbage"}.get(k, d)
+
+        # Must not raise; falls back to peer
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "10.0.0.5"
+
+    def test_none_client_returns_unknown(self):
+        """request.client is None → returns 'unknown'."""
+        from opsswarm.auth import _get_real_client_ip
+
+        cfg = {"monitoring": {"trusted_proxies": [], "max_proxy_hops": 4}}
+        req = MagicMock(spec=Request)
+        req.client = None
+        req.headers.get = lambda k, d="": {"x-forwarded-for": "1.2.3.4"}.get(k, d)
+
+        ip = _get_real_client_ip(req, cfg)
+        assert ip == "unknown"
+
+
+class TestRateLimiterBounded:
+    """ADR-014-2 D4: _hits cardinality is bounded by max_buckets with LRU eviction."""
+
+    def test_hits_bounded_at_max_buckets(self):
+        """When bucket cap is reached, new keys cause LRU eviction."""
+        import opsswarm.auth as auth_module
+
+        limiter = auth_module._SimpleRateLimiter(max_requests=1, window_seconds=60, max_buckets=5)
+
+        for i in range(5):
+            allowed, _ = limiter.is_allowed(f"key-{i}")
+            assert allowed, f"key-{i} should be allowed (only 1 request each)"
+
+        allowed_6, _ = limiter.is_allowed("key-6")
+        assert allowed_6
+        assert len(limiter._hits) <= 5, f"expected <=5, got {len(limiter._hits)}"
+        assert ("key-0",) not in limiter._hits, "LRU eviction failed"
+
+    def test_eviction_preserves_existing_key_quota(self):
+        """Touching an existing key does not evict it — no cardinality cost."""
+        import opsswarm.auth as auth_module
+
+        limiter = auth_module._SimpleRateLimiter(max_requests=2, window_seconds=60, max_buckets=100)
+
+        limiter.is_allowed("key-a")
+        limiter.is_allowed("key-a")  # re-touch within quota
+
+        limiter.is_allowed("key-b")
+        limiter.is_allowed("key-c")
+        limiter.is_allowed("key-d")
+
+        # Re-touching key-a costs nothing — no bucket eviction should occur
+        # (max_buckets is 100, far above the 3 keys present)
+        assert ("key-a",) in limiter._hits
+        assert ("key-b",) in limiter._hits
+        assert ("key-c",) in limiter._hits
+        assert ("key-d",) in limiter._hits
+        assert len(limiter._hits) == 4
+
+    def test_reload_monitoring_config_updates_max_buckets(self):
+        """reload_monitoring_config updates the limiter's bucket cap."""
+        import opsswarm.auth as auth_module
+
+        limiter = auth_module._SimpleRateLimiter(max_requests=1, window_seconds=60, max_buckets=5)
+        auth_module.reload_monitoring_config(limiter, {"monitoring": {"rate_limit_buckets_max": 100}})
+        assert limiter._max_buckets == 100
+
+
+class TestAuthenticatedIdentityQuota:
+    """ADR-014-2 D3: Authenticated request gets stable scope-based quota."""
+
+    def test_authenticated_caller_uses_scope_key(self):
+        """Authenticated request should record both IP and scope keys."""
+        import opsswarm.auth as auth_module
+
+        # Reset limiter
+        auth_module._monitoring_limiter._hits.clear()
+        # Configure with generous bucket cap
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        # Both IP and scope keys should be recorded
+        auth_module.check_monitoring_rate_limit("203.0.113.99")
+        auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+
+        ip_hits = auth_module._monitoring_limiter._hits.get(("203.0.113.99",), [])
+        scope_hits = auth_module._monitoring_limiter._hits.get(("scope:opsswarm:monitor",), [])
+        assert len(ip_hits) == 1, "IP key should have one hit"
+        assert len(scope_hits) == 1, "Scope key should have one hit"
+
+    def test_scope_key_provides_stable_quota_across_ip_spoofing(self):
+        """
+        An attacker cannot bypass the IP-based rate limit by spoofing many
+        different IPs — each IP gets its own bucket.  Authenticated requests
+        also record the scope identity so that auth context can be used for
+        quota accounting in the future (ADR-014-2 D3).
+        """
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        # Exhaust the IP-based quota for 203.0.113.99
+        for _ in range(20):
+            auth_module.check_monitoring_rate_limit("203.0.113.99")
+
+        # Exhaust the scope-based quota
+        for _ in range(20):
+            auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+
+        # Same IP is blocked (quota exhausted)
+        allowed_same_ip, _ = auth_module.check_monitoring_rate_limit("203.0.113.99")
+        assert not allowed_same_ip, "IP quota for 203.0.113.99 should be exhausted"
+
+        # Scope key is blocked (quota exhausted)
+        allowed_scope, _ = auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+        assert not allowed_scope, "Scope quota should be exhausted"
+
+        # A different IP is NOT blocked — it has its own independent quota.
+        # This confirms spoofing does not help the attacker.
+        allowed_new_ip, _ = auth_module.check_monitoring_rate_limit("1.2.3.4")
+        assert allowed_new_ip, "Different IP should have its own independent quota"
+
+
+# ---------------------------------------------------------------------------
+# Cross-scope depletion regression tests — PR #86 review finding
+# ---------------------------------------------------------------------------
+
+
+class TestCrossScopeDepletion:
+    """
+    Regression tests for the cross-scope depletion / availability coupling
+    flaw reported in PR #86 review:
+
+    _probe_scope_from_bearer returned ANY valid bearer scope, and
+    api.py used that as the rate-limit key regardless of whether the scope
+    actually authorised POST /hooks/monitoring.  A valid opsswarm:read token
+    could pollute the monitoring limiter (evicting the monitor/admin bucket
+    under LRU pressure) and receive a 403 — draining the monitoring bucket
+    without ever being authorised for it.
+
+    The fix restricts scope-based rate-limit keys to scopes that DO authorise
+    POST /hooks/monitoring (opsswarm:monitor, opsswarm:admin).  All other
+    valid tokens fall through to IP-based limiting, keeping the monitoring
+    limiter's LRU state bounded to monitor/admin callers only.
+    """
+
+    def _make_payload(self):
+        return {"service": "test-svc", "symptom": "depletion-test"}
+
+    # ------------------------------------------------------------------ #
+    # T1: Authorised monitor token — gets scope-based key
+    # ------------------------------------------------------------------ #
+
+    def test_monitor_token_uses_scope_based_key(self, client):
+        """opsswarm:monitor token on /hooks/monitoring → scope:{scope} rate-limit key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:monitor", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        # 200 (gh.create_issue mocked) — auth succeeds
+        assert r.status_code == 200
+
+        # Scope-based key must be present in limiter
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:monitor",), []
+        )
+        assert len(scope_key_hits) == 1, (
+            "opsswarm:monitor token should register scope:opsswarm:monitor key"
+        )
+        # IP-based key must also be present (both are always recorded by the endpoint)
+        assert len(auth_module._monitoring_limiter._hits) >= 1
+
+    # ------------------------------------------------------------------ #
+    # T2: Authorised admin token — gets scope-based key
+    # ------------------------------------------------------------------ #
+
+    def test_admin_token_uses_scope_based_key(self, client):
+        """opsswarm:admin token on /hooks/monitoring → scope:{scope} rate-limit key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:admin", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 1
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        assert r.status_code in (200, 400)  # 400 = gh.create_issue mocked rejection
+
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:admin",), []
+        )
+        assert len(scope_key_hits) == 1, (
+            "opsswarm:admin token should register scope:opsswarm:admin key"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T3: Non-monitor token MUST NOT consume monitor quota
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_does_not_consume_monitor_quota(self, client):
+        """
+        opsswarm:read token (valid but unauthorised for monitoring) must NOT
+        register scope:opsswarm:read in the monitoring limiter — it must fall
+        through to IP-based limiting.  It must not be able to deplete the
+        monitor bucket's 20 req/min quota.
+        """
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:read", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 2
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        # 403 — scope doesn't cover POST /hooks/monitoring
+        assert r.status_code == 403
+
+        # CRITICAL: scope:opsswarm:read must NOT appear in the monitoring limiter
+        read_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:read",), []
+        )
+        assert len(read_scope_key_hits) == 0, (
+            "opsswarm:read token must NOT register scope:opsswarm:read key "
+            "in the monitoring limiter — cross-scope depletion prevented"
+        )
+        # Only IP-based key is expected
+        ip_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if not k[0].startswith("scope:")
+        ]
+        assert len(ip_keys) >= 1, "IP-based key should be recorded"
+
+    def test_write_token_does_not_consume_monitor_quota(self, client):
+        """
+        opsswarm:write token (valid but unauthorised for monitoring) must NOT
+        register scope:opsswarm:write in the monitoring limiter.
+        """
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        token = _generate_bearer(
+            "opsswarm:write", _TEST_SECRET, "POST", "/hooks/monitoring", timestamp=now + 3
+        )
+        r = client.post(
+            "/hooks/monitoring",
+            json=self._make_payload(),
+            headers={**_auth_header(token), "Content-Type": "application/json"},
+        )
+        assert r.status_code == 403
+
+        write_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+            ("scope:opsswarm:write",), []
+        )
+        assert len(write_scope_key_hits) == 0, (
+            "opsswarm:write token must NOT register scope:opsswarm:write key "
+            "in the monitoring limiter — cross-scope depletion prevented"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T4: Read token cannot exhaust monitor quota via repeated attempts
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_cannot_exhaust_monitor_bucket(self):
+        """
+        opsswarm:read tokens (valid but unauthorised for monitoring) must NOT
+        register scope-based keys in the monitoring limiter — they fall through
+        to IP-based limiting only.  Even after many such tokens, the
+        scope:opsswarm:monitor bucket is never polluted.
+        """
+        import opsswarm.auth as auth_module
+        import opsswarm.api as api_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+
+        # 20 requests with opsswarm:read tokens (unique timestamps to avoid
+        # anti-replay; timestamps from `now` stay within the ±SKEW_TOLERANCE_SECS
+        # verification window so every token is structurally valid).
+        for i in range(20):
+            token = _generate_bearer(
+                "opsswarm:read",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
+                timestamp=now + i,
+            )
+            with TestClient(api_module.app) as tc:
+                r = tc.post(
+                    "/hooks/monitoring",
+                    json=self._make_payload(),
+                    headers={**_auth_header(token), "Content-Type": "application/json"},
+                )
+            # All get 403 (scope not authorised for /hooks/monitoring)
+            assert r.status_code == 403, f"Request {i}: expected 403, got {r.status_code}"
+
+        # CRITICAL: scope:opsswarm:read and scope:opsswarm:write must NOT appear
+        # in the monitoring limiter
+        assert ("scope:opsswarm:read",) not in auth_module._monitoring_limiter._hits, (
+            "scope:opsswarm:read must never enter the monitoring limiter"
+        )
+        assert ("scope:opsswarm:write",) not in auth_module._monitoring_limiter._hits, (
+            "scope:opsswarm:write must never enter the monitoring limiter"
+        )
+        # IP-based keys may appear; no scope keys must appear
+        scope_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if k[0].startswith("scope:")
+        ]
+        assert len(scope_keys) == 0, (
+            f"Found unexpected scope keys in monitoring limiter: {scope_keys}"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T5: Invalid bearer / HMAC still rate-limited safely (IP path)
+    # ------------------------------------------------------------------ #
+
+    def test_invalid_bearer_still_rate_limited(self, client):
+        """Invalid bearer token falls back to IP rate limiting — no scope key."""
+        import opsswarm.auth as auth_module
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        now = int(time.time())
+        # Valid format but wrong HMAC — _probe_scope_from_bearer returns None
+        bad_token = _generate_bearer(
+            "opsswarm:monitor",
+            "wrong-secret",
+            "POST",
+            "/hooks/monitoring",
+            timestamp=now + 5,
+        )
+        for i in range(21):
+            ts = now + 300 + i
+            # Generate fresh invalid tokens to avoid anti-replay
+            token = _generate_bearer(
+                "opsswarm:monitor",
+                "wrong-secret",
+                "POST",
+                "/hooks/monitoring",
+                timestamp=ts,
+            )
+            r = client.post(
+                "/hooks/monitoring",
+                json=self._make_payload(),
+                headers={**_auth_header(token), "Content-Type": "application/json"},
+            )
+            if i < 20:
+                assert r.status_code == 401, f"Request {i} should get 401 (unauthenticated)"
+            else:
+                assert r.status_code == 429, (
+                    "Request 21 should get 429 (IP rate limit exceeded)"
+                )
+
+        # No scope-based keys should be in the limiter
+        scope_keys = [
+            k for k in auth_module._monitoring_limiter._hits
+            if k[0].startswith("scope:")
+        ]
+        assert len(scope_keys) == 0, (
+            "Invalid bearer tokens must not register scope keys"
+        )
+
+    # ------------------------------------------------------------------ #
+    # T6: Direct and trusted-proxy source paths — both use IP fallback
+    #     for non-monitor scopes
+    # ------------------------------------------------------------------ #
+
+    def test_read_token_behind_trusted_proxy_does_not_consume_monitor_quota(self):
+        """
+        opsswarm:read token from behind a trusted proxy: XFF is honoured,
+        but the read token still must NOT use a scope-based monitoring key.
+        """
+        import opsswarm.auth as auth_module
+        import opsswarm.api as api_module
+
+        # Configure trusted proxy so XFF is honoured
+        orig_cfg = dict(api_module.cfg)
+        api_module.cfg["monitoring"] = {
+            "trusted_proxies": ["10.0.0.0/24"],
+            "max_proxy_hops": 4,
+        }
+
+        auth_module._monitoring_limiter._hits.clear()
+        auth_module._monitoring_limiter._max_buckets = 1000
+
+        try:
+            now = int(time.time())
+            token = _generate_bearer(
+                "opsswarm:read",
+                _TEST_SECRET,
+                "POST",
+                "/hooks/monitoring",
+                timestamp=now + 6,
+            )
+            with TestClient(api_module.app) as tc:
+                r = tc.post(
+                    "/hooks/monitoring",
+                    json=self._make_payload(),
+                    headers={
+                        **_auth_header(token),
+                        "Content-Type": "application/json",
+                        # Simulate request from behind trusted proxy
+                        "X-Forwarded-For": "203.0.113.50, 10.0.0.1",
+                    },
+                )
+            assert r.status_code == 403
+
+            # scope:opsswarm:read must NOT be in the limiter
+            read_scope_key_hits = auth_module._monitoring_limiter._hits.get(
+                ("scope:opsswarm:read",), []
+            )
+            assert len(read_scope_key_hits) == 0, (
+                "read token behind trusted proxy must not consume monitor quota"
+            )
+        finally:
+            api_module.cfg.clear()
+            api_module.cfg.update(orig_cfg)

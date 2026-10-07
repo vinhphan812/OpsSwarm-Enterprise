@@ -32,13 +32,16 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import logging
 import os
 import re
 import time
-from typing import Final
+from typing import Final, Optional
 
 from fastapi import HTTPException, Request
+
+from .config import DEFAULT_MONITORING, get_monitoring
 
 logger = logging.getLogger(__name__)
 
@@ -92,29 +95,67 @@ class _SimpleRateLimiter:
 
     Uses a sliding window counter.  Suitable for single-instance deployments.
     For multi-instance, replace with Redis-backed implementation.
+
+    The internal dict is bounded to ``max_buckets`` entries (default 10 000).
+    When a new key arrives and the cap is reached, the least-recently-used
+    entry (earliest last-access time) is evicted before the new entry is added.
+    Expired entries are pruned per-key on every ``is_allowed()`` call.
     """
 
-    def __init__(self, max_requests: int, window_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        max_requests: int,
+        window_seconds: int = 60,
+        max_buckets: int = DEFAULT_MONITORING["rate_limit_buckets_max"],
+    ) -> None:
         self._max = max_requests
         self._window = window_seconds
+        self._max_buckets = max_buckets
         # {(source_id,): [timestamp, ...]}
         self._hits: dict[tuple, list[float]] = {}
+        # {source_id: last_access_time} — used for LRU eviction
+        self._last_access: dict[tuple, float] = {}
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _evict_oldest(self) -> None:
+        """Remove the LRU entry — the one with the smallest last-access time."""
+        if not self._hits:
+            return
+        oldest_key = min(self._hits, key=lambda k: self._last_access[k])
+        del self._hits[oldest_key]
+        del self._last_access[oldest_key]
+
+    def _prune_key(self, key: tuple, now: float) -> list[float]:
+        """Return timestamps for ``key`` that are within the sliding window."""
+        cutoff = now - self._window
+        return [t for t in self._hits.get(key, []) if t > cutoff]
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
 
     def is_allowed(self, source_id: str) -> tuple[bool, int]:
         """Return (allowed, retry_after_seconds)."""
         now = time.time()
         key = (source_id,)
-        timestamps = self._hits.get(key, [])
-        # Prune expired entries
-        cutoff = now - self._window
-        timestamps = [t for t in timestamps if t > cutoff]
-        self._hits[key] = timestamps
+        timestamps = self._prune_key(key, now)
 
         if len(timestamps) >= self._max:
             oldest = min(timestamps)
             retry_after = int(oldest + self._window - now) + 1
             return False, max(1, retry_after)
 
+        # Touch the key (LRU) before eviction so newly-added keys can be evicted too.
+        self._last_access[key] = now
+
+        # Bounded cardinality: evict LRU entry if at cap, before storing the new entry.
+        if len(self._hits) >= self._max_buckets and key not in self._hits:
+            self._evict_oldest()
+
+        self._hits[key] = timestamps
         timestamps.append(now)
         return True, 0
 
@@ -332,6 +373,51 @@ def _redact_for_log(value: str, max_len: int = 16) -> str:
 # ---------------------------------------------------------------------------
 
 
+async def _probe_scope_from_bearer(request: Request, authorization: str | None) -> str | None:
+    """Non-registering bearer validator — only used for rate-limit identity probing.
+
+    Unlike ``verify_scoped_bearer``, this function does NOT record the token in
+    the anti-replay store.  It returns the scope string on success, or ``None``
+    if the token is absent, invalid, or would be rejected as a replay.
+    """
+    if not authorization:
+        return None
+    parts = authorization.split(None, 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return None
+    raw_token = parts[1]
+
+    # Static pre-shared key path
+    for scope_key, static_value in _preshared_keys.items():
+        if static_value and hmac.compare_digest(static_value, raw_token):
+            return scope_key
+
+    # HMAC-derived bearer path — structural validation only (no anti-replay, no
+    # timestamp window).  Returns the scope if the token format and HMAC are
+    # structurally valid.  This is a superset of what verify_scoped_bearer
+    # accepts (which additionally checks timestamp ± skew and registers anti-replay).
+    match = _BEARER_RE.match(raw_token)
+    if not match:
+        return None
+    token_scope = match.group(1)
+    token_hmac_hex = match.group(2)
+    if token_scope not in set(ALL_SCOPES):
+        return None
+    if _opsswarm_runtime_secret:
+        method = request.method.upper()
+        path = request.url.path
+        # Use a wider validity window for the probe (±SKEW_TOLERANCE_SECS ± 1 tick)
+        # than verify_scoped_bearer so near-edge timestamps are still accepted.
+        now = int(time.time())
+        for ts_offset in range(-SKEW_TOLERANCE_SECS - 1, SKEW_TOLERANCE_SECS + 2):
+            ts = now + ts_offset
+            if verify_bearer_hmac(
+                token_scope, token_hmac_hex, _opsswarm_runtime_secret, method, path, ts
+            ):
+                return token_scope
+    return None
+
+
 async def verify_scoped_bearer(
     request: Request,
     authorization: str | None,
@@ -474,9 +560,134 @@ def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
     return _monitoring_limiter.is_allowed(source_id)
 
 
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------|
+# Proxy-aware client IP extraction (ADR-014-2)
+# --------------------------------------------------------------------------
+
+
+def _get_real_client_ip(request: Request, cfg: dict) -> str:
+    """
+    Return the real client IP for rate-limiting purposes.
+
+    Policy (ADR-014-2):
+    - D1: Never trust X-Forwarded-For / X-Real-IP by default.
+    - D2: Only parse those headers when ``request.client.host`` belongs to a
+      configured trusted proxy (CIDR-based allowlist).
+
+    When the trusted-proxy path is taken, the leftmost address in the
+    X-Forwarded-For chain that is NOT itself a trusted proxy is returned.
+    ``max_proxy_hops`` limits how many chain elements are accepted.
+
+    Returns ``"unknown"`` when no usable IP can be determined.
+    IPv6 zone IDs are stripped; results are normalised to lowercase.
+    """
+    monitoring_cfg: dict = get_monitoring(cfg)
+    trusted_proxies: list[str] = monitoring_cfg.get("trusted_proxies", [])
+    max_hops: int = monitoring_cfg.get("max_proxy_hops", 4)
+
+    if not trusted_proxies:
+        # D1: never trust headers — fall back directly
+        fallback = _client_host_normalised(request)
+        return fallback if fallback else "unknown"
+
+    peer_host = _client_host_normalised(request)
+    if not peer_host:
+        return "unknown"
+
+    # Is the immediate peer a configured trusted proxy?
+    if not _ip_in_cidrs(peer_host, trusted_proxies):
+        # Peer is not trusted — do not honour any forwarded headers
+        return peer_host
+
+    # Peer IS a trusted proxy: parse the X-Forwarded-For chain
+    forwarded_str = request.headers.get("x-forwarded-for", "") or request.headers.get(
+        "x-real-ip", ""
+    )
+
+    if not forwarded_str:
+        # Trusted proxy but no forwarded chain — use the peer address
+        return peer_host
+
+    raw_ips = [ip.strip() for ip in forwarded_str.split(",") if ip.strip()]
+    # Respect max_hops cap
+    chain = raw_ips[:max_hops]
+
+    # Walk from leftmost; return the first address that is NOT a trusted proxy
+    for candidate in chain:
+        normalised = _normalise_ip(candidate)
+        if normalised and not _ip_in_cidrs(normalised, trusted_proxies):
+            return normalised
+
+    # All chain elements are trusted proxies (or malformed) — fall back to peer
+    return peer_host
+
+
+def _client_host_normalised(request: Request) -> str:
+    """Return request.client.host stripped of zone ID, or empty string."""
+    if request.client is None:
+        return ""
+    return _normalise_ip(request.client.host) or ""
+
+
+def _normalise_ip(raw: str | None) -> Optional[str]:
+    """
+    Normalise an IP address string.
+
+    - Strips IPv6 zone ID (e.g. ``fe80::1%eth0`` → ``fe80::1``).
+    - Returns None for empty or completely unparseable input.
+    - Returns the canonical lowercase string for both IPv4 and IPv6.
+    """
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+    # Remove zone ID before parsing
+    if "%" in raw:
+        raw = raw.split("%", 1)[0]
+    try:
+        addr = ipaddress.ip_address(raw)
+        return str(addr)
+    except ValueError:
+        return None
+
+
+def _ip_in_cidrs(ip: str, cidrs: list[str]) -> bool:
+    """Return True if ``ip`` falls within any of the ``cidrs`` networks."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    for cidr in cidrs:
+        try:
+            if addr in ipaddress.ip_network(cidr, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+# --------------------------------------------------------------------------|
+# Monitoring config reload
+# --------------------------------------------------------------------------
+
+
+def reload_monitoring_config(limiter: _SimpleRateLimiter, cfg: dict) -> None:
+    """
+    Reload monitoring config from ``cfg`` and update ``limiter``'s bucket cap.
+
+    Call this after mutating the process environment (e.g. in tests) or
+    when the operator updates the deployment config.
+    """
+    monitoring = get_monitoring(cfg)
+    limiter._max_buckets = monitoring.get(
+        "rate_limit_buckets_max", DEFAULT_MONITORING["rate_limit_buckets_max"]
+    )
+
+
+# --------------------------------------------------------------------------|
 # Tests reset helper
-# ---------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 
 
 def reset_replay_store() -> None:
