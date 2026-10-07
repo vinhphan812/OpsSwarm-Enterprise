@@ -32,6 +32,8 @@ The 3D scene and the API are **not Firestore Live Twin**. Issue #4 binds the sce
 
 Issue #58 remains open. The web lockfile is on `main`. An executable GitHub Actions build/test gate is not. #58 stays open until that gate exists and is green.
 
+Issue #60 remains open. Behavior tests exist. There is no coverage instrumentation or threshold, so a passing test count is not a coverage percentage. #60 owns that baseline and the CI coverage gate.
+
 ## Not implemented yet
 
 Do not infer implementation merely because a component is documented in the target architecture. The following remain planned/open unless their issue is explicitly completed:
@@ -67,7 +69,7 @@ Gate status changes only when the corresponding issue contains reproducible evid
 
 ## Immediate critical path
 
-1. Resolve #58 with a green executable GitHub Actions CI build/test gate. The web lockfile is already on `main`.
+1. Resolve #58 with a green executable GitHub Actions CI build/test gate. The web lockfile is already on `main`. Issue #60 then adds the coverage baseline and threshold to that gate.
 2. Complete Firestore (#6), Pub/Sub/BigQuery (#7), Gemini real read tool (#2), and Cloud Run (#9).
 3. Pass Foundation Gate #10. #10 stays open: Firestore, Pub/Sub, Gemini real tool use, and Cloud Run are still required.
 4. Continue the autonomous path: Tool Registry → Observer → Investigator → Planner → Simulation → DCG → Executor → Verifier.
