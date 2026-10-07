@@ -23,6 +23,7 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 
 `NNNN-imperative-verb-phrase.md`
 
+- `0001-record-architecture-decisions-in-pull-requests.md`
 - Copy `template.md` for the next record and use the next free number.
 - One decision per file.
 - Status is `Proposed`, `Accepted`, `Superseded`, or `Deprecated`.
@@ -31,4 +32,7 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 
 | ADR | Title | Status |
 | --- | --- | --- |
+| [0001](0001-record-architecture-decisions-in-pull-requests.md) | Record architecture decisions in pull requests | Accepted |
+| [0002](0002-render-store-entities-as-named-primitives.md) | Render store entities as named primitives | Accepted |
 | [0003](0003-serve-store-reads-through-the-api.md) | Serve store reads through the API | Accepted |
+

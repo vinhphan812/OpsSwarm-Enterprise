@@ -10,3 +10,5 @@ Rules:
 - Every live commit passes DCG.
 - stale context fails closed.
 - quantitative impact must come from models/simulation, not fabricated LLM output.
+
+Decision log: `docs/adr/`. A pull request that changes one of these rules links the ADR it tracks, or adds a superseding record in the same change.

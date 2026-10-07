@@ -1,5 +1,14 @@
-import { StoreStatus } from "./status/StoreStatus";
+import { AgentActivityPanel } from "./layout/AgentActivityPanel";
+import { StoreScene } from "./scene/StoreScene";
+import "./App.css";
 
 export function App() {
-  return <StoreStatus />;
+  return (
+    <div className="app">
+      <main className="viewport">
+        <StoreScene />
+      </main>
+      <AgentActivityPanel />
+    </div>
+  );
 }
