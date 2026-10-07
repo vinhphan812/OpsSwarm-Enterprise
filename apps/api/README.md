@@ -6,6 +6,8 @@ Python FastAPI boundary for the web client. Day-0 reads come from the committed 
 
 `open_store` in `retailtwin_api/store.py` is the read adapter. Issue #6 replaces that function. The routes and response models stay the same. This app does not close foundation gate #10.
 
+The browser does not write Firestore. This app does not expose action submission or guard validation; those stay target contracts. No route bypasses Simulation-before-Live, the Decision Context Guard, authorization, or the Executor.
+
 ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 
 ## Endpoints

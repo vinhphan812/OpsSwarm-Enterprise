@@ -5,7 +5,7 @@
 
 ## Current baseline on main
 
-The repository currently contains a working **view-only 3D web scaffold** merged through PR #56 / issue #3.
+The repository contains two merged day-0 slices: a view-only 3D web scaffold from PR #56 / issue #3, and a fixture-backed FastAPI plus frontend API integration from PR #57 / issue #8.
 
 Implemented on `main`:
 - Vite + React 18 + TypeScript;
@@ -17,24 +17,20 @@ Implemented on `main`:
 - responsive camera framing;
 - orbit-only interaction;
 - scene tests;
-- reserved Agent Activity panel;
-- ADR process with ADR 0001 and 0002.
+- Agent Activity panel with `StoreStatus`;
+- `apps/api` routes `GET /health`, `GET /store`, `GET /inventory/{sku}`, and `POST /events`;
+- typed web client for health, store, and inventory;
+- reads from the committed fixture `data/schemas/store-state.example.json`;
+- in-memory event intake: one `event_id` names one immutable normalized payload, an identical payload returns HTTP 200, and a different payload returns HTTP 409 `event_id_conflict`;
+- `POST /events` does not change inventory and does not write Live Twin state;
+- ADR 0001, 0002, and 0003;
+- tracked `apps/web/package-lock.json`.
 
-The current 3D fixture is **not Live Twin truth**. It is intentionally a view fixture until issue #4 binds the scene to API/Firestore-backed Digital Twin state.
+The 3D scene and the API are **not Firestore Live Twin**. Issue #4 binds the scene to twin state. Issue #6 replaces `open_store` with Firestore and keeps the four routes.
 
 ## Work in progress
 
-PR #57 implements the FastAPI/frontend integration scope for issue #8. It is not part of `main` yet. The branch has been reconciled with the current `main`, GitHub reports it as mergeable, it preserves the #56 3D scene, and it integrates `StoreStatus` through `AgentActivityPanel`.
-
-Its intended boundary is:
-- `GET /health`;
-- `GET /store`;
-- `GET /inventory/{sku}`;
-- `POST /events`;
-- typed frontend API client/status UI;
-- fixture-backed reads as a scaffold, not Firestore Live Twin.
-
-Issue #58 tracks the remaining reproducibility/CI work. PR #57 now commits `apps/web/package-lock.json`, so the dependency-lock input exists on that branch, but there is still no executable GitHub Actions build/test gate or check run on the current project baseline. #58 remains open until CI exists and is green.
+Issue #58 remains open. The web lockfile is on `main`. An executable GitHub Actions build/test gate is not. #58 stays open until that gate exists and is green.
 
 ## Not implemented yet
 
@@ -71,13 +67,12 @@ Gate status changes only when the corresponding issue contains reproducible evid
 
 ## Immediate critical path
 
-1. Finish the remaining review fixes in PR #57 and merge only after the event-ID integrity issue is resolved.
-2. Resolve #58 by adding a green executable CI build/test gate; the lockfile portion is already present in PR #57.
-3. Complete Firestore (#6), Pub/Sub/BigQuery (#7), Gemini real read tool (#2), Cloud Run (#9).
-4. Pass Foundation Gate #10.
-5. Continue the autonomous path: Tool Registry → Observer → Investigator → Planner → Simulation → DCG → Executor → Verifier.
-6. Bind those state changes to the 3D Live/Simulation views.
-7. Pass G02 → G03 → G04 → G05 → G06 in order.
+1. Resolve #58 with a green executable GitHub Actions CI build/test gate. The web lockfile is already on `main`.
+2. Complete Firestore (#6), Pub/Sub/BigQuery (#7), Gemini real read tool (#2), and Cloud Run (#9).
+3. Pass Foundation Gate #10. #10 stays open: Firestore, Pub/Sub, Gemini real tool use, and Cloud Run are still required.
+4. Continue the autonomous path: Tool Registry → Observer → Investigator → Planner → Simulation → DCG → Executor → Verifier.
+5. Bind those state changes to the 3D Live/Simulation views.
+6. Pass G02 → G03 → G04 → G05 → G06 in order.
 
 ## Documentation rule
 

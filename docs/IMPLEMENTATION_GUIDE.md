@@ -113,7 +113,7 @@ This role owns integration quality, not only presentation.
 
 ## 7. Current implementation note
 
-The phases below are delivery targets, not claims that those components already exist. `docs/CURRENT_STATUS.md` is authoritative for repository maturity. As of 2026-10-07, the merged baseline is the view-only 3D scaffold from issue #3; API integration is in progress, and Foundation/G02–G06 have not passed.
+The phases below are delivery targets, not claims that those components already exist. `docs/CURRENT_STATUS.md` is authoritative for repository maturity. As of 2026-10-07, `main` has the view-only 3D scaffold from issue #3 and the fixture-backed FastAPI plus frontend integration from issue #8. Event intake is in-memory and immutable by event id. The API is not Firestore Live Twin. Issue #58, Firestore (#6), Pub/Sub (#7), the Gemini read tool (#2), Cloud Run (#9), and Foundation Gate #10 through G06 remain open.
 
 ## 8. Build phases
 
