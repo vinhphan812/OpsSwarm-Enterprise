@@ -1,0 +1,14 @@
+{
+  "store_id": "store-001",
+  "version": "v1",
+  "products": [
+    {
+      "sku": "P001",
+      "shelf_id": "A01",
+      "slot_id": "A01-S01",
+      "facings": 3,
+      "shelf_quantity": 8,
+      "backroom_quantity": 42
+    }
+  ]
+}
