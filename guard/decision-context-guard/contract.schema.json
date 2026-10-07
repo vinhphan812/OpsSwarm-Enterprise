@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RetailTwinDecision",
+  "type": "object",
+  "required": [
+    "decision_id",
+    "agent_id",
+    "context_version",
+    "context_timestamp",
+    "evidence",
+    "proposed_actions",
+    "simulation_id",
+    "expected_impact"
+  ],
+  "properties": {
+    "decision_id": {"type": "string"},
+    "agent_id": {"type": "string"},
+    "context_version": {"type": "string"},
+    "context_timestamp": {"type": "string", "format": "date-time"},
+    "evidence": {"type": "array", "items": {"type": "object"}},
+    "proposed_actions": {"type": "array", "items": {"type": "object"}},
+    "simulation_id": {"type": "string"},
+    "expected_impact": {"type": "object"}
+  },
+  "additionalProperties": true
+}
