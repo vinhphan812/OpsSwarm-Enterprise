@@ -18,7 +18,7 @@ The scene is a view. It must not gain a path that writes Live Twin state.
 
 `apps/web` is a Vite + React + TypeScript application. The store scene uses React Three Fiber 8 and Drei 9 on React 18 and Three r170, which install and build on Node `>=20.17`.
 
-The scene is right-handed and Y-up. Units are meters. The floor top lies on the XZ plane at `y = 0`. The camera is an orbit camera aimed at the store center. There is no character and no walk control.
+The scene is right-handed and Y-up. Units are meters. The floor top lies on the XZ plane at `y = 0`. The camera orbits the store center and does not pan. Its distance fits the shelf bounds to the canvas aspect ratio. There is no character and no walk control.
 
 Each Store, Shelf, Slot, and Product object sets both `name` and `userData.entityId` to the domain id (`store-001`, `A01`, `A01-S01`, `P001`, and so on) and sets `userData.entityType`. Geometry is colored primitives. The app does not import GLB, glTF, or Blender files.
 
@@ -31,7 +31,7 @@ Positions for this scaffold come from `apps/web/src/scene/storeFixture.ts`. Issu
 - Upgrading to React Three Fiber 9 waits on a Node runtime that satisfies Vite 7 or newer.
 - The Agent Activity column is reserved layout. It does not yet show the agent timeline.
 - Issue #3's scene can be reviewed without a live backend. It does not prove that geometry follows Live Twin state. That proof is issue #4.
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/56
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/3
 - Supersedes:
 - Superseded by:

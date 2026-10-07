@@ -33,7 +33,7 @@ Open a record when the change affects a public schema, a state transition, a too
 - The pull request template always has an ADR field, so the link is visible even when the answer is `N/A`.
 - Architecture pull requests carry a short extra document. Small fixes only fill the field.
 - Product decisions still living only in `docs/ARCHITECTURE.md` and the other guides are recorded when the pull request that implements or freezes them lands, not ahead of that decision.
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/56
 - Issue:
 - Supersedes:
 - Superseded by:
