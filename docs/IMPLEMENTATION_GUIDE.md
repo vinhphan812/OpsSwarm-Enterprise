@@ -4,13 +4,14 @@
 
 Before coding:
 1. Read `docs/PROJECT_CONTEXT.md`.
-2. Read `docs/ARCHITECTURE.md`.
-3. Read `docs/DOMAIN_AND_DATA_MODEL.md`.
-4. Read accepted records in `docs/adr/` that constrain the issue.
-5. Identify your role below.
-6. Open GitHub Issues filtered by your `role:*` label.
-7. Follow dependencies in the issue before implementing it.
-8. Do not add Competition-100 features while release gates are failing.
+2. Read `docs/CURRENT_STATUS.md` so you know what is actually on `main` now.
+3. Read `docs/ARCHITECTURE.md`.
+4. Read `docs/DOMAIN_AND_DATA_MODEL.md`.
+5. Read `docs/DEVELOPMENT_WORKFLOW.md`.
+6. Read accepted records in `docs/adr/` that constrain the issue.
+7. Identify your role below.
+8. Open GitHub Issues filtered by your `role:*` label and follow their dependencies.
+9. Do not add Competition-100 features while release gates are failing.
 
 ## 2. Critical path
 
@@ -110,7 +111,11 @@ Build:
 
 This role owns integration quality, not only presentation.
 
-## 7. Build phases
+## 7. Current implementation note
+
+The phases below are delivery targets, not claims that those components already exist. `docs/CURRENT_STATUS.md` is authoritative for repository maturity. As of 2026-10-07, the merged baseline is the view-only 3D scaffold from issue #3; API integration is in progress, and Foundation/G02–G06 have not passed.
+
+## 8. Build phases
 
 ### Phase 0 — Foundation
 Target: web + API + Firestore + Pub/Sub + Gemini real tool + Cloud Run.
@@ -124,7 +129,7 @@ Add complete verification/replan, 2–3 candidates, polished Agent Activity/DCG 
 ### Phase 3 — COMPETITION-100
 Only after stability: multi-agent ADK, advanced optimizer, customer heatmap, richer assets, rollback, vision or other enhancements.
 
-## 8. Release gates
+## 9. Release gates
 
 **Foundation Gate** — web/API/Firestore/Gemini/PubSub/Cloud Run integrated.  
 **G02 Twin Control** — real agent tool changes Simulation Twin and 3D, not Live.  
@@ -135,7 +140,7 @@ Only after stability: multi-agent ADK, advanced optimizer, customer heatmap, ric
 
 Do not consider the project “demo ready” merely because individual services work.
 
-## 9. Development conventions
+## 10. Development conventions
 
 - One issue should have one clear outcome.
 - Reference issue number in PR/commit.
@@ -147,7 +152,7 @@ Do not consider the project “demo ready” merely because individual services 
 - Keep demo data resettable.
 - A PR touching a public schema, state transition, tool or action contract, or security invariant must update the relevant docs and the ADR log in the same change.
 
-## 10. Automatic scope reduction
+## 11. Automatic scope reduction
 
 If time is short:
 1. Cut photorealistic assets.

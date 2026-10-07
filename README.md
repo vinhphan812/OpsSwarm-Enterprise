@@ -2,7 +2,7 @@
 
 **Context-Guarded Autonomous 3D Retail Digital Twin**
 
-> New to the project? Start with **[Project Context](docs/PROJECT_CONTEXT.md)**. It explains the problem, product idea, flagship scenario, terminology, scope and success criteria before you touch the code.
+> New to the project? Start with **[Project Context](docs/PROJECT_CONTEXT.md)**, then read **[Current Status](docs/CURRENT_STATUS.md)** before touching the code. Project Context describes the target product; Current Status says what is actually implemented on `main` today.
 
 RetailTwin AI is an autonomous retail-operations system built around a live 3D Digital Twin. Store events trigger an AI control loop that gathers evidence, plans bounded actions, tests them in an isolated Simulation Twin, validates the selected decision with a deterministic Decision Context Guard (DCG), applies only authorized actions to the Live Twin, and verifies the result.
 
@@ -29,12 +29,14 @@ Retail conditions can change between the moment an AI makes a decision and the m
 ## Read the project in this order
 
 1. **[PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)** — what we are building, the retail problem, product behavior, scope, application and glossary.
-2. **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — system components, Google Cloud stack, Simulation Twin, DCG, execution and security.
-3. **[DOMAIN_AND_DATA_MODEL.md](docs/DOMAIN_AND_DATA_MODEL.md)** — Store/Zone/Shelf/Slot/Product model, events, evidence, tools, actions and KPIs.
-4. **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** — role ownership, critical path, phases, gates and scope-reduction rules.
-5. **[DEMO_AND_ACCEPTANCE.md](docs/DEMO_AND_ACCEPTANCE.md)** — flagship scenario, stale-context test, 20-run Submission Gate and final demo.
-6. **[docs/adr/](docs/adr/README.md)** — architecture decision log. Pull requests name the ADR they track.
-7. **GitHub Issues** — implementation-ready work tickets with dependencies, verification and Definition of Done.
+2. **[CURRENT_STATUS.md](docs/CURRENT_STATUS.md)** — what is implemented on `main`, what is in progress, what remains planned, and current gate status.
+3. **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — target system components, Google Cloud stack, Simulation Twin, DCG, execution and security.
+4. **[DOMAIN_AND_DATA_MODEL.md](docs/DOMAIN_AND_DATA_MODEL.md)** — target Store/Zone/Shelf/Slot/Product model, events, evidence, tools, actions and KPIs.
+5. **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** — role ownership, critical path, phases, gates and scope-reduction rules.
+6. **[DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md)** — issue/branch/PR workflow, verification and merge-safety rules.
+7. **[DEMO_AND_ACCEPTANCE.md](docs/DEMO_AND_ACCEPTANCE.md)** — flagship scenario, stale-context test, 20-run Submission Gate and final demo.
+8. **[docs/adr/](docs/adr/README.md)** — architecture decision log. Pull requests name the ADR they track.
+9. **GitHub Issues** — implementation-ready work tickets with dependencies, verification and Definition of Done.
 
 ## Architecture at a glance
 
@@ -117,6 +119,10 @@ The primary scenario is **Weekend Demand Surge**. A SKU starts selling faster th
 
 The Submission Gate requires the flagship scenario to pass **20 consecutive E2E runs** before optional Competition-100 work is allowed.
 
+## Current maturity
+
+The architecture below is the **target product architecture**. For the exact implementation state of the repository, including open integration work and unpassed gates, read [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md).
+
 ## Contribution rule
 
-Before starting an issue, read its dependencies and the relevant document above. If implementation changes a public schema, state transition, tool/action contract or security invariant, update the corresponding documentation in the same change and add or supersede an ADR in [docs/adr/](docs/adr/README.md). Every pull request names the ADR it tracks, or marks `N/A` when the change has no architectural effect.
+Before starting an issue, read its dependencies, [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md), [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md), and the relevant architecture documents above. If implementation changes a public schema, state transition, tool/action contract or security invariant, update the corresponding documentation in the same change and add or supersede an ADR in [docs/adr/](docs/adr/README.md). Every pull request names the ADR it tracks, or marks `N/A` when the change has no architectural effect.
