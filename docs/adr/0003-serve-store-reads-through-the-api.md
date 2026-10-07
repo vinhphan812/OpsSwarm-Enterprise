@@ -32,7 +32,7 @@ Configuration comes from environment variables. The process starts without GCP c
 - Issue #6 can replace the fixture loader with Firestore behind the same typed view. Issue #7 can publish accepted events. Neither change belongs in this boundary.
 - In-memory events disappear when the process stops. A duplicate `event_id` is idempotent only inside one process.
 - Later live actions still enter through the Decision Context Guard and the Executor. This record does not add `POST /actions/submit` or `POST /guard/validate`.
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/57
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/8
 - Supersedes:
 - Superseded by:
