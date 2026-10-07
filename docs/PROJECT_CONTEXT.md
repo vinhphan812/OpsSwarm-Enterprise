@@ -169,4 +169,5 @@ The strongest proof is the stale-context demonstration:
 2. `docs/DOMAIN_AND_DATA_MODEL.md` — entities, schemas, events and actions.
 3. `docs/IMPLEMENTATION_GUIDE.md` — role-by-role work and build order.
 4. `docs/DEMO_AND_ACCEPTANCE.md` — flagship demo and release gates.
-5. GitHub Issues — executable work tickets and Definition of Done.
+5. `docs/adr/` — architecture decision log. Pull requests name the ADR they track.
+6. GitHub Issues — executable work tickets and Definition of Done.

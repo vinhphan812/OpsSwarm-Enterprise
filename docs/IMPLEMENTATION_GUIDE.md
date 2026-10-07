@@ -6,10 +6,11 @@ Before coding:
 1. Read `docs/PROJECT_CONTEXT.md`.
 2. Read `docs/ARCHITECTURE.md`.
 3. Read `docs/DOMAIN_AND_DATA_MODEL.md`.
-4. Identify your role below.
-5. Open GitHub Issues filtered by your `role:*` label.
-6. Follow dependencies in the issue before implementing it.
-7. Do not add Competition-100 features while release gates are failing.
+4. Read accepted records in `docs/adr/` that constrain the issue.
+5. Identify your role below.
+6. Open GitHub Issues filtered by your `role:*` label.
+7. Follow dependencies in the issue before implementing it.
+8. Do not add Competition-100 features while release gates are failing.
 
 ## 2. Critical path
 
@@ -138,12 +139,13 @@ Do not consider the project “demo ready” merely because individual services 
 
 - One issue should have one clear outcome.
 - Reference issue number in PR/commit.
+- Name the ADR the pull request tracks. Add or supersede a record in `docs/adr/` in the same pull request when the change creates or replaces an architecture decision. See `docs/adr/README.md`.
 - Prefer small typed interfaces over implicit dictionaries.
 - Add tests for failure paths.
 - Use `.env.example`; never commit real secrets.
 - Use structured logging with `correlation_id`, `decision_id`, `simulation_id`, `action_id`.
 - Keep demo data resettable.
-- A PR touching a public schema must update the relevant docs.
+- A PR touching a public schema, state transition, tool or action contract, or security invariant must update the relevant docs and the ADR log in the same change.
 
 ## 10. Automatic scope reduction
 
