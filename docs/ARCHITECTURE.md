@@ -2,6 +2,8 @@
 
 ## 1. Architecture objective
 
+> This document is the **target architecture**. It does not imply every component is already implemented. See `docs/CURRENT_STATUS.md` for the current `main` baseline and gate status.
+
 RetailTwin AI must autonomously react to retail events while preserving a strict boundary between AI reasoning and live operational state.
 
 High-level path:
