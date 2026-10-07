@@ -33,7 +33,8 @@ Retail conditions can change between the moment an AI makes a decision and the m
 3. **[DOMAIN_AND_DATA_MODEL.md](docs/DOMAIN_AND_DATA_MODEL.md)** — Store/Zone/Shelf/Slot/Product model, events, evidence, tools, actions and KPIs.
 4. **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** — role ownership, critical path, phases, gates and scope-reduction rules.
 5. **[DEMO_AND_ACCEPTANCE.md](docs/DEMO_AND_ACCEPTANCE.md)** — flagship scenario, stale-context test, 20-run Submission Gate and final demo.
-6. **GitHub Issues** — implementation-ready work tickets with dependencies, verification and Definition of Done.
+6. **[docs/adr/](docs/adr/README.md)** — architecture decision log. Pull requests name the ADR they track.
+7. **GitHub Issues** — implementation-ready work tickets with dependencies, verification and Definition of Done.
 
 ## Architecture at a glance
 
@@ -90,7 +91,7 @@ services/      twin, simulation, optimizer, forecasting
 data/          schemas, synthetic scenarios, seed
 infrastructure/ GCP + Firebase
 assets/        3D assets
-docs/          project context, architecture, domain model, implementation and demo
+docs/          project context, architecture, domain model, implementation, demo, adr/
 tests/         unit, integration and E2E
 .github/       workflows
 ```
@@ -116,6 +117,14 @@ The primary scenario is **Weekend Demand Surge**. A SKU starts selling faster th
 
 The Submission Gate requires the flagship scenario to pass **20 consecutive E2E runs** before optional Competition-100 work is allowed.
 
+## Run the day-0 API locally
+
+The web client reads health, store, and inventory from `apps/api`. The API serves the committed fixture in `data/schemas/store-state.example.json`. It does not use GCP credentials and it does not mutate live inventory.
+
+- API setup and endpoints: [apps/api/README.md](apps/api/README.md)
+- Web client: [apps/web/README.md](apps/web/README.md)
+- Copy [.env.example](.env.example) to `.env` only to override hosts or ports. Do not commit `.env`.
+
 ## Contribution rule
 
-Before starting an issue, read its dependencies and the relevant document above. If implementation changes a public schema, state transition, tool/action contract or security invariant, update the corresponding documentation in the same change.
+Before starting an issue, read its dependencies and the relevant document above. If implementation changes a public schema, state transition, tool/action contract or security invariant, update the corresponding documentation in the same change and add or supersede an ADR in [docs/adr/](docs/adr/README.md). Every pull request names the ADR it tracks, or marks `N/A` when the change has no architectural effect.

@@ -1,0 +1,127 @@
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", sans-serif;
+  color: #e8edf2;
+  background: #121820;
+}
+
+.store-status {
+  box-sizing: border-box;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.store-status h1,
+.store-status h2 {
+  margin: 0 0 8px;
+  font-weight: 650;
+}
+
+.store-status h1 {
+  font-size: 28px;
+}
+
+.store-status h2 {
+  margin-top: 20px;
+  font-size: 20px;
+}
+
+.store-status p {
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.store-status-note {
+  color: #b7c3d1;
+  font-size: 14px;
+}
+
+.store-status-error {
+  color: #ffb4a8;
+}
+
+.store-status-label {
+  display: none;
+}
+
+.store-status-table {
+  overflow-x: auto;
+}
+
+.store-status table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.store-status th,
+.store-status td {
+  border-bottom: 1px solid #2a3544;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.store-status-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.store-status-lookup input {
+  min-width: 8rem;
+  padding: 8px 10px;
+  color: #e8edf2;
+  background: #18202b;
+  border: 1px solid #2a3544;
+  border-radius: 4px;
+}
+
+.store-status-lookup button {
+  padding: 8px 12px;
+  color: #121820;
+  background: #d5e4f5;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.store-status-lookup button:disabled {
+  opacity: 0.7;
+}
+
+@media (max-width: 800px) {
+  .store-status {
+    padding: 16px;
+  }
+
+  .store-status thead {
+    display: none;
+  }
+
+  .store-status tr {
+    display: block;
+    padding: 8px 0 12px;
+  }
+
+  .store-status td {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 0;
+    padding: 3px 0;
+  }
+
+  .store-status-label {
+    display: inline;
+    color: #b7c3d1;
+  }
+}

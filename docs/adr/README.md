@@ -1,51 +1,34 @@
-# Architecture Decision Records (ADRs)
+# Architecture decision log
 
-This directory contains Architectural Decision Records for the OpsSwarm project.
+An architecture decision record (ADR) captures one important architecture decision, the context in which it was made, and the consequences. The log is the set of those records.
 
-## ADR Index
+Format reference: [architecture-decision-record](https://github.com/architecture-decision-record/architecture-decision-record). Records use the Michael Nygard sections: Status, Context, Decision, Consequences.
 
-| ADR                                              | Title                          | Status   | Notes                                           |
-|--------------------------------------------------|--------------------------------|----------|-------------------------------------------------|
-| 001                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
-| 002                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
-| 003                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
-| 004                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
-| 005                                              | *(not yet used)*               | —        | Reserved for future decisions                   |
-| [006](ADR-006_SKILL_FRONTMATTER_CONTRACT.md)     | Skill Frontmatter Contract     | Approved | S1–S8 SKILL.md schema                           |
-| [007](ADR-007_SKILL_GATE_VALIDATOR.md)           | Skill Gate Validator           | Approved | Independent CI; see `scripts/validate_skill.py` |
-| [008](ADR-008_DEPENDENCY_LOCK_RELEASE_POLICY.md) | Dependency Lock Release Policy | Approved | requirements.txt, SBOM, checksum                |
-| [009-1](ADR-009-1_IDEMPOTENCY_STRATEGY.md)       | Idempotency Strategy           | Approved | #9 reliability                                  |
-| [009-2](ADR-009-2_STATE_ENFORCEMENT.md)          | State Enforcement              | Approved | #9 reliability                                  |
-| [009-3](ADR-009-3_CHECKPOINT_STRATEGY.md)        | Checkpoint Strategy            | Approved | #9 reliability                                  |
-| [009-4](ADR-009-4_EVIDENCE_DEDUPLICATION.md)     | Evidence Deduplication         | Approved | #9 reliability                                  |
-| [009-5](ADR-009-5_COMMAND_DETERMINISM.md)        | Command Determinism            | Approved | #9 reliability                                  |
-| [010](ADR-010_SECURITY_WORKFLOW_AND_POLICY.md)   | Security Workflow and Policy   | Approved | #7 CI gate                                      |
-| [011](ADR-011_SKILL_ARTEFACT_CONTRACT.md) | Skill Artifact Contract        | Approved | #2, #6                                     |
-| [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Approved | #9 reliability (CONFIRMED/ABSENT/UNKNOWN) |
-| [013](ADR-013_CAPABILITY_REGISTRY.md)  | Trusted Capability Registry    | Proposed | #24 deterministic approval                 |
-| [014](ADR-014_RUNTIME_API_AUTHENTICATION.md) | Runtime API Authentication, Scopes, and Ingress Controls | Accepted | #21 authn/authz for Runtime API and monitoring ingress |
-| [015](ADR-015_TWO_PHASE_PLAN_WORKFLOW.md) | Two-Phase Plan: Immediate Remediation vs. Deferred RCA | Accepted | #43 Plan_Remediation vs Plan_RCA; `PLAN_RCA`/`PLAN_RCA_RESOLVED` states; budget separation |
-| [016](ADR-016_twophase_plan.md) | Two-Phase Plan: Plan_Remediation vs Plan_RCA | Accepted | #43 ADR canonical naming; TERMINAL_STATES corrected; tests updated |
-| [028](ADR-028_TRANSPORT_BOUNDARY_FOR_GITHUB_CLIENT.md) | Transport Boundary for GitHubClient (SSRF Mitigation) | Accepted | #57 py/partial-ssrf CodeQL alert; base_url allowlist, redirect lock-down, repo validation |
-| [029](ADR-029_LOG_INJECTION_PREVENTION.md) | Control-Character Sanitiser for Structured Log Injection Prevention | Accepted | #58 py/log-injection CodeQL alerts #3/#4; _strip_control_chars in errors.py; route github_client._req log data through sanitize_for_log |
+`docs/ARCHITECTURE.md` describes the system. This directory records why a choice was made and which pull request adopted it.
 
-## ADR Lifecycle Statuses
+## Pull request rule
 
-| Status         | Meaning                                     |
-|----------------|---------------------------------------------|
-| **Proposed**   | Under discussion; not yet adopted           |
-| **Accepted**   | Adopted and is the current project position |
-| **Deprecated** | No longer recommended; no replacement yet   |
-| **Superseded** | Replaced by a later ADR                     |
+Every pull request names the ADR it tracks.
 
-## ADR Naming Convention
+- A change that makes a new architecture decision adds the next record in the same pull request.
+- A change that replaces an accepted decision adds a new record and marks the previous one `Superseded`. Do not rewrite the accepted history.
+- A change that only implements an accepted decision links that record.
+- A change with no architectural effect writes `N/A` and one line saying why.
 
-ADRs use the format `ADR-NNN-title.md` where:
+Write a new record when the change affects a public schema, a state transition, a tool or action contract, a security invariant, a storage or execution boundary, or another choice a later reader would otherwise re-open.
 
-- `NNN` is a zero-padded number
-- `title` is a lowercase hyphenated title
+Skip a new record when an accepted ADR already covers the choice, or when the change is a small fix with no architectural effect.
 
-## Related Documentation
+## File convention
 
-- [Documentation Index](../index.md)
-- [Audit Reports](../audits/)
+`NNNN-imperative-verb-phrase.md`
+
+- Copy `template.md` for the next record and use the next free number.
+- One decision per file.
+- Status is `Proposed`, `Accepted`, `Superseded`, or `Deprecated`.
+
+## Index
+
+| ADR | Title | Status |
+| --- | --- | --- |
+| [0003](0003-serve-store-reads-through-the-api.md) | Serve store reads through the API | Accepted |
