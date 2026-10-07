@@ -33,3 +33,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | ADR | Title | Status |
 | --- | --- | --- |
 | [0001](0001-record-architecture-decisions-in-pull-requests.md) | Record architecture decisions in pull requests | Accepted |
+| [0002](0002-render-store-entities-as-named-primitives.md) | Render store entities as named primitives | Accepted |
