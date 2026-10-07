@@ -1,24 +1,44 @@
-.venv
-venv
+# Node
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Python
 __pycache__/
+*.py[cod]
+.venv/
+venv/
 .pytest_cache/
 .mypy_cache/
-*.pyc
-.env
-runtime-data/
-*.log
-.DS_Store
-.vscode
-.idea
-.hermes*
+.ruff_cache/
 
-.gitnexus
-dist*
-build
-.ruff_cache
-artifacts/
-*.egg-info/
-.coverage
-_diag_*.py
-.tmp-pr*.md
-.locked-runtime/
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+credentials*.json
+
+# Firebase / GCP local
+.firebase/
+.firebaserc.local
+.gcloud/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Coverage / logs
+coverage/
+htmlcov/
+*.log
+
+# 3D generated/cache
+assets/3d/generated/
+*.blend1
