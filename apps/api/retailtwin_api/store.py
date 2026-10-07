@@ -18,6 +18,15 @@ def parse_version(version: str) -> int:
     return int(match.group("number"))
 
 
+def open_store(fixture_path: Path, store_id: str) -> "StoreRepository":
+    """Day-0 read adapter.
+
+    Issue #6 replaces this function with Firestore. The replacement must
+    keep `loaded`, `store_id`, `view`, and `inventory`. The HTTP routes stay put.
+    """
+    return StoreRepository(fixture_path, store_id)
+
+
 class StoreRepository:
     def __init__(self, fixture_path: Path, store_id: str) -> None:
         self.fixture_path = fixture_path

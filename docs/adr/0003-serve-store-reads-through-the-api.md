@@ -28,8 +28,9 @@ Configuration comes from environment variables. The process starts without GCP c
 
 ## Consequences
 
-- The web client can show store and inventory data, and an API failure, without a direct database connection.
-- Issue #6 can replace the fixture loader with Firestore behind the same typed view. Issue #7 can publish accepted events. Neither change belongs in this boundary.
+- The web client can show store and inventory data, and an API failure, without a direct database connection. The 3D scene from the store shell stays in place. `StoreStatus` sits in the Agent Activity column.
+- `open_store` is the only read adapter. Issue #6 replaces that function with Firestore and keeps `GET /health`, `GET /store`, `GET /inventory/{sku}`, and `POST /events`. Issue #7 can publish accepted events.
+- This record does not close foundation gate #10. Firestore, Pub/Sub, Gemini, and Cloud Run remain open.
 - In-memory events disappear when the process stops. A duplicate `event_id` is idempotent only inside one process.
 - Later live actions still enter through the Decision Context Guard and the Executor. This record does not add `POST /actions/submit` or `POST /guard/validate`.
 - Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/57

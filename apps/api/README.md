@@ -4,6 +4,8 @@ Python FastAPI boundary for the web client. Day-0 reads come from the committed 
 
 `POST /events` validates a normalized store event and keeps it in process memory. The same `event_id` returns the first event. Acceptance does not change shelf or backroom quantity. Live writes stay behind the Decision Context Guard and the Executor.
 
+`open_store` in `retailtwin_api/store.py` is the read adapter. Issue #6 replaces that function. The routes and response models stay the same. This app does not close foundation gate #10.
+
 ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 
 ## Endpoints
