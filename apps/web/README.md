@@ -34,3 +34,12 @@ npm run build
 ```
 
 `npm run dev` serves the store at http://localhost:5173.
+
+
+## Current maturity and integration
+
+This README describes the merged issue #3 scaffold. The scene is currently fixture-backed and must not be described as a Firestore/Live Twin implementation.
+
+Issue #4 will replace/adapt fixture data with state from the application/Twin boundary while preserving domain entity IDs. PR #57 is separately integrating the FastAPI status/inventory client; that branch has already been reconciled with the current 3D shell but is still under review and not merged.
+
+Reproducible npm installation and repository CI are tracked by issue #58. PR #57 already carries `apps/web/package-lock.json`; the remaining requirement is an executable GitHub Actions CI gate that uses the lockfile (prefer `npm ci`) and passes build/tests.
