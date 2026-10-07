@@ -119,7 +119,7 @@ The Submission Gate requires the flagship scenario to pass **20 consecutive E2E 
 
 ## Run the day-0 API locally
 
-The web client reads health, store, and inventory from `apps/api`. The API serves the committed fixture in `data/schemas/store-state.example.json`. It does not use GCP credentials and it does not mutate live inventory.
+The web client reads health, store, and inventory from `apps/api`. The API serves the committed fixture in `data/schemas/store-state.example.json`. It does not use GCP credentials and it does not mutate live inventory. This local boundary does not close foundation gate #10.
 
 - API setup and endpoints: [apps/api/README.md](apps/api/README.md)
 - Web client: [apps/web/README.md](apps/web/README.md)

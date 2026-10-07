@@ -80,8 +80,8 @@ export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
 
   return (
     <section className="store-status">
-      <h1>RetailTwin store</h1>
-      <p className="store-status-note">Reads come from the API. This page does not change live inventory.</p>
+      <h2>Store API</h2>
+      <p className="store-status-note">Reads come from the API. This column does not change live inventory.</p>
 
       {loading ? <p>Loading store…</p> : null}
       {loadError ? (
