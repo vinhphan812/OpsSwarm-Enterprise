@@ -6,11 +6,9 @@ Python FastAPI application/integration boundary.
 
 The API implementation is **not yet merged on `main`**. PR #57 is the current implementation work for issue #8. Until that PR is reconciled and merged, this directory on `main` is documentation/target scope only.
 
-The immediate scaffold boundary is expected to provide:
-- `GET /health`
-- `GET /store`
-- `GET /inventory/{sku}`
-- `POST /events`
+The browser does not write Firestore. This app does not expose action submission or guard validation; those stay target contracts. No route bypasses Simulation-before-Live, the Decision Context Guard, authorization, or the Executor.
+
+ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 
 PR #57 currently uses the committed store fixture as a typed read model so frontend/API integration can be tested before Firestore issue #6 lands. That fixture is not the Live Twin.
 

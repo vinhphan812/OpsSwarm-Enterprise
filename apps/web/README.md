@@ -38,8 +38,8 @@ npm run build
 
 ## Current maturity and integration
 
-This README describes the merged issue #3 scaffold. The scene is currently fixture-backed and must not be described as a Firestore/Live Twin implementation.
+The issue #3 scene on `main` is fixture-backed view data. It is not a Firestore or Live Twin implementation.
 
-Issue #4 will replace/adapt fixture data with state from the application/Twin boundary while preserving domain entity IDs. PR #57 is separately integrating the FastAPI status/inventory client; that branch has already been reconciled with the current 3D shell but is still under review and not merged.
+Issue #8 is implemented here. `StoreStatus` calls the FastAPI boundary for health, store, and inventory. Those reads use the committed fixture. They are not Live Twin truth. Issue #4 replaces the scene fixture with state from that boundary and keeps the domain entity IDs.
 
-Reproducible npm installation and repository CI are tracked by issue #58. PR #57 already carries `apps/web/package-lock.json`; the remaining requirement is an executable GitHub Actions CI gate that uses the lockfile (prefer `npm ci`) and passes build/tests.
+`apps/web/package-lock.json` is tracked. Install with `npm ci`. Issue #58 remains open until an executable GitHub Actions CI gate uses that lockfile and passes the build and tests.
