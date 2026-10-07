@@ -1,0 +1,79 @@
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", sans-serif;
+  color: #e8edf2;
+  background: #121820;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.viewport {
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewport canvas {
+  display: block;
+}
+
+.agent-activity {
+  box-sizing: border-box;
+  border-left: 1px solid #2a3544;
+  padding: 16px 18px;
+  background: #18202b;
+  overflow: auto;
+}
+
+.agent-activity h1 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.fixture-note,
+.empty {
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+
+.fixture-note {
+  color: #b7c3d1;
+  font-size: 13px;
+}
+
+.empty {
+  color: #8ea0b5;
+  font-size: 14px;
+}
+
+.entity-label {
+  color: #f4f7fb;
+  font: 600 12px/1 "Segoe UI", sans-serif;
+  background: rgba(18, 24, 32, 0.72);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+@media (max-width: 800px) {
+  .app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 180px;
+  }
+
+  .agent-activity {
+    border-left: 0;
+    border-top: 1px solid #2a3544;
+  }
+}

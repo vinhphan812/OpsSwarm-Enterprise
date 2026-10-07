@@ -4,6 +4,7 @@ dist/
 build/
 .next/
 .vite/
+package-lock.json
 
 # Python
 __pycache__/
