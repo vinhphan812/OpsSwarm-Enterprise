@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, Request, Response
 
 from retailtwin_api.errors import ApiError
-from retailtwin_api.events import EventLog
+from retailtwin_api.events import EventConflict, EventLog
 from retailtwin_api.schemas import EventReceipt, HealthResponse, ProductInventory, StoreEvent, StoreResponse
 from retailtwin_api.store import StoreRepository
 
@@ -61,22 +61,44 @@ def accept_event(
     events: EventLog = Depends(get_events),
 ) -> EventReceipt:
     require_loaded(store)
+    stored_event = events.get(event.event_id)
+    if stored_event is not None:
+        if stored_event == event:
+            response.status_code = 200
+            _log_event(stored_event, duplicate=True)
+            return EventReceipt(duplicate=True, event=stored_event)
+        raise ApiError(
+            409,
+            "event_id_conflict",
+            f"Event {event.event_id!r} already exists with a different payload.",
+        )
     if event.store_id != store.store_id:
         raise ApiError(404, "store_not_found", f"Store {event.store_id!r} is not served by this API.")
     if store.inventory(event.sku) is None:
         raise ApiError(404, "sku_not_found", f"SKU {event.sku!r} is not in store {store.store_id}.")
     # Record only. Shelf quantity stays on the read model until an authorized executor runs.
-    stored, duplicate = events.accept(event)
+    try:
+        stored, duplicate = events.accept(event)
+    except EventConflict as exc:
+        raise ApiError(
+            409,
+            "event_id_conflict",
+            f"Event {exc.event_id!r} already exists with a different payload.",
+        ) from exc
     response.status_code = 200 if duplicate else 201
+    _log_event(stored, duplicate)
+    return EventReceipt(duplicate=duplicate, event=stored)
+
+
+def _log_event(event: StoreEvent, duplicate: bool) -> None:
     logger.info(
         json.dumps(
             {
                 "message": "event.accepted",
-                "event_id": stored.event_id,
-                "correlation_id": stored.correlation_id,
-                "store_id": stored.store_id,
+                "event_id": event.event_id,
+                "correlation_id": event.correlation_id,
+                "store_id": event.store_id,
                 "duplicate": duplicate,
             }
         )
     )
-    return EventReceipt(duplicate=duplicate, event=stored)

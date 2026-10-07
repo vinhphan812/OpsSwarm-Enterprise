@@ -20,7 +20,7 @@ Two alternatives were set aside. Letting the browser read Firestore directly wou
 
 `GET /store` and `GET /inventory/{sku}` adapt the committed fixture into a typed view. `context_version` is `{store_id}:{version}` (for the fixture, `store-001:v1`). Each product carries that fixture version as an integer. The response includes only fields the fixture actually contains, plus `store_id` and `version`. It does not invent price, demand, or stockout figures.
 
-`POST /events` accepts one normalized store event, validates it, and keeps it in process memory. The same `event_id` returns the first stored event and does not replace it. An event for an unknown SKU or a different store is rejected. Acceptance does not change inventory, publish to Pub/Sub, or call the Executor.
+`POST /events` accepts one normalized store event, validates it, and keeps it in process memory. An `event_id` names one immutable payload. The same normalized payload, including the same timestamp instant, returns the stored event with HTTP 200. A different payload for that id is rejected with `409` and `event_id_conflict`, and the stored event stays in place. An event for an unknown SKU or a different store is rejected when the id is new. Acceptance does not change inventory, publish to Pub/Sub, or call the Executor.
 
 Failures use one JSON envelope: `{"error": {"code", "message", "details"?}}`. Unknown SKUs and unknown stores return 404. Invalid bodies return 422 and do not echo the submitted payload. A fixture that cannot be loaded returns 503 from the read and event routes. `GET /health` stays available and reports `degraded` in that case.
 
@@ -31,7 +31,7 @@ Configuration comes from environment variables. The process starts without GCP c
 - The web client can show store and inventory data, and an API failure, without a direct database connection. The 3D scene from the store shell stays in place. `StoreStatus` sits in the Agent Activity column.
 - `open_store` is the only read adapter. Issue #6 replaces that function with Firestore and keeps `GET /health`, `GET /store`, `GET /inventory/{sku}`, and `POST /events`. Issue #7 can publish accepted events.
 - This record does not close foundation gate #10. Firestore, Pub/Sub, Gemini, and Cloud Run remain open.
-- In-memory events disappear when the process stops. A duplicate `event_id` is idempotent only inside one process.
+- In-memory events disappear when the process stops. A repeated `event_id` is idempotent only when the normalized payload matches, and only inside one process. A conflicting payload does not replace the stored event.
 - Later live actions still enter through the Decision Context Guard and the Executor. This record does not add `POST /actions/submit` or `POST /guard/validate`.
 - Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/57
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/8

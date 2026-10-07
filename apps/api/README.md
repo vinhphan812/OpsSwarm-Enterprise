@@ -2,7 +2,7 @@
 
 Python FastAPI boundary for the web client. Day-0 reads come from the committed fixture at `data/schemas/store-state.example.json`. This process is not the Live Twin and it does not write Firestore.
 
-`POST /events` validates a normalized store event and keeps it in process memory. The same `event_id` returns the first event. Acceptance does not change shelf or backroom quantity. Live writes stay behind the Decision Context Guard and the Executor.
+`POST /events` validates a normalized store event and keeps it in process memory. An `event_id` names one immutable payload. The same normalized event returns `200`. A different payload for that id returns `409` `event_id_conflict` and leaves the stored event in place. Acceptance does not change shelf or backroom quantity. Live writes stay behind the Decision Context Guard and the Executor.
 
 `open_store` in `retailtwin_api/store.py` is the read adapter. Issue #6 replaces that function. The routes and response models stay the same. This app does not close foundation gate #10.
 
@@ -15,7 +15,7 @@ ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 | GET | `/health` | `200` with `status` `ok` or `degraded` | The process is up even when the fixture did not load |
 | GET | `/store` | `200` typed store view | `503` `store_unavailable` |
 | GET | `/inventory/{sku}` | `200` one product | `404` `sku_not_found`, `503` `store_unavailable` |
-| POST | `/events` | `201` first accept, `200` duplicate | `404` `sku_not_found` or `store_not_found`, `422` `validation_error`, `503` `store_unavailable` |
+| POST | `/events` | `201` first accept, `200` identical duplicate | `409` `event_id_conflict`, `404` `sku_not_found` or `store_not_found`, `422` `validation_error`, `503` `store_unavailable` |
 
 `GET /store` for the committed fixture returns `store-001`, `context_version` `store-001:v1`, and product `P001` on shelf `A01` / slot `A01-S01` with 3 facings, 8 on shelf, and 42 in the backroom. Product `version` is the fixture version as an integer (`1`). Ids are case-sensitive.
 
