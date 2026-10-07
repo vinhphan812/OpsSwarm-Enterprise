@@ -1,0 +1,44 @@
+# Node
+node_modules/
+dist/
+build/
+.next/
+.vite/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+credentials*.json
+
+# Firebase / GCP local
+.firebase/
+.firebaserc.local
+.gcloud/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Coverage / logs
+coverage/
+htmlcov/
+*.log
+
+# 3D generated/cache
+assets/3d/generated/
+*.blend1
