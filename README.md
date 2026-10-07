@@ -2,72 +2,120 @@
 
 **Context-Guarded Autonomous 3D Retail Digital Twin**
 
-RetailTwin AI is an autonomous retail operations prototype for the Google Cloud AI Builder Cup 2026.
+> New to the project? Start with **[Project Context](docs/PROJECT_CONTEXT.md)**. It explains the problem, product idea, flagship scenario, terminology, scope and success criteria before you touch the code.
 
-Core loop:
+RetailTwin AI is an autonomous retail-operations system built around a live 3D Digital Twin. Store events trigger an AI control loop that gathers evidence, plans bounded actions, tests them in an isolated Simulation Twin, validates the selected decision with a deterministic Decision Context Guard (DCG), applies only authorized actions to the Live Twin, and verifies the result.
 
-`OBSERVE → DETECT → INVESTIGATE → PLAN → SIMULATE → GUARD → ACT → VERIFY`
+**This is not a chatbot project.** Chat can be an optional interface, but the primary product is event-driven autonomous operation.
 
-The system combines a 3D retail digital twin, Gemini on Vertex AI, Google ADK, event-driven store telemetry, simulation, and a deterministic Decision Context Guard (DCG) before any live-state commit.
+## Canonical control loop
 
-## Architecture
+```text
+OBSERVE → DETECT → INVESTIGATE → PLAN → SIMULATE → GUARD → ACT → VERIFY
+```
 
-- Frontend: React + TypeScript + React Three Fiber / Three.js
-- Backend: Python + FastAPI
-- AI: Gemini on Vertex AI + Google ADK
-- Live twin state: Firestore
-- Historical/analytical data: BigQuery
-- Events: Pub/Sub
-- Compute/tools: Cloud Run
-- Assets: Cloud Storage
-- Authentication: Firebase Auth
-- Guard layer: Decision Context Guard
+Competition story:
+
+```text
+EVENT → AI → INVESTIGATE → SIMULATE → GUARD → LIVE 3D ACTION → VERIFY
+```
+
+## Why it matters
+
+Retail conditions can change between the moment an AI makes a decision and the moment that decision reaches a live system. RetailTwin AI therefore binds decisions to exact context/evidence versions and rechecks them immediately before commit. If relevant state changed, **No-Stale-Commit** blocks the old decision and the agent refreshes/replans.
+
+> **The LLM never owns the store state. The Digital Twin owns the truth; Gemini reasons over that truth and acts only through constrained tools.**
+
+## Read the project in this order
+
+1. **[PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)** — what we are building, the retail problem, product behavior, scope, application and glossary.
+2. **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — system components, Google Cloud stack, Simulation Twin, DCG, execution and security.
+3. **[DOMAIN_AND_DATA_MODEL.md](docs/DOMAIN_AND_DATA_MODEL.md)** — Store/Zone/Shelf/Slot/Product model, events, evidence, tools, actions and KPIs.
+4. **[IMPLEMENTATION_GUIDE.md](docs/IMPLEMENTATION_GUIDE.md)** — role ownership, critical path, phases, gates and scope-reduction rules.
+5. **[DEMO_AND_ACCEPTANCE.md](docs/DEMO_AND_ACCEPTANCE.md)** — flagship scenario, stale-context test, 20-run Submission Gate and final demo.
+6. **GitHub Issues** — implementation-ready work tickets with dependencies, verification and Definition of Done.
+
+## Architecture at a glance
+
+```text
+Store/POS/Inventory Events
+          ↓
+       Pub/Sub
+          ↓
+       Observer
+          ↓
+     Investigator
+          ↓
+ Gemini Planner
+          ↓
+ Candidate Plans
+          ↓
+  Simulation Twin
+          ↓
+    KPI Evaluator
+          ↓
+ Selected Decision
+          ↓
+Decision Context Guard
+   ↓       ↓       ↓
+ DENY   REFRESH   ALLOW
+           ↓        ↓
+        Re-plan  Executor
+                    ↓
+                 Live Twin
+                    ↓
+              3D Store + Verifier
+```
+
+## Technology
+
+- **AI:** Gemini on Vertex AI; Google ADK optional for specialized orchestration.
+- **Frontend:** React + TypeScript + React Three Fiber / Three.js.
+- **Backend:** Python + FastAPI on Cloud Run.
+- **Live Digital Twin:** Firestore.
+- **Analytics/history:** BigQuery.
+- **Events:** Pub/Sub.
+- **Assets:** Cloud Storage.
+- **Authentication:** Firebase Authentication when enabled.
+- **Guard:** deterministic Decision Context Guard.
+- **3D assets:** primitive/low-poly first; GLB/glTF/Blender polish later.
 
 ## Repository layout
 
-```
-apps/
-  web/
-  api/
-agents/
-  orchestrator/
-  observer/
-  investigator/
-  planner/
-  simulator/
-  executor/
-  verifier/
-guard/
-  decision-context-guard/
-services/
-  twin/
-  simulation/
-  optimizer/
-  forecasting/
-data/
-  schemas/
-  synthetic/
-  seed/
-infrastructure/
-  gcp/
-  firebase/
-assets/
-  3d/
-docs/
-  architecture/
-  competition/
-  demo/
-tests/
-.github/
-  workflows/
+```text
+apps/          web + API
+agents/        orchestrator, observer, investigator, planner, simulator, executor, verifier
+guard/         Decision Context Guard
+services/      twin, simulation, optimizer, forecasting
+data/          schemas, synthetic scenarios, seed
+infrastructure/ GCP + Firebase
+assets/        3D assets
+docs/          project context, architecture, domain model, implementation and demo
+tests/         unit, integration and E2E
+.github/       workflows
 ```
 
-## MVP target
+## Flagship scenario
 
-A store event autonomously triggers the agent, which investigates a retail anomaly, generates and simulates a candidate action, passes Decision Context Guard validation, commits an allowed action to the live twin, and visibly updates the 3D store.
+The primary scenario is **Weekend Demand Surge**. A SKU starts selling faster than expected. The agent autonomously investigates inventory/shelf/demand evidence, generates candidate shelf/replenishment plans, simulates them, selects a trade-off and sends the decision to DCG. The demo deliberately changes relevant context before the first commit so DCG blocks the stale decision. The agent refreshes and replans automatically; a valid new decision is authorized, executed on the Live Twin, rendered in 3D and verified.
 
-## Safety principle
+## MVP non-negotiables
 
-> The LLM never owns the store state. The Digital Twin owns the truth; Gemini reasons over that truth and acts only through constrained tools.
+1. Autonomous trigger — no prompt is required.
+2. Gemini reasoning uses real constrained tools.
+3. AI actions visibly modify a state-backed 3D Digital Twin.
+4. Simulation happens before live execution.
+5. DCG / No-Stale-Commit protects Live Twin.
+6. A valid guarded action reaches Live Twin and is verified.
 
-Live actions must never bypass Decision Context Guard.
+## Delivery levels
+
+**MVP-SAFE:** one reliable autonomous scenario with Simulation + DCG + live 3D commit.  
+**SUBMISSION-80:** complete loop, strong UI/evidence, recovery/replan, deployment and submission artifacts.  
+**COMPETITION-100:** optional multi-agent ADK, advanced optimizer, richer 3D/traffic, rollback or vision only after stability.
+
+The Submission Gate requires the flagship scenario to pass **20 consecutive E2E runs** before optional Competition-100 work is allowed.
+
+## Contribution rule
+
+Before starting an issue, read its dependencies and the relevant document above. If implementation changes a public schema, state transition, tool/action contract or security invariant, update the corresponding documentation in the same change.
