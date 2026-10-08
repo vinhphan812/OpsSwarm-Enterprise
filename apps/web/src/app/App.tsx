@@ -1,4 +1,5 @@
-import { AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
+import { AgentActivityOpenButton, AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
+import { LensSwitcher } from "@/components/layout/LensSwitcher";
 import { ProductInspector } from "@/components/twin/ProductInspector";
 import { TwinIssuesNotice } from "@/components/twin/TwinIssuesNotice";
 import { TwinStatusOverlay } from "@/components/twin/TwinStatusOverlay";
@@ -20,6 +21,10 @@ function TwinView() {
       <main className="viewport relative">
         <StoreScene />
         <TwinStatusOverlay />
+        <div className="lens-switcher">
+          <LensSwitcher />
+        </div>
+        <AgentActivityOpenButton />
         <ProductInspector />
         <TwinIssuesNotice />
       </main>
