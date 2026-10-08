@@ -1,4 +1,4 @@
-import type { EntityType } from "@/scene/types";
+import type { EntityType } from "@/enums/scene.enum";
 
 export function entityProps(entityId: string, entityType: EntityType) {
   return {

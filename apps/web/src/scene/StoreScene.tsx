@@ -1,68 +1,71 @@
-import { OrbitControls } from "@react-three/drei";
-import { Canvas, useThree } from "@react-three/fiber";
-import { useLayoutEffect } from "react";
-import type { PerspectiveCamera } from "three";
+import { CameraControls, Environment, Lightformer } from "@react-three/drei";
+import { Canvas } from "@react-three/fiber";
+import { useMemo } from "react";
+import { Box3, Vector3 } from "three";
+import { useTwinStore } from "@/state/twin.store";
+import { groupBy } from "@/core/utils/collections";
 import {
+  CAMERA_DRAG_SMOOTH_TIME,
   CAMERA_FOV,
-  INITIAL_CAMERA_OFFSET,
-  MAX_CAMERA_DISTANCE,
-  ORBIT_TARGET,
-  cameraPositionForAspect,
-} from "@/scene/camera/cameraFrame";
-import { Floor } from "@/scene/entities/Floor";
-import { Shelf } from "@/scene/entities/Shelf";
-import { entityProps } from "@/scene/entities/entity";
-import { storeFixture } from "@/fixtures/storeFixture";
-import type { StoreFixture } from "./types";
+  CAMERA_SMOOTH_TIME,
+  INITIAL_CAMERA_POSITION,
+  MAX_POLAR_ANGLE,
+  MIN_CAMERA_DISTANCE,
+  MIN_POLAR_ANGLE,
+  PAN_BOUNDS,
+} from "@/constants/camera.constant";
+import { useFitCamera } from "@/hooks/fitCamera.hook";
+import { useOrbitAroundPointer } from "@/hooks/orbitPoint.hook";
+import { Equipment } from "./entities/equipment/Equipment";
+import { Exterior } from "./entities/Exterior";
+import { Floor } from "./entities/Floor";
+import { Shelf } from "./entities/Shelf";
+import { Stock } from "./entities/stock/Stock";
+import { Walls } from "./entities/Walls";
+import { SKY_COLOR } from "@/constants/scene.constant";
+import { ENTITY_TYPE } from "@/enums/scene.enum";
+import { entityProps } from "./entities/entity";
+import { sceneOf } from "./layout";
+import "./scene.css";
+import type { ProductFixture, StoreFixture } from "./types";
 
-const INITIAL_CAMERA_POSITION: [number, number, number] = [
-  ORBIT_TARGET[0] + INITIAL_CAMERA_OFFSET[0],
-  ORBIT_TARGET[1] + INITIAL_CAMERA_OFFSET[1],
-  ORBIT_TARGET[2] + INITIAL_CAMERA_OFFSET[2],
-];
-/** Stop the orbit just before the camera crosses under the floor. */
-const MAX_POLAR_ANGLE = Math.PI / 2 - 0.08;
-
+/** Keeps the camera framing the whole store as the canvas resizes, and orbits around the pointer. */
 function FrameCamera() {
-  const camera = useThree((state) => state.camera);
-  const width = useThree((state) => state.size.width);
-  const height = useThree((state) => state.size.height);
-
-  useLayoutEffect(() => {
-    if (width < 1 || height < 1) {
-      return;
-    }
-    const perspective = camera as PerspectiveCamera;
-    perspective.aspect = width / height;
-    perspective.fov = CAMERA_FOV;
-    perspective.updateProjectionMatrix();
-    const [x, y, z] = cameraPositionForAspect(width / height, storeFixture, [
-      camera.position.x - ORBIT_TARGET[0],
-      camera.position.y - ORBIT_TARGET[1],
-      camera.position.z - ORBIT_TARGET[2],
-    ]);
-    camera.position.set(x, y, z);
-    camera.lookAt(ORBIT_TARGET[0], ORBIT_TARGET[1], ORBIT_TARGET[2]);
-    camera.updateMatrixWorld();
-  }, [camera, height, width]);
-
+  useFitCamera();
+  useOrbitAroundPointer();
   return null;
 }
 
 type StoreContentsProps = {
-  store?: StoreFixture;
+  store: StoreFixture;
   showLabels?: boolean;
 };
 
-export function StoreContents({ store = storeFixture, showLabels = true }: StoreContentsProps) {
+const NO_PRODUCTS: ProductFixture[] = [];
+
+export function StoreContents({ store, showLabels = true }: StoreContentsProps) {
+  // One pass over the products instead of a filter per shelf and per slot.
+  const byHolder = useMemo(() => groupBy(store.products, (product) => product.shelfId), [store.products]);
+  const productsOf = (holderId: string) => byHolder.get(holderId) ?? NO_PRODUCTS;
+
   return (
-    <group {...entityProps(store.storeId, "store")}>
+    <group {...entityProps(store.storeId, ENTITY_TYPE.Store)}>
       <Floor />
+      <Walls />
       {store.shelves.map((shelf) => (
         <Shelf
           key={shelf.shelfId}
           shelf={shelf}
-          products={store.products.filter((product) => product.shelfId === shelf.shelfId)}
+          products={productsOf(shelf.shelfId)}
+          showLabels={showLabels}
+        />
+      ))}
+      <Stock store={store} />
+      {store.equipment.map((item) => (
+        <Equipment
+          key={item.equipmentId}
+          equipment={item}
+          products={productsOf(item.equipmentId)}
           showLabels={showLabels}
         />
       ))}
@@ -70,22 +73,87 @@ export function StoreContents({ store = storeFixture, showLabels = true }: Store
   );
 }
 
+/** The live twin state on the static layout; the empty room until the first state. */
+export function LiveStoreContents({ showLabels = true }: { showLabels?: boolean }) {
+  const live = useTwinStore((state) => state.live);
+  const store = useMemo(() => (live ? sceneOf(live).store : null), [live]);
+
+  return store ? (
+    <StoreContents store={store} showLabels={showLabels} />
+  ) : (
+    <>
+      <Floor />
+      <Walls />
+    </>
+  );
+}
+
+const PAN_BOX = new Box3(new Vector3(...PAN_BOUNDS.min), new Vector3(...PAN_BOUNDS.max));
+
 export function StoreScene() {
   return (
-    <Canvas camera={{ position: INITIAL_CAMERA_POSITION, fov: CAMERA_FOV }}>
-      <color attach="background" args={["#1c2430"]} />
+    <Canvas
+      shadows="soft"
+      camera={{ position: INITIAL_CAMERA_POSITION, fov: CAMERA_FOV }}
+    >
+      <color attach="background" args={[SKY_COLOR]} />
+      <fog attach="fog" args={[SKY_COLOR, 40, 90]} />
+      <hemisphereLight args={["#fffaf2", "#cbb69c", 0.5]} />
       <ambientLight intensity={0.55} />
-      <directionalLight position={[4, 8, 3]} intensity={1.15} />
+      {/* Warm sun through the glass wall on the left; the mullions throw stripes across the planks. */}
+      <directionalLight
+        position={[-9, 6, 3]}
+        intensity={1.3}
+        color="#fff4e6"
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
+        shadow-camera-left={-9}
+        shadow-camera-right={9}
+        shadow-camera-top={9}
+        shadow-camera-bottom={-9}
+      />
+      <directionalLight position={[6, 5, 4]} intensity={0.35} />
+      {/* Studio-style reflections without downloading an HDR. */}
+      <Environment resolution={256}>
+        <Lightformer
+          form="rect"
+          intensity={2}
+          position={[-8, 3, 0]}
+          rotation-y={Math.PI / 2}
+          scale={[10, 4, 1]}
+        />
+        <Lightformer
+          form="rect"
+          intensity={1}
+          position={[0, 6, 0]}
+          rotation-x={Math.PI / 2}
+          scale={[12, 10, 1]}
+        />
+        <Lightformer
+          form="rect"
+          intensity={0.5}
+          position={[8, 2, 0]}
+          rotation-y={-Math.PI / 2}
+          scale={[10, 3, 1]}
+        />
+      </Environment>
       <FrameCamera />
-      <StoreContents />
-      <OrbitControls
+      <Exterior />
+      <LiveStoreContents />
+      {/* Left drag orbits around the point under the cursor, right drag (or two fingers) pans, the wheel zooms toward the cursor. */}
+      <CameraControls
         makeDefault
-        target={ORBIT_TARGET}
-        enableDamping
-        enablePan={false}
-        minDistance={3}
-        maxDistance={MAX_CAMERA_DISTANCE}
+        dollyToCursor
+        smoothTime={CAMERA_SMOOTH_TIME}
+        draggingSmoothTime={CAMERA_DRAG_SMOOTH_TIME}
+        minDistance={MIN_CAMERA_DISTANCE}
+        minPolarAngle={MIN_POLAR_ANGLE}
         maxPolarAngle={MAX_POLAR_ANGLE}
+        boundaryEnclosesCamera={false}
+        boundaryFriction={0.2}
+        ref={(controls) => controls?.setBoundary(PAN_BOX)}
       />
     </Canvas>
   );

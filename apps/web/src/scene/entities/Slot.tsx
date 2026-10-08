@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entity";
 import type { SlotFixture } from "@/scene/types";
+import { toTuple } from "@/scene/utils/transform";
 
 type SlotProps = {
   slot: SlotFixture;
@@ -10,8 +12,8 @@ type SlotProps = {
 export function Slot({ slot, children }: SlotProps) {
   return (
     <group
-      position={[slot.position.x, slot.position.y, slot.position.z]}
-      {...entityProps(slot.slotId, "slot")}
+      position={toTuple(slot.position)}
+      {...entityProps(slot.slotId, ENTITY_TYPE.Slot)}
     >
       {children}
     </group>

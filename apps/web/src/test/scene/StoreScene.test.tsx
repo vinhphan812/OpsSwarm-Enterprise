@@ -2,7 +2,8 @@ import ReactThreeTestRenderer from "@react-three/test-renderer";
 import type { Object3D } from "three";
 import { describe, expect, it } from "vitest";
 import { StoreContents } from "@/scene/StoreScene";
-import { storeFixture } from "@/fixtures/storeFixture";
+import { sampleStoreState } from "@/test/sampleState";
+import { toSceneStore } from "@/scene/layout";
 
 type TestNode = {
   instance: Object3D;
@@ -35,9 +36,9 @@ function ancestorNames(object: Object3D): string[] {
 }
 
 describe("store scene graph", () => {
-  it("names store, shelves, slots, and products with entity ids", async () => {
+  it("names store, shelves, slots, products, and equipment with entity ids", async () => {
     const renderer = await ReactThreeTestRenderer.create(
-      <StoreContents store={storeFixture} showLabels={false} />,
+      <StoreContents store={toSceneStore(sampleStoreState()).store} showLabels={false} />,
     );
     const scene = renderer.scene as unknown as TestNode;
 
@@ -51,6 +52,13 @@ describe("store scene graph", () => {
       "A02-S01",
       "P001",
       "P002",
+      "CK01",
+      "GDC01",
+      "OC01",
+      "PR01",
+      "CW01",
+      "CP01",
+      "BR01",
     ];
 
     for (const id of required) {
