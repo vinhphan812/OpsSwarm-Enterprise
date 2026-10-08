@@ -91,7 +91,7 @@ export const vi = {
   },
   activity: {
     title: "Agent Activity",
-    note: "Cảnh mẫu của store-001. Chưa kết nối Live Twin.",
+    note: "store-001 từ GET /store. Chỉ đọc.",
     empty: "Chưa có hoạt động nào của agent.",
     timeline: "Dòng thời gian hoạt động của agent",
     section: "Hoạt động",

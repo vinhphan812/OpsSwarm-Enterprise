@@ -27,6 +27,7 @@ export function useTwinSource(source: TwinSource) {
         const title = i18n.t(error instanceof InvalidTwinStateError ? "twin.unreadableUpdate" : "twin.feedLost");
         notify.warning(title, i18n.t("twin.showingStale", { error: errorMessage(error) }));
       },
+      onFeedRestored: () => setStale(false),
     });
   }, [source, attempt]);
 }

@@ -1,17 +1,37 @@
-import {
-  fixtureSource,
-  fixtureStoreState,
-  flakySource,
-  slowSource,
-  unreachableSource,
-} from "@/core/api/sources/fixtureSource";
+import { createApiSource } from "@/core/api/sources/apiSource";
+import { fixtureSource, fixtureStoreState } from "@/core/api/sources/fixtureSource";
 import { createMemoryTwin, patchProduct } from "@/core/api/sources/memorySource";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
 import type { ProductInventory } from "@/types/twin.type";
 import { FIXTURE_P001 } from "@/constants/twin.constant";
 
+/** A twin that cannot be reached: loads for a while, then fails. */
+const unreachableSource: TwinSource = {
+  snapshot: () =>
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Twin API unreachable (simulated)")), 1200);
+    }),
+  subscribe: () => () => {},
+};
+
+/** A slow twin: the snapshot takes a few seconds, so the loading screen stays up. */
+const slowSource: TwinSource = {
+  snapshot: () => new Promise((resolve) => setTimeout(() => resolve(fixtureStoreState()), 4000)),
+  subscribe: () => () => {},
+};
+
+/** A twin whose live feed drops a few seconds after loading; the last state stays on screen. */
+const flakySource: TwinSource = {
+  snapshot: () => Promise.resolve(fixtureStoreState()),
+  subscribe: (_onState, onError) => {
+    const timer = setTimeout(() => onError?.(new Error("Live feed closed (simulated)")), 3000);
+    return () => clearTimeout(timer);
+  },
+};
+
 /** Simulated twins for checking the status screens; development builds only. */
 const DEV_SOURCES: Record<string, TwinSource> = {
+  fixture: fixtureSource,
   offline: unreachableSource,
   slow: slowSource,
   flaky: flakySource,
@@ -36,10 +56,15 @@ function memoryTwinSource(): TwinSource {
   return twin.source;
 }
 
-/** `?twin=offline|slow|flaky|memory` swaps in a simulated twin while developing. */
+/**
+ * The Live Twin from apps/api. While developing, `?twin=fixture|memory|offline|slow|flaky`
+ * swaps in a local twin instead.
+ */
 export function pickSource(): TwinSource {
-  if (!import.meta.env.DEV) return fixtureSource;
-  const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
-  if (mode === "memory") return memoryTwinSource();
-  return DEV_SOURCES[mode] ?? fixtureSource;
+  if (import.meta.env.DEV) {
+    const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
+    if (mode === "memory") return memoryTwinSource();
+    if (mode in DEV_SOURCES) return DEV_SOURCES[mode];
+  }
+  return createApiSource();
 }

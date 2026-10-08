@@ -91,7 +91,7 @@ export const en: Messages = {
   },
   activity: {
     title: "Agent Activity",
-    note: "Fixture scene for store-001. Not bound to the Live Twin.",
+    note: "store-001 from GET /store. Read only.",
     empty: "No agent activity yet.",
     timeline: "Agent activity timeline",
     section: "Activity",
