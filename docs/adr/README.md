@@ -35,5 +35,6 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0001](0001-record-architecture-decisions-in-pull-requests.md) | Record architecture decisions in pull requests | Accepted |
 | [0002](0002-render-store-entities-as-named-primitives.md) | Render store entities as named primitives | Accepted |
 | [0003](0003-serve-store-reads-through-the-api.md) | Serve store reads through the API | Accepted |
-| [0004](0004-use-heroui-v2-for-app-status-ui.md) | Use HeroUI v2 for app status UI | Proposed |
-| [0005](0005-keep-store-layout-static-until-the-twin-serves-geometry.md) | Keep the store layout static until the twin serves geometry | Proposed |
+| [0004](0004-keep-the-cloud-foundation-on-free-tier.md) | Keep the cloud foundation on the free tier | Accepted |
+| [0005](0005-use-heroui-v2-for-app-status-ui.md) | Use HeroUI v2 for app status UI | Proposed |
+| [0006](0006-keep-store-layout-static-until-the-twin-serves-geometry.md) | Keep the store layout static until the twin serves geometry | Proposed |

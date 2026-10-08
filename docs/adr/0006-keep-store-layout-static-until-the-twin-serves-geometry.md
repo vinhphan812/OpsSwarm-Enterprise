@@ -1,4 +1,4 @@
-# 0005. Keep the store layout static until the twin serves geometry
+# 0006. Keep the store layout static until the twin serves geometry
 
 Date: 2026-10-08
 

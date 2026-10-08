@@ -1,4 +1,4 @@
-# 0004. Use HeroUI v2 for app status UI
+# 0005. Use HeroUI v2 for app status UI
 
 Date: 2026-10-08
 

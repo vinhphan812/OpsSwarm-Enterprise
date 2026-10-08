@@ -5,7 +5,7 @@ import { storeFixture } from "@/fixtures/storeFixture";
 
 /**
  * Shelf, slot, and equipment positions. The twin state has no geometry yet, so the
- * layout is static in the web app (docs/adr/0005). Product placement comes from state.
+ * layout is static in the web app (docs/adr/0006). Product placement comes from state.
  */
 export const storeLayout: StoreFixture = storeFixture;
 

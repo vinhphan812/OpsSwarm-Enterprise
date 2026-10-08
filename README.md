@@ -126,6 +126,11 @@ The web client reads health, store, and inventory from `apps/api`. The API serve
 - API setup and endpoints: [apps/api/README.md](apps/api/README.md)
 - Web client: [apps/web/README.md](apps/web/README.md)
 - Copy [.env.example](.env.example) to `.env` only to override hosts or ports. Do not commit `.env`.
+
+## Google Cloud foundation
+
+The shared project is `retailtwin-ai-511002` in `us-central1`. Day-0 resources stay inside the always-free limits. The setup and the cost rules are in [infrastructure/gcp/README.md](infrastructure/gcp/README.md). The local API still does not use GCP credentials.
+
 ## Current maturity
 
 The architecture below is the **target product architecture**. For the exact implementation state of the repository, including open integration work and unpassed gates, read [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md).

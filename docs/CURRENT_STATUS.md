@@ -1,6 +1,6 @@
 # RetailTwin AI — Current Project Status
 
-**Status date:** 2026-10-07  
+**Status date:** 2026-10-08  
 **Purpose:** separate what is implemented now from the target architecture described elsewhere.
 
 ## Current baseline on main
@@ -27,6 +27,12 @@ Implemented on `main`:
 - tracked `apps/web/package-lock.json`.
 
 The 3D scene and the API are **not Firestore Live Twin**. Issue #4 binds the scene to twin state. Issue #6 replaces `open_store` with Firestore and keeps the four routes.
+
+## Google Cloud foundation
+
+Issue #5 applies the shared project `retailtwin-ai-511002` in `us-central1`. The shape is the always-free layout in [infrastructure/gcp/README.md](../infrastructure/gcp/README.md) and [ADR 0004](adr/0004-keep-the-cloud-foundation-on-free-tier.md): required APIs on, Compute Engine and the other large services off, two service identities and no keys, and empty free-tier resources. Firestore `(default)` is Standard edition Native mode with no documents. There is no Pub/Sub subscription, no BigQuery table, no Cloud Run service, and no Gemini call.
+
+The monthly budget `retailtwin-dev-guard` is 25,000 VND, about 1 USD, on this project only, with alerts at 50%, 90%, and 100%. The billing account currency is VND. The alert does not disable billing.
 
 ## Work in progress
 
@@ -70,7 +76,7 @@ Gate status changes only when the corresponding issue contains reproducible evid
 ## Immediate critical path
 
 1. Resolve #58 with a green executable GitHub Actions CI build/test gate. The web lockfile is already on `main`. Issue #60 then adds the coverage baseline and threshold to that gate.
-2. Complete Firestore (#6), Pub/Sub/BigQuery (#7), Gemini real read tool (#2), and Cloud Run (#9).
+2. Complete Firestore seed (#6) in the existing `(default)` database, Pub/Sub/BigQuery (#7), Gemini real read tool (#2), and Cloud Run (#9).
 3. Pass Foundation Gate #10. #10 stays open: Firestore, Pub/Sub, Gemini real tool use, and Cloud Run are still required.
 4. Continue the autonomous path: Tool Registry → Observer → Investigator → Planner → Simulation → DCG → Executor → Verifier.
 5. Bind those state changes to the 3D Live/Simulation views.
