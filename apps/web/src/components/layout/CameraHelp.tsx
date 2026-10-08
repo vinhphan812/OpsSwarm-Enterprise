@@ -11,7 +11,7 @@ const GESTURES = [
 ] as const;
 
 /**
- * A "?" button in the bottom-left corner of the 3D view, in the language switch's dark glass. Hover or focus shows
+ * A "?" button in the bottom-left corner of the 3D view, in dark glass. Hover or focus shows
  * the camera controls; a tap toggles them on touch screens.
  */
 export function CameraHelp() {

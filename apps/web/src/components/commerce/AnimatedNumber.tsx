@@ -7,8 +7,6 @@ export function AnimatedNumber({ value, format }: { value: number; format: (valu
   const [text, setText] = useState(() => format(0));
 
   useEffect(() => {
-    // A new language reformats at once; the count then runs from wherever it was.
-    setText(format(motionValue.get()));
     const controls = animate(motionValue, value, {
       duration: 0.8,
       ease: [0.16, 1, 0.3, 1],

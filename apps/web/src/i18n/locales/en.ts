@@ -1,11 +1,4 @@
-import type { Messages } from "./vi";
-
-export const en: Messages = {
-  language: {
-    label: "Language",
-    vi: "Tiếng Việt",
-    en: "English",
-  },
+export const en = {
   cameraHelp: {
     label: "Camera controls help",
     title: "Camera controls",
@@ -183,3 +176,6 @@ export const en: Messages = {
     result: "{{sku}} on {{shelf}} / {{slot}}: {{onShelf}} on shelf, {{backroom}} in the backroom.",
   },
 };
+
+/** Shape of the message tree; `t()` keys are checked against it. */
+export type Messages = typeof en;

@@ -24,7 +24,6 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
 
 - **3D view** (`StoreScene`): the store room, its fixtures, and the stock that twin state puts on them.
 - **Overlays on the 3D view**:
-  - `LanguageToggle` (top left): Vietnamese or English. Vietnamese is the default, and the choice is saved in `localStorage`.
   - `LensSwitcher` (top): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it.
   - `CameraHelp` (bottom left): lists the camera gestures.
   - `TwinStatusOverlay`: shows loading and errors. Before the first state, it covers the room. After that, it shows a small banner, and the last state stays on screen.
@@ -114,12 +113,12 @@ src/
   api-env.d.ts              VITE_API_BASE_URL typing
   app/
     App.tsx                 routes: / → TwinPage, * → NotFoundPage
-    Providers.tsx           router, HeroUI (locale follows the language), toasts, reduced motion
+    Providers.tsx           router, HeroUI (en-US locale), toasts, reduced motion
     App.css                 Tailwind entry, @theme palette, page layout
     hero.ts                 HeroUI dark theme, loaded from App.css with @plugin
   pages/                    TwinPage, NotFoundPage
   components/
-    layout/                 AgentActivityPanel, LensSwitcher, LanguageToggle, CameraHelp, lens.ts
+    layout/                 AgentActivityPanel, LensSwitcher, CameraHelp, lens.ts
     twin/                   TwinStatusOverlay, TwinIssuesNotice, ProductInspector
     status/                 StoreStatus (API health, store, and SKU lookup)
     revenue/                RevenuePanel, RevenueChart, CategoryShare, SkuList
@@ -139,7 +138,7 @@ src/
     notify.ts               toast helpers and errorMessage
     utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
   hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
-                            commerce, format, hover, fitCamera, orbitPoint
+                            commerce, hover, fitCamera, orbitPoint
   state/                    Zustand stores, read-side copies only
     twin.store.ts           live state, issues, status, stale flag, retry
     run.store.ts            agent activity (deduplicated by id) and the current loop stage
@@ -161,7 +160,7 @@ src/
   constants/                <area>.constant.ts: camera, dimensions, scene, twin, app, i18n, commerce
   enums/                    <area>.enum.ts: as-const value sets and their types
   types/                    <domain>.type.ts: twin, api, agent, revenue, promotion, scene
-  i18n/                     i18next setup; locales/vi.ts (source of the key types) and locales/en.ts
+  i18n/                     i18next setup, English only; locales/en.ts (also the source of the key types)
   test/                     Vitest suites, mirroring the src/ folders
 ```
 
@@ -176,7 +175,7 @@ src/
   - Hooks are named `<name>.hook.ts`. Zustand stores are named `<name>.store.ts`.
   - Component props, and types derived from code, stay next to that code.
 - **Imports** use `@/`. `scene/` does not import from `components/`. The panels and the scene talk through `state/`.
-- **Text** goes through i18n. A new key goes into `locales/vi.ts` first. `en.ts` must have the same keys and placeholders, and a test checks this.
+- **Text** goes through i18n (`t()`), in `locales/en.ts`. The app is English only. Numbers, dates, and money use `format` (`en-US`, USD).
 - **Tests** live in `src/test/`, in the same folder as the file they test. For example, `scene/layout.ts` is tested by `test/scene/layout.test.ts`.
 
 ### Scene conventions
@@ -205,7 +204,7 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `scene/camera/cameraFrame.test.ts` | every shelf corner stays in frame on desktop and on a 390px canvas |
 | `state/*.test.ts` | twin store and run store |
 | `components/**`, `app/App.test.tsx` | StoreStatus, AgentActivityPanel, LensSwitcher (revenue and promotions reads), routing |
-| `fixtures/commerceFixture.test.ts`, `i18n/`, `core/utils/` | empty commerce reports, locale parity, formatters and utils |
+| `fixtures/commerceFixture.test.ts`, `i18n/`, `core/utils/` | empty commerce reports, English messages and issue reasons, formatters and utils |
 
 ## Maturity
 

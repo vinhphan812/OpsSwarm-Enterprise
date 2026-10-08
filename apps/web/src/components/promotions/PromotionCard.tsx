@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import type { Promotion } from "@/types/promotion.type";
 import { PROMOTION_KIND, PROMOTION_STATUS } from "@/enums/commerce.enum";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 
 /** Share of a promotion's run that has passed, 0..1. */
 function elapsed(promotion: Promotion, now = Date.now()) {
@@ -15,7 +15,6 @@ function elapsed(promotion: Promotion, now = Date.now()) {
 /** One promotion: status, discount, dates, scope, and what it earned. */
 export function PromotionCard({ promotion }: { promotion: Promotion }) {
   const { t } = useTranslation();
-  const f = useFormat();
   const discount =
     promotion.kind === PROMOTION_KIND.PercentOff
       ? f.percent(promotion.value)

@@ -1,8 +1,8 @@
-import { CURRENCY, UI_LOCALE, type Language } from "@/constants/i18n.constant";
+import { CURRENCY, LOCALE } from "@/constants/i18n.constant";
 
-/** Number and date formatting for one language. Money uses that language's currency (`CURRENCY`). */
+/** Number and date formatting in `LOCALE`. Money is in `CURRENCY`. */
 export type Formatters = {
-  /** Short money for tiles and labels: "12,4 Tr ₫", "$12.4K". */
+  /** Short money for tiles and labels: "$12.4K". */
   money: (value: number) => string;
   /** Exact money for tooltips. */
   moneyExact: (value: number) => string;
@@ -15,9 +15,7 @@ export type Formatters = {
   day: (iso: string) => string;
 };
 
-export function formatters(language: Language): Formatters {
-  const locale = UI_LOCALE[language];
-  const currency = CURRENCY[language];
+function formatters(locale: string, currency: string): Formatters {
   const money = new Intl.NumberFormat(locale, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
   const moneyExact = new Intl.NumberFormat(locale, { style: "currency", currency });
   const count = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
@@ -36,6 +34,9 @@ export function formatters(language: Language): Formatters {
     day: (iso) => day.format(new Date(iso)),
   };
 }
+
+/** The app's formatters. */
+export const format: Formatters = formatters(LOCALE, CURRENCY);
 
 /** Relative change from `previous` to `current`, or null when there is nothing to compare with. */
 export function relativeChange(current: number, previous: number): number | null {

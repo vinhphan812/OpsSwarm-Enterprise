@@ -2,12 +2,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { SKU_LIST_SIZE } from "@/constants/commerce.constant";
 import type { SkuRevenue } from "@/types/revenue.type";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 
 /** Ranked SKUs with their revenue, each with a thin bar relative to the first row. */
 export function SkuList({ skus, label }: { skus: SkuRevenue[]; label: string }) {
   const { t } = useTranslation();
-  const f = useFormat();
   const rows = skus.slice(0, SKU_LIST_SIZE);
   const max = Math.max(0, ...rows.map((sku) => sku.revenue));
 
