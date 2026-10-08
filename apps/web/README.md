@@ -32,8 +32,9 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
   - `TwinIssuesNotice`: products the scene left out, with the reason for each.
 - **Agent Activity panel**: a side panel with a fixed width of 380px (`PANEL_WIDTH`). You can close it and open it again, and the open state is saved per browser. Each lens shows different content:
   - **Operations**: `StoreStatus` and the agent activity timeline from `run.store`. `StoreStatus` reads `GET /health` once, shows the live store that the scene already polls (it does not call `GET /store` itself), and looks up `GET /inventory/{sku}`.
-  - **Revenue**: metric tiles, a revenue chart, category share, and the best and worst SKUs. All figures are 0 until `GET /sales/summary` exists (`useRevenue`).
-  - **Promotions**: promotion cards by status. The list is empty until `GET /promotions` exists (`usePromotions`).
+  - **Revenue**: metric tiles, a revenue chart, category share, and the best and worst SKUs (`useRevenue`).
+  - **Promotions**: promotion cards by status (`usePromotions`).
+  - Opening either lens reads its route from `apps/api`. See *Revenue and promotions* below.
 
 Errors and network changes show as HeroUI toasts (`core/notify.ts`). When the browser comes back online, `useNetworkStatus` reconnects if the last load failed or the live feed dropped.
 
@@ -81,6 +82,17 @@ TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live 
 
 A product's entity id is its `sku`.
 
+### Revenue and promotions
+
+| Lens | Route | Response type | Client |
+| --- | --- | --- | --- |
+| Revenue | `GET /revenue?period=today\|7d\|30d` | `RevenueSummary` (`types/revenue.type.ts`) | `client.revenue(period)` |
+| Promotions | `GET /promotions` | `PromotionsSummary` (`types/promotion.type.ts`) | `client.promotions()` |
+
+`useRevenue` and `usePromotions` read the route the first time a lens (or a period) opens, then cache the result, so switching lenses does not call the API again. The lens shows the empty report (`emptyRevenue`, `emptyPromotions`) until the read lands. A failed read shows one toast and is retried the next time the lens opens.
+
+`apps/api` does not serve either route yet (`TODO(BE)` on the types), so today both lenses show the empty report and a toast.
+
 ### Twin sources
 
 Every build reads `apiSource` by default: the Live Twin from `GET /store` on `VITE_API_BASE_URL`. In development, `?twin=` swaps in a local source:
@@ -116,7 +128,7 @@ src/
     icons.tsx               line icons
   core/
     api/
-      client.ts             REST client for /health, /store, /inventory/{sku}; ApiError
+      client.ts             REST client for /health, /store, /inventory/{sku}, /revenue, /promotions
       validate.ts           parseStoreState: the GET /store contract check
       version.ts            context_version parsing and ordering
       sources/              TwinSource interface; apiSource (GET /store), fixture and in-memory sources
@@ -145,7 +157,7 @@ src/
       stock/                Stock (instanced items), catalog.ts (looks), surfaces.ts (display surfaces)
   fixtures/
     storeFixture.ts         the static layout: gondolas and equipment, no products
-    commerceFixture.ts      empty revenue and promotions in the future API shape
+    commerceFixture.ts      empty revenue and promotions reports, shown until a read lands
   constants/                <area>.constant.ts: camera, dimensions, scene, twin, app, i18n, commerce
   enums/                    <area>.enum.ts: as-const value sets and their types
   types/                    <domain>.type.ts: twin, api, agent, revenue, promotion, scene
@@ -185,14 +197,14 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `core/api/sources/fixtureSource.test.ts` | the fixture state is valid; `PRODUCT_FIELDS` matches the pydantic models in `apps/api` |
 | `core/api/validate.test.ts` | contract check: bad envelopes throw, bad products are left out with a reason |
 | `core/api/version.test.ts` | context version parsing and ordering |
-| `core/api/client.test.ts` | REST client paths and error envelopes |
+| `core/api/client.test.ts` | REST client paths, including revenue and promotions, and error envelopes |
 | `core/twin/twinConnection.test.ts` | load states, out-of-order snapshot and updates, feed drop and recovery, unreadable payloads |
 | `scene/layout.test.ts` | placement from state; unknown shelf, wrong slot, and taken slot are reported |
 | `scene/StoreScene.test.tsx` | scene objects are named with their entity ids |
 | `scene/entities/stock/Stock.test.ts` | stock is deterministic, follows facings and quantity, and fills the front row first |
 | `scene/camera/cameraFrame.test.ts` | every shelf corner stays in frame on desktop and on a 390px canvas |
 | `state/*.test.ts` | twin store and run store |
-| `components/**`, `app/App.test.tsx` | StoreStatus, AgentActivityPanel, LensSwitcher, routing |
+| `components/**`, `app/App.test.tsx` | StoreStatus, AgentActivityPanel, LensSwitcher (revenue and promotions reads), routing |
 | `fixtures/commerceFixture.test.ts`, `i18n/`, `core/utils/` | empty commerce reports, locale parity, formatters and utils |
 
 ## Maturity
@@ -204,5 +216,5 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
   3. Restart the API. Within 5 s the scene redraws P001. A page reload rebuilds the same state.
 - With the API stopped, the page shows the load error and a retry button. When the API comes back, the next poll loads the store.
 - `StoreStatus` also calls the API (issue #8).
-- Revenue and promotions are UI only, with empty data in the shape their future APIs will return.
+- Revenue and promotions read `GET /revenue` and `GET /promotions`, which `apps/api` does not serve yet (`TODO(BE)`).
 - Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.

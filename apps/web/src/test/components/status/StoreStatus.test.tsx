@@ -42,6 +42,8 @@ function client(overrides: Partial<RetailTwinClient> = {}): RetailTwinClient {
     })),
     store: vi.fn(async () => store),
     inventory: vi.fn(async () => product),
+    revenue: vi.fn(),
+    promotions: vi.fn(),
     ...overrides,
   };
 }

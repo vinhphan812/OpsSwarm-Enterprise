@@ -108,7 +108,7 @@ export const vi = {
   },
   revenue: {
     title: "Doanh thu",
-    note: "Chưa kết nối dữ liệu bán hàng. Mọi số liệu đang là 0.",
+    note: "Số liệu đọc từ GET /revenue.",
     period: {
       label: "Khoảng thời gian",
       today: "Hôm nay",
@@ -134,7 +134,7 @@ export const vi = {
   },
   promotions: {
     title: "Khuyến mãi",
-    note: "Chỉ xem. Chưa kết nối dữ liệu khuyến mãi.",
+    note: "Chỉ xem. Đọc từ GET /promotions.",
     activeCount: "Đang chạy",
     revenue: "Doanh thu từ KM",
     incremental: "Doanh thu tăng thêm",
@@ -159,6 +159,9 @@ export const vi = {
     skus: "{{count}} SKU",
     empty: "Chưa có chương trình khuyến mãi nào.",
     emptyFiltered: "Không có chương trình nào ở trạng thái này.",
+  },
+  commerce: {
+    loadFailed: "Không tải được số liệu bán hàng.",
   },
   storeStatus: {
     title: "Store API",

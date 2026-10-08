@@ -16,6 +16,11 @@ export type Promotion = {
   discount_cost: number;
 };
 
+/**
+ * Response of `GET /promotions`: the store's promotions and their totals. Read only; a price
+ * change goes through human review in the agent loop, never through this route.
+ * TODO(BE): apps/api does not serve this route yet.
+ */
 export type PromotionsSummary = {
   store_id: string;
   revenue: number;

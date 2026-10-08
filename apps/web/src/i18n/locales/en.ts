@@ -108,7 +108,7 @@ export const en: Messages = {
   },
   revenue: {
     title: "Revenue",
-    note: "Sales data is not connected yet. Every figure is 0.",
+    note: "Figures from GET /revenue.",
     period: {
       label: "Period",
       today: "Today",
@@ -134,7 +134,7 @@ export const en: Messages = {
   },
   promotions: {
     title: "Promotions",
-    note: "Read-only. Promotion data is not connected yet.",
+    note: "Read-only. From GET /promotions.",
     activeCount: "Running",
     revenue: "Promotion revenue",
     incremental: "Incremental revenue",
@@ -159,6 +159,9 @@ export const en: Messages = {
     skus: "{{count}} SKUs",
     empty: "No promotions yet.",
     emptyFiltered: "No promotions with this status.",
+  },
+  commerce: {
+    loadFailed: "Could not load the sales figures.",
   },
   storeStatus: {
     title: "Store API",

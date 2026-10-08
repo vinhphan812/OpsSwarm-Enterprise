@@ -30,6 +30,10 @@ export type RevenueTotals = {
   margin_rate: number;
 };
 
+/**
+ * Response of `GET /revenue?period=today|7d|30d`. Money is in the store's currency.
+ * TODO(BE): apps/api does not serve this route yet.
+ */
 export type RevenueSummary = RevenueTotals & {
   store_id: string;
   period: RevenuePeriod;

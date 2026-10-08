@@ -16,8 +16,8 @@ const BUCKETS: Record<RevenuePeriod, { count: number; ms: number }> = {
 const ZERO_TOTALS: RevenueTotals = { revenue: 0, transactions: 0, average_basket: 0, margin_rate: 0 };
 
 /**
- * A report with every figure at 0, in the shape the sales API will return. Stands in until sales are wired:
- * the buckets and categories are real, so the chart axis and legend already render.
+ * A report with every figure at 0, in the shape the sales API returns. Shown while `GET /revenue` is in flight
+ * or has failed: the buckets and categories are real, so the chart axis and legend already render.
  */
 export function emptyRevenue(storeId: string, period: RevenuePeriod, now = new Date()): RevenueSummary {
   const { count, ms } = BUCKETS[period];
@@ -43,7 +43,8 @@ export function emptyRevenue(storeId: string, period: RevenuePeriod, now = new D
   };
 }
 
-/** No promotions yet, in the shape the promotions API will return. */
+/** No promotions, in the shape the promotions API returns. Shown while `GET /promotions` is in flight or has failed. */
 export function emptyPromotions(storeId: string): PromotionsSummary {
   return { store_id: storeId, revenue: 0, incremental_revenue: 0, discount_cost: 0, promotions: [] };
 }
+
