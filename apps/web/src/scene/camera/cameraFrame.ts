@@ -1,5 +1,5 @@
-import { SHELF } from "./dimensions";
-import type { StoreFixture } from "./types";
+import { SHELF } from "@/constants/dimensions.constant";
+import type { StoreFixture } from "@/scene/types";
 
 export const CAMERA_FOV = 45;
 export const ORBIT_TARGET: [number, number, number] = [0, 0.8, 0];

@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { defaultClient } from "../api/client";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "../api/types";
+import { defaultClient } from "@/core/api/client";
+import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
 import "./StoreStatus.css";
 
 type StoreStatusProps = {

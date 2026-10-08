@@ -1,4 +1,4 @@
-import type { EntityType } from "./types";
+import type { EntityType } from "@/scene/types";
 
 export function entityProps(entityId: string, entityType: EntityType) {
   return {

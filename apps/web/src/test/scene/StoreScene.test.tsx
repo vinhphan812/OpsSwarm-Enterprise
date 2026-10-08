@@ -1,8 +1,8 @@
 import ReactThreeTestRenderer from "@react-three/test-renderer";
 import type { Object3D } from "three";
 import { describe, expect, it } from "vitest";
-import { StoreContents } from "./StoreScene";
-import { storeFixture } from "./storeFixture";
+import { StoreContents } from "@/scene/StoreScene";
+import { storeFixture } from "@/fixtures/storeFixture";
 
 type TestNode = {
   instance: Object3D;

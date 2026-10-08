@@ -1,4 +1,4 @@
-import { STORE_FLOOR } from "./dimensions";
+import { STORE_FLOOR } from "@/constants/dimensions.constant";
 
 export function Floor() {
   return (

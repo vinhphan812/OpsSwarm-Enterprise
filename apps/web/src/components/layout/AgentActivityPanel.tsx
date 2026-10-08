@@ -1,4 +1,4 @@
-import { StoreStatus } from "../status/StoreStatus";
+import { StoreStatus } from "@/components/status/StoreStatus";
 
 export function AgentActivityPanel() {
   return (

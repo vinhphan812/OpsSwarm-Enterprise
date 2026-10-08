@@ -1,5 +1,5 @@
-import { MIDDLE_DECK_TOP } from "./dimensions";
-import type { ShelfFixture, SlotFixture, StoreFixture } from "./types";
+import { MIDDLE_DECK_TOP } from "@/constants/dimensions.constant";
+import type { ShelfFixture, SlotFixture, StoreFixture } from "@/scene/types";
 
 const SLOT_X = [-0.7, 0, 0.7] as const;
 

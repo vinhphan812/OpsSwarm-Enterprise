@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { entityProps } from "./entity";
-import type { SlotFixture } from "./types";
+import type { SlotFixture } from "@/scene/types";
 
 type SlotProps = {
   slot: SlotFixture;
