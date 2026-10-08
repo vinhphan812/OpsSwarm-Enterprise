@@ -16,22 +16,43 @@ describe("apiSource", () => {
     await expect(source.snapshot()).resolves.toEqual(sampleStoreState());
   });
 
-  it("polls GET /store, reports a failed read, and stops on unsubscribe", async () => {
-    const store = vi
-      .fn<RetailTwinClient["store"]>()
-      .mockResolvedValueOnce(sampleStoreState())
-      .mockRejectedValueOnce(new Error("down"))
-      .mockResolvedValue(sampleStoreState());
+  it("polls GET /store and stops on unsubscribe", async () => {
+    const store = vi.fn<RetailTwinClient["store"]>().mockResolvedValue(sampleStoreState());
     const onState = vi.fn();
-    const onError = vi.fn();
-    const unsubscribe = createApiSource(fakeClient(store), 1000).subscribe(onState, onError);
+    const unsubscribe = createApiSource(fakeClient(store), 1000).subscribe(onState);
 
     await vi.advanceTimersByTimeAsync(2000);
-    expect(onState).toHaveBeenCalledTimes(1);
-    expect(onError).toHaveBeenCalledWith(new Error("down"));
+    expect(onState).toHaveBeenCalledTimes(2);
 
     unsubscribe();
     await vi.advanceTimersByTimeAsync(5000);
     expect(store).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits longer after each failed read, up to the cap, and resets after a good one", async () => {
+    const store = vi
+      .fn<RetailTwinClient["store"]>()
+      .mockRejectedValueOnce(new Error("down"))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockRejectedValueOnce(new Error("down"))
+      .mockResolvedValue(sampleStoreState());
+    const onError = vi.fn();
+    createApiSource(fakeClient(store), 1000, 3000).subscribe(vi.fn(), onError);
+
+    // Reads at 1s, then 2s later, then 3s later (capped), then 3s later again.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(store).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(store).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(store).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(store).toHaveBeenCalledTimes(3);
+    expect(onError).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(store).toHaveBeenCalledTimes(4);
+    // Back to the normal interval after the good read.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(store).toHaveBeenCalledTimes(5);
   });
 });

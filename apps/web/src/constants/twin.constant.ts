@@ -6,3 +6,5 @@ export const FIXTURE_P001: ProductInventory = { ...apiFixture.products[0], store
 
 /** How often the scene re-reads `GET /store` while apps/api has no push channel. */
 export const TWIN_POLL_MS = 5000;
+/** Longest wait between reads while the API keeps failing; each failure doubles the wait up to this. */
+export const TWIN_POLL_MAX_MS = 60_000;
