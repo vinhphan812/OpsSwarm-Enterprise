@@ -6,7 +6,7 @@ import { useUiStore } from "@/state/ui.store";
 import { LENS_VIEW } from "./lens";
 
 /**
- * Operations / Revenue / Promotions switch at the top of the 3D view, in the language switch's dark glass.
+ * Operations / Revenue / Promotions switch at the top of the 3D view, in dark glass.
  * Picking a lens opens the side panel on it. Narrow screens show the icons only.
  */
 export function LensSwitcher() {

@@ -6,7 +6,7 @@ import { Segmented } from "@/components/commerce/Segmented";
 import { PromotionIcon } from "@/components/icons";
 import { PROMOTION_STATUS, PROMOTION_STATUSES, type PromotionStatus } from "@/enums/commerce.enum";
 import { usePromotions } from "@/hooks/commerce.hook";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 import { PromotionCard } from "./PromotionCard";
 
 const ALL = "all";
@@ -15,7 +15,6 @@ type StatusFilter = PromotionStatus | typeof ALL;
 /** Promotions tab of the side panel, read-only: what runs, what earned, and every program by status. */
 export function PromotionsPanel() {
   const { t } = useTranslation();
-  const f = useFormat();
   const summary = usePromotions();
   const [filter, setFilter] = useState<StatusFilter>(ALL);
   const { promotions } = summary;

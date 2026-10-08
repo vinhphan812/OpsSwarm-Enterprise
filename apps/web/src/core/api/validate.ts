@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import type { Messages } from "@/i18n/locales/vi";
+import type { Messages } from "@/i18n/locales/en";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 
 /** Why a product is not drawn: a key under `issue` in the locale files. */
@@ -7,7 +7,7 @@ export type IssueCode = keyof Messages["issue"];
 
 /**
  * A product record the scene cannot draw, and why. `sku` is its entity id. The reason
- * is a code with its values, translated where it is shown, so it follows the language.
+ * is a code with its values, translated where it is shown.
  */
 export type ProductIssue = {
   sku: string;
@@ -15,7 +15,7 @@ export type ProductIssue = {
   values?: Record<string, string | number>;
 };
 
-/** The issue's reason in the current language. */
+/** The issue's reason as text. */
 export function issueReason(issue: ProductIssue): string {
   return i18n.t(`issue.${issue.code}`, issue.values);
 }

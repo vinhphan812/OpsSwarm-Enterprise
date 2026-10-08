@@ -3,12 +3,11 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RevenueSummary } from "@/types/revenue.type";
 import { BUCKET_SIZE } from "@/enums/commerce.enum";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 
 /** Revenue per hour (today) or per day (longer windows), as one series of bars with a hover tooltip. */
 export function RevenueChart({ summary }: { summary: RevenueSummary }) {
   const { t } = useTranslation();
-  const f = useFormat();
   const [hovered, setHovered] = useState<number | null>(null);
   const { buckets } = summary;
   const byHour = summary.bucket_size === BUCKET_SIZE.Hour;

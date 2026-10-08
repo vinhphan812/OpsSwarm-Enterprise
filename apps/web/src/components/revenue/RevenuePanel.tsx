@@ -5,7 +5,7 @@ import { Segmented } from "@/components/commerce/Segmented";
 import { relativeChange } from "@/core/utils/format";
 import { BUCKET_SIZE, REVENUE_PERIOD, REVENUE_PERIODS, type RevenuePeriod } from "@/enums/commerce.enum";
 import { useRevenue } from "@/hooks/commerce.hook";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 import { CategoryShare } from "./CategoryShare";
 import { RevenueChart } from "./RevenueChart";
 import { SkuList } from "./SkuList";
@@ -13,7 +13,6 @@ import { SkuList } from "./SkuList";
 /** Revenue tab of the side panel: headline figures, the sales curve, categories, and best and worst sellers. */
 export function RevenuePanel() {
   const { t } = useTranslation();
-  const f = useFormat();
   const [period, setPeriod] = useState<RevenuePeriod>(REVENUE_PERIOD.Today);
   const summary = useRevenue(period);
   const { previous } = summary;

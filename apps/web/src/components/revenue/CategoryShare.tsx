@@ -3,14 +3,13 @@ import { useTranslation } from "react-i18next";
 import { CATEGORY_COLOR, OTHER_CATEGORY_COLOR } from "@/constants/commerce.constant";
 import type { CategoryRevenue } from "@/types/revenue.type";
 import type { StockKind } from "@/enums/scene.enum";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 
 const colorOf = (category: string) => CATEGORY_COLOR[category as StockKind] ?? OTHER_CATEGORY_COLOR;
 
 /** Share of revenue per category: one stacked bar, and a legend that names every segment. */
 export function CategoryShare({ categories }: { categories: CategoryRevenue[] }) {
   const { t } = useTranslation();
-  const f = useFormat();
   const total = categories.reduce((sum, category) => sum + category.revenue, 0);
   const name = (category: string) => t(`scene.stock.${category as StockKind}`, { defaultValue: category });
 

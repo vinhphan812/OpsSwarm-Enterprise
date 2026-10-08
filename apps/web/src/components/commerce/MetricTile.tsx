@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { AlertIcon, TrendIcon } from "@/components/icons";
-import { useFormat } from "@/hooks/format.hook";
+import { format as f } from "@/core/utils/format";
 import { AnimatedNumber } from "./AnimatedNumber";
 
 type MetricTileProps = {
@@ -34,7 +34,6 @@ export function MetricTile({ label, value, format, change, tone = "default", hin
 /** "▲ +8% vs previous": the arrow carries the direction in color, the text stays in ink. */
 function ChangeBadge({ change }: { change: number | null }) {
   const { t } = useTranslation();
-  const f = useFormat();
   if (change === null || change === 0) {
     return (
       <span className="metric-change" data-trend="flat" title={change === null ? t("revenue.noBaseline") : undefined}>
