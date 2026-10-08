@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retailtwin-api"
+version = "0.1.0"
+description = "RetailTwin application API."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.9",
+  "pydantic-settings>=2.6",
+  "uvicorn>=0.32",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8.3",
+]
+
+[project.scripts]
+retailtwin-api = "retailtwin_api.main:main"
+
+[tool.setuptools.packages.find]
+include = ["retailtwin_api*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

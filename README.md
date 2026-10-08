@@ -119,6 +119,13 @@ The primary scenario is **Weekend Demand Surge**. A SKU starts selling faster th
 
 The Submission Gate requires the flagship scenario to pass **20 consecutive E2E runs** before optional Competition-100 work is allowed.
 
+## Run the day-0 API locally
+
+The web client reads health, store, and inventory from `apps/api`. The API serves the committed fixture in `data/schemas/store-state.example.json`. It does not use GCP credentials and it does not mutate live inventory. This local boundary does not close foundation gate #10.
+
+- API setup and endpoints: [apps/api/README.md](apps/api/README.md)
+- Web client: [apps/web/README.md](apps/web/README.md)
+- Copy [.env.example](.env.example) to `.env` only to override hosts or ports. Do not commit `.env`.
 ## Current maturity
 
 The architecture below is the **target product architecture**. For the exact implementation state of the repository, including open integration work and unpassed gates, read [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md).

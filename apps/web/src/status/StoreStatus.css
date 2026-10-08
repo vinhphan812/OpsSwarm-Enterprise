@@ -1,0 +1,89 @@
+.store-status {
+  box-sizing: border-box;
+  margin: 12px 0;
+  padding-top: 12px;
+  border-top: 1px solid #2a3544;
+}
+
+.store-status h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.store-status p {
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.store-status-note {
+  color: #b7c3d1;
+  font-size: 14px;
+}
+
+.store-status-error {
+  color: #ffb4a8;
+}
+
+.store-status thead {
+  display: none;
+}
+
+.store-status tr {
+  display: block;
+  padding: 8px 0 12px;
+}
+
+.store-status td {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 0;
+  padding: 3px 0;
+}
+
+.store-status-label {
+  color: #b7c3d1;
+}
+
+.store-status-table {
+  overflow-x: auto;
+}
+
+.store-status table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.store-status-lookup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.store-status-lookup input {
+  min-width: 8rem;
+  padding: 8px 10px;
+  color: #e8edf2;
+  background: #18202b;
+  border: 1px solid #2a3544;
+  border-radius: 4px;
+}
+
+.store-status-lookup button {
+  padding: 8px 12px;
+  color: #121820;
+  background: #d5e4f5;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.store-status-lookup button:disabled {
+  opacity: 0.7;
+}
+
+
