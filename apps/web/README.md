@@ -1,41 +1,67 @@
 # Web App
 
-React + TypeScript frontend.
+React + TypeScript frontend for RetailTwin. It draws store-001 in 3D from Live Twin state, and shows the Agent Activity panel next to it.
 
-Responsibilities:
-- render the 3D store
-- bind scene objects to Digital Twin state
-- show Agent Activity, alerts, KPI comparison, and Current vs AI Proposal
-- call the API for health, store, and inventory
-- show an API failure without crashing
-- never write directly to live store state
+The web app only reads. It never writes to live store state.
 
-## API status
+## Run
 
-The 3D scene stays in the viewport. `StoreStatus` is mounted in the Agent Activity column. It loads `GET /health` and `GET /store`, and looks up `GET /inventory/{sku}`. The client lives in `src/api`. It does not post events and it does not change inventory.
+Node `>=20.17` is required. The app stays on React 18, React Three Fiber 8, and Vite 6 so it builds on that Node line.
 
-Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000`. Vite reads `apps/web/.env.local` (do not commit it). Start the API before the page if you want live data. If the API is down, the page shows "The API is unreachable." and the SKU form stays on screen.
+```bash
+cd apps/web
+npm ci          # package-lock.json is tracked
+npm test        # vitest, node environment
+npm run dev     # http://localhost:5173
+npm run build   # tsc --noEmit, then vite build
+```
 
-Node `>=20.17` is required. This app stays on React 18 and Vite 6 so it builds on that Node line.
+Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000`. Put it in `apps/web/.env.local`, and do not commit that file.
 
-## Current state
+## What is on screen
 
-The app renders store-001 as a 3D room:
+`/` is `TwinPage`. Any other path shows `NotFoundPage`.
 
-- **Floor**: a wood-plank slab. The plank texture is drawn on a canvas at runtime (`woodTexture.ts`) with a seeded PRNG, so it looks the same on every load. Unit tests run in node, where there is no canvas, so the floor falls back to a flat wood color there.
-- **Walls**: a U-shaped shell. The back wall is at -Z and the side walls are at ±X. The front (+Z) is left open for the camera.
+- **3D view** (`StoreScene`): the store room, its fixtures, and the stock that twin state puts on them.
+- **Overlays on the 3D view**:
+  - `LanguageToggle` (top left): Vietnamese or English. Vietnamese is the default, and the choice is saved in `localStorage`.
+  - `LensSwitcher` (top): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it.
+  - `CameraHelp` (bottom left): lists the camera gestures.
+  - `TwinStatusOverlay`: shows loading and errors. Before the first state, it covers the room. After that, it shows a small banner, and the last state stays on screen.
+  - `ProductInspector`: the twin figures of the selected product.
+  - `TwinIssuesNotice`: products the scene left out, with the reason for each.
+- **Agent Activity panel**: a side panel. You can resize it, close it, and open it again. Its width and open state are saved per browser. Each lens shows different content:
+  - **Operations**: `StoreStatus`, which reads `GET /health` and `GET /store` and looks up `GET /inventory/{sku}`, and the agent activity timeline from `run.store`.
+  - **Revenue**: metric tiles, a revenue chart, category share, and the best and worst SKUs. All figures are 0 until `GET /sales/summary` exists (`useRevenue`).
+  - **Promotions**: promotion cards by status. The list is empty until `GET /promotions` exists (`usePromotions`).
+
+Errors and network changes show as HeroUI toasts (`core/notify.ts`). When the browser comes back online, `useNetworkStatus` reconnects if the last load failed or the live feed dropped.
+
+## The scene
+
+- **Room**: a 14 m × 11 m floor with a procedural oak plank texture. The texture is drawn on a canvas with a seeded PRNG, so it looks the same on every load. In node tests there is no canvas, so the floor is a flat color there.
+- **Walls**: a U-shaped shell with the front (+Z) left open:
   - The back wall has a wood slat panel and a sliding glass door.
-  - The left wall is a floor-to-lintel glass curtain wall.
-  - A wall hides itself while the camera orbits outside it, so it never blocks the view inside.
-- **Exterior**: a lawn plane seen through the glass. The sky is the scene background color plus fog.
-- **Lighting**: hemisphere, ambient, and a warm shadow-casting sun from the left. Reflections come from drei `Lightformer`s, so no HDR file is downloaded.
-- **Camera**: `OrbitControls` with pan off and a polar limit that stops the camera above the floor. On resize, `FrameCamera` fits the camera distance to the window aspect ratio so all shelves and checkouts stay in frame on phones too.
-- **Shelves**: 8 gondolas (A01–A04, B01–B04) in two aisles at the back left. `arrangeShelves` builds the grid from a config (aisles, shelves per run, aisle width, runs along X or Z). The two runs of an aisle face each other, and neighbouring aisles stand back to back. It throws if a shelf would overlap another shelf, sit closer than 0.8 m to a wall, block the door, or enter the checkout zone. Each gondola has 4 decks × 3 slots, price strips and tags, and a header sign in its category color.
-- **Products**: 96 essentials (`productCatalog.ts`): 8 categories × 4 lines × 3 pack sizes, drawn as low-poly packaging (bottle, carton, can, bag, box, cup, jar, jug, roll). `assignProductsToShelves` keeps one category per row. A category starts on a new row and spills to the next row, then the next shelf. With the default catalog each shelf holds one category, and each row holds one line in S/M/L. Every part of a product is one `instancedMesh` covering all its facings and the units behind them.
-- **Checkouts**: two counters, CK01 and CK02, at the front right. Their positions are constants (`CHECKOUT_LANES`), not twin state, and shelves stay out of `CHECKOUT_ZONE`.
-- **Customers**: `Customer.tsx` (low-poly shopper with a basket or cart) and five customers in the fixture exist, but rendering them in `StoreContents` is commented out for now.
+  - The left wall is a glass curtain wall.
+  - A wall hides itself while the camera is outside it.
+  - The lawn and sky outside are an `Exterior` plane plus the background color and fog.
+- **Fixtures**: listed in `fixtures/storeFixture.ts`:
+  - 9 double-sided gondolas, `A01`–`C03`.
+  - 3 checkouts, `CK01`–`CK03`, with lane barriers `BR01`–`BR07`.
+  - 3 glass-door coolers (`GDC`) and 3 open chillers (`OC`) on the right wall.
+  - 3 produce racks (`PR`) and a tiered display of wooden crates (`CW`) along the glass wall.
+  - Plastic backstock crates (`CP`).
+- **Slots**: every display surface of a fixture is split into slots, named `<fixtureId>-S01`, `-S02`, and so on (`slotsFor`). Checkouts, barriers, and plastic crates have no slots.
+- **Stock**: `Stock` draws every product in the store as a few instanced meshes. It draws one item per unit of `shelf_quantity`, front row first, up to what the facings hold. Gondolas, coolers, and chillers show boxes. Produce racks and wooden crates show heaps of fruit. Twin state has no product looks, so each product's color and height come from its id (`stock/catalog.ts`).
+- **Hover and selection**: hovering a fixture shows a label with its category and id. Clicking an item selects its product and opens `ProductInspector`. Opening `/?product=P001` selects that product on load. Clicking empty space clears the selection.
+- **Camera** (`CameraControls`):
+  - Left drag orbits around the point under the cursor (`useOrbitAroundPointer`). That point is clamped to the zoom range, so a click never moves the camera.
+  - Right drag (or two fingers) pans inside the store bounds.
+  - The wheel zooms toward the cursor.
+  - On every resize, `useFitCamera` fits the whole store into the canvas and limits zoom-out to 1.4× that distance.
+- **Shadows**: the shadow map is redrawn only when stock changes or a wall hides or shows (`StaticShadows`), not on every frame of an orbit.
 
-Data flow:
+## Data flow
 
 ```text
 TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live ──sceneOf──▶ StoreScene
@@ -45,16 +71,25 @@ TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live 
                                           TwinIssuesNotice, ProductInspector
 ```
 
-`TwinPage` passes a `TwinSource` to `useTwinSource`. The connection loads `snapshot()`, then follows `subscribe()` updates. A state is kept only when its `context_version` is newer than the last one, so a late snapshot or a replayed update never rolls the scene back. Every payload is checked by `parseStoreState` against the `GET /store` contract (`StoreResponse` in `src/api/types.ts`, matching `apps/api`): a payload that is not a store response fails the load (or marks the feed stale after the first state), and a broken product is left out and reported. A product's entity id is its `sku`.
+1. `TwinPage` picks a `TwinSource` (`pickSource`) and passes it to `useTwinSource`. By default this is `apiSource`, which reads `GET /store` from `apps/api`.
+2. `connectTwin` loads `snapshot()`, then follows `subscribe()`. `apiSource` has no push channel yet, so it polls `GET /store` every 5 s (`TWIN_POLL_MS`). An outage is reported once. The next readable state ends it, and the stale banner goes away.
+3. Each payload is checked by `parseStoreState` against the `GET /store` contract (`StoreResponse` in `types/twin.type.ts`, matching `apps/api`):
+   - If the payload is not a store response, the first load fails. After the first state, the feed is marked stale instead.
+   - A broken product is left out and reported as an issue. The rest of the store is still drawn.
+4. A state is kept only when its `context_version` is newer than the last one, so a late snapshot or a replayed update never rolls the scene back.
+5. `sceneOf` maps the live state onto the static layout (docs/adr/0005). Shelf, slot, facings, and stock come from state. A product is left out and reported if its shelf is unknown, its slot is not on that shelf, or its slot is already taken.
 
-`sceneOf` maps `live` onto the static layout (docs/adr/0005). Slot, facings, and stock come from state: the scene draws one item per unit of `shelf_quantity`, front row first, up to what the facings hold. A product whose shelf or slot is not in the layout, or whose slot is already taken, is left out and reported. Click an item on a shelf, or open `/?product=P001`, to see the product's figures.
+A product's entity id is its `sku`.
 
-The scene does not read the API yet: every build reads `src/mocks/store-001.state.json`, a `GET /store` response with no products, so only the shelves and equipment are drawn. `StoreStatus` in the Agent Activity column does read the API. Tests use `src/test/sampleState.ts`, the API fixture as `GET /store` serves it. In development, `?twin=` swaps the scene's source:
+### Twin sources
+
+Every build reads `apiSource` by default: the Live Twin from `GET /store` on `VITE_API_BASE_URL`. In development, `?twin=` swaps in a local source:
 
 | `?twin=` | Source |
 | --- | --- |
-| (none) | the mock JSON (empty shelves), no live updates |
-| `memory` | empty shelves in memory, editable from the console: `twin.add()` adds the API fixture's P001, `twin.patch("P001", { facings: 5 })`, `twin.patch("P001", null)` |
+| (none) | `apiSource`: `GET /store`, polled every 5 s |
+| `fixture` | `fixtureSource`: empty shelves, no live updates |
+| `memory` | empty shelves in memory, editable from the browser console: `twin.add()` adds the API fixture's P001, then `twin.patch("P001", { facings: 5 })`, `twin.patch("P001", null)`, `twin.state()` |
 | `slow` | the snapshot takes 4 s |
 | `offline` | the snapshot fails after 1.2 s |
 | `flaky` | the live feed drops 3 s after loading |
@@ -63,125 +98,111 @@ The scene does not read the API yet: every build reads `src/mocks/store-001.stat
 
 ```text
 src/
-  main.tsx                     entry point, mounts <App /> in StrictMode
-  vite-env.d.ts
+  main.tsx                  entry point: loads i18n, mounts <App /> in StrictMode
+  api-env.d.ts              VITE_API_BASE_URL typing
   app/
-    App.tsx                    app shell, wires fixtureSource into the scene
-    App.css                    page-level layout styles
-    useTwinSource.ts           loads a TwinSource snapshot and updates into twin.store
-  api/
-    types.ts                   wire types from docs/DOMAIN_AND_DATA_MODEL.md
-                               (StoreState, ProductState, ControlStage, GuardVerdict, ActivityEntry)
-    sources/                   read-only twin state feeds
-      TwinSource.ts            snapshot() + subscribe() interface
-      fixtureSource.ts         StoreState built from the fixture, dev and test only
-  state/                       Zustand stores, read-side copies of backend state
-    twin.store.ts              Live and Simulation store state
-    run.store.ts               Agent Activity entries (deduped by id) and current loop stage
-    ui.store.ts                selected entity and LIVE/SIMULATION view mode
-  scene/                       React Three Fiber store scene
-    StoreScene.tsx             Canvas, lights, environment, controls; reads live state from twin.store
-    scene.css                  label styles
-    layout.ts                  storeLayout + toSceneStore: twin state onto the fixed layout
-    types.ts                   scene input types (StoreFixture, ShelfFixture, SlotFixture, ProductFixture,
-                               CheckoutFixture, CustomerFixture)
-    camera/
-      cameraFrame.ts           FOV, orbit target, fit-to-aspect distance math
-    config/
-      dimensions.ts            fixed sizes in meters (floor, walls, glazing, shelf, aisles, product shapes,
-                               checkout lanes and zone, customer)
-      categories.ts            product categories, header label and color per category
-    placement/                 pure layout math, no React
-      footprint.ts             floor rectangles: shelf/checkout/customer footprints, door zone, overlap tests
-      shelfLayout.ts           arrangeShelves (aisle grid + validation), slotsFor, slotId
-      assignProducts.ts        assignProductsToShelves: one category per row
-      facings.ts               fitFacings, unitsDeep, shapeSize
-    entities/
-      entity.ts                entityProps: sets name and userData on domain objects
-      Floor.tsx                floor slab with wood texture
-      woodTexture.ts           procedural oak plank CanvasTexture
-      Walls.tsx                wall shell, openings, slat panel, hide-when-behind
-      Glazing.tsx              CurtainWall and SlidingDoor
-      Exterior.tsx             lawn outside the store
-      Shelf.tsx                gondola: plinth, back panel, decks, price strips and tags, header sign
-      Slot.tsx                 positioned group for a slot
-      Product.tsx              facings × units deep, one instancedMesh per part
-      products/productParts.ts low-poly packaging per shape, shared geometries and materials
-      Checkout.tsx             counter, belt, scanner, POS, card terminal, bagging area, lane sign
-      Customer.tsx             low-poly shopper with optional basket or cart (not rendered yet)
+    App.tsx                 routes: / → TwinPage, * → NotFoundPage
+    Providers.tsx           router, HeroUI (locale follows the language), toasts, reduced motion
+    App.css                 Tailwind entry, @theme palette, page layout
+    hero.ts                 HeroUI dark theme, loaded from App.css with @plugin
+  pages/                    TwinPage, NotFoundPage
+  components/
+    layout/                 AgentActivityPanel, LensSwitcher, LanguageToggle, CameraHelp, lens.ts
+    twin/                   TwinStatusOverlay, TwinIssuesNotice, ProductInspector
+    status/                 StoreStatus (API health, store, and SKU lookup)
+    revenue/                RevenuePanel, RevenueChart, CategoryShare, SkuList
+    promotions/             PromotionsPanel, PromotionCard
+    commerce/               shared panel parts: MetricTile, AnimatedNumber, Segmented
+    icons.tsx               line icons
+  core/
+    api/
+      client.ts             REST client for /health, /store, /inventory/{sku}; ApiError
+      validate.ts           parseStoreState: the GET /store contract check
+      version.ts            context_version parsing and ordering
+      sources/              TwinSource interface; apiSource (GET /store), fixture and in-memory sources
+    twin/
+      twinConnection.ts     connectTwin: snapshot + updates, validated and in version order
+      twinIssues.ts         all products left out of the scene; inspectProduct
+      devSources.ts         pickSource: apiSource, or a ?twin= source while developing
+    notify.ts               toast helpers and errorMessage
+    utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
+  hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
+                            commerce, format, hover, fitCamera, orbitPoint
+  state/                    Zustand stores, read-side copies only
+    twin.store.ts           live state, issues, status, stale flag, retry
+    run.store.ts            agent activity (deduplicated by id) and the current loop stage
+    ui.store.ts             selected entity, lens, live/simulation view mode
+    panel.store.ts          side panel width and open state, saved in localStorage
+  scene/
+    StoreScene.tsx          Canvas, lights, environment, camera controls, StoreContents
+    layout.ts               storeLayout, toSceneStore / sceneOf: twin state onto the layout
+    camera/cameraFrame.ts   fit-the-store camera distance for an aspect ratio
+    utils/transform.ts      fixture matrices, footprints, tilt
+    entities/               Floor, Walls, Glazing, Exterior, Shelf, Slot, SlotProducts, Product,
+                            HoverLabel, entity.ts (name + userData), woodTexture.ts
+      equipment/            Checkout, Barrier, GlassDoorCooler, OpenChiller, ProduceRack, Crate,
+                            Equipment (dispatch by kind), parts.tsx (shared box parts and materials)
+      stock/                Stock (instanced items), catalog.ts (looks), surfaces.ts (display surfaces)
   fixtures/
-    productCatalog.ts          96 essentials: name, category, shape, pack scale, colors
-    storeFixture.ts            default shelf grid, product placement, checkouts, customers;
-                               dev and test data only, never used as Live Twin truth
-```
-
-Folders planned for later issues:
-
-```text
-src/
-  api/client.ts, api/stream.ts   REST client and realtime stream for apps/api
-  features/inspector/            selected entity details
-  features/candidates/           candidate plans and KPI comparison
-  features/guard/                Decision Context Guard result and version diff
-  features/demo/                 demo scenario controls
-  scene/overlays/                highlight, risk tint, simulation ghost
-  scene/animations/              move, facings and replenish transitions
+    storeFixture.ts         the static layout: gondolas and equipment, no products
+    commerceFixture.ts      empty revenue and promotions in the future API shape
+  constants/                <area>.constant.ts: camera, dimensions, scene, twin, app, i18n, commerce
+  enums/                    <area>.enum.ts: as-const value sets and their types
+  types/                    <domain>.type.ts: twin, api, agent, revenue, promotion, scene
+  i18n/                     i18next setup; locales/vi.ts (source of the key types) and locales/en.ts
+  test/                     Vitest suites, mirroring the src/ folders
 ```
 
 ## Rules
 
-- Tests live under `src/test/`, in the same folders as the file they test: `src/scene/layout.ts` is tested by `src/test/scene/layout.test.ts`. Tests import the code through `@/`.
-- Zustand store files are named `<name>.store.ts`, for example `twin.store.ts`. Their tests are `<name>.store.test.ts`. This suffix is only for Zustand stores; other files keep their current names.
-- A feature keeps its own `.css` file next to its component.
-- `scene/` must not import from `features/`. Panels and the scene talk through `state/`.
-- The web app only reads twin state. A `TwinSource` never writes, and the Zustand stores are copies, not the source of truth.
-- Fixed sizes go in `scene/config/dimensions.ts`, not inline in meshes.
-- Layout math lives in `scene/placement/` as pure functions with tests, not inside components.
+- **Read only.** A `TwinSource` never writes. The Zustand stores are copies of backend state, not the source of truth.
+- **Layout is static** until the twin serves geometry (docs/adr/0005). Positions live in `fixtures/storeFixture.ts`. Sizes in meters live in `constants/dimensions.constant.ts`, not inline in meshes.
+- **Naming**:
+  - Shared data types go in `types/<domain>.type.ts`.
+  - Value sets go in `enums/<area>.enum.ts`, written as `as const` objects plus a type.
+  - Fixed values go in `constants/<area>.constant.ts`.
+  - Hooks are named `<name>.hook.ts`. Zustand stores are named `<name>.store.ts`.
+  - Component props, and types derived from code, stay next to that code.
+- **Imports** use `@/`. `scene/` does not import from `components/`. The panels and the scene talk through `state/`.
+- **Text** goes through i18n. A new key goes into `locales/vi.ts` first. `en.ts` must have the same keys and placeholders, and a test checks this.
+- **Tests** live in `src/test/`, in the same folder as the file they test. For example, `scene/layout.ts` is tested by `test/scene/layout.test.ts`.
 
-## Scene conventions
+### Scene conventions
 
-- Y is up, units are meters, and the floor top sits on `y = 0`.
-- Each store, shelf, slot, product, checkout, and customer object sets `name` and `userData.entityId` to the domain id, and `userData.entityType` to `"store" | "shelf" | "slot" | "product" | "checkout" | "customer"` (see `entityProps`).
-- Shelf ids are `<aisle letter><nn>`. In each aisle the back run comes first, for example `A01`–`A02` then `A03`–`A04` on the opposite run.
-- Slot ids are `<shelfId>-S<nn>`, numbered row by row from the bottom deck, left to right: `A01-S01`–`S03` is the bottom row and `A01-S12` is the top right. This matches `slot_id` in `docs/DOMAIN_AND_DATA_MODEL.md`.
-- A shelf, checkout, or customer faces its local +Z. `rotationY` is a multiple of π/2.
+- Y is up, units are meters, and the floor top is at `y = 0`.
+- Store, shelf, slot, product, and equipment objects set `name` and `userData.entityId` to the domain id, and `userData.entityType` to the entity type (`entityProps`).
+- A fixture faces its local +Z. `rotationY` is one of the `FACING` turns.
+- Slot ids are `<fixtureId>-S<nn>`. This matches `slot_id` in `docs/DOMAIN_AND_DATA_MODEL.md`.
 
 ## Tests
 
-Vitest runs in the `node` environment. Scene tests use `@react-three/test-renderer`, and `vitest.setup.ts` sets `IS_REACT_ACT_ENVIRONMENT`.
-
-Paths below are relative to `src/test/`.
+Vitest runs in the `node` environment. Scene tests use `@react-three/test-renderer`, and `vitest.setup.ts` sets `IS_REACT_ACT_ENVIRONMENT`. Paths below are relative to `src/test/`.
 
 | Test | Covers |
 | --- | --- |
-| `scene/StoreScene.test.tsx` | store, shelves, slots, products, and checkouts are named with their entity ids |
-| `scene/layout.test.ts` | `toSceneStore` takes facings, slot, and category from twin state; unknown products fall back |
-| `scene/placement/shelfLayout.test.ts` | shelves stay clear of walls, door, checkouts, and each other; runs are straight; bad configs throw |
-| `scene/placement/assignProducts.test.ts` | one category per row, fresh row per category, every product gets a slot |
-| `fixtures/storeFixture.test.ts` | every product fits under the next deck; checkouts and customers clear of shelves |
-| `scene/camera/cameraFrame.test.ts` | every shelf and checkout corner stays in frame on desktop and on a 390px canvas |
-| `state/twin.store.test.ts` | `setLive` replaces the live state |
-| `state/run.store.test.ts` | activity append, latest stage, duplicate id ignored |
+| `twinBinding.test.tsx` | P001 follows a live twin change, and a broken record is dropped and reported |
+| `core/api/sources/apiSource.test.ts` | snapshot and polling of `GET /store`, failed reads, unsubscribe |
+| `core/api/sources/fixtureSource.test.ts` | the fixture state is valid; `PRODUCT_FIELDS` matches the pydantic models in `apps/api` |
+| `core/api/validate.test.ts` | contract check: bad envelopes throw, bad products are left out with a reason |
+| `core/api/version.test.ts` | context version parsing and ordering |
+| `core/api/client.test.ts` | REST client paths and error envelopes |
+| `core/twin/twinConnection.test.ts` | load states, out-of-order snapshot and updates, feed drop and recovery, unreadable payloads |
+| `scene/layout.test.ts` | placement from state; unknown shelf, wrong slot, and taken slot are reported |
+| `scene/StoreScene.test.tsx` | scene objects are named with their entity ids |
+| `scene/entities/stock/Stock.test.ts` | stock is deterministic, follows facings and quantity, and fills the front row first |
+| `scene/camera/cameraFrame.test.ts` | every shelf corner stays in frame on desktop and on a 390px canvas |
+| `state/*.test.ts` | twin store and run store |
+| `components/**`, `app/App.test.tsx` | StoreStatus, AgentActivityPanel, LensSwitcher, routing |
+| `fixtures/commerceFixture.test.ts`, `i18n/`, `core/utils/` | empty commerce reports, locale parity, formatters and utils |
 
-## Run
+## Maturity
 
-Node `>=20.17` is required. This app stays on React 18 and React Three Fiber 8 so it builds on that Node line.
-
-```bash
-cd apps/web
-npm ci
-npm test
-npm run dev
-npm run build
-```
-
-`npm run dev` serves the store at http://localhost:5173.
-
-
-## Current maturity and integration
-
-The issue #3 scene on `main` is fixture-backed view data. It is not a Firestore or Live Twin implementation.
-
-Issue #8 is implemented here. `StoreStatus` calls the FastAPI boundary for health, store, and inventory. Those reads use the committed fixture. They are not Live Twin truth. Issue #4 replaces the scene fixture with state from that boundary and keeps the domain entity IDs.
-
-`apps/web/package-lock.json` is tracked. Install with `npm ci`. Issue #58 remains open until an executable GitHub Actions CI gate uses that lockfile and passes the build and tests.
+- Issue #4: the scene reads `GET /store` from `apps/api` and binds P001 by its SKU. Today the API serves the committed seed `data/schemas/store-state.example.json`. Issue #6 swaps that for Firestore behind the same route.
+- To check #4 by hand:
+  1. Run the API (`python -m retailtwin_api` in `apps/api`) and the web app (`npm run dev`). P001 shows on `A01-S01`.
+  2. In the seed, change P001's `facings`, `shelf_quantity`, or `slot_id`, and bump `version` (for example to `v2`).
+  3. Restart the API. Within 5 s the scene redraws P001. A page reload rebuilds the same state.
+- With the API stopped, the page shows the load error and a retry button. When the API comes back, the next poll loads the store.
+- `StoreStatus` also calls the API (issue #8).
+- Revenue and promotions are UI only, with empty data in the shape their future APIs will return.
+- Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.
