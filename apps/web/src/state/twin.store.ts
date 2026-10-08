@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { StoreResponse } from "@/core/api/types";
+import type { StoreResponse } from "@/types/twin.type";
 import type { ProductIssue } from "@/core/api/validate";
 import { TWIN_STATUS, type TwinStatus } from "@/enums/twin.enum";
 

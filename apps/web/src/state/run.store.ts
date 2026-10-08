@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ActivityEntry, ControlStage } from "@/core/api/types";
+import type { ActivityEntry, ControlStage } from "@/types/agent.type";
 
 type RunStore = {
   activity: ActivityEntry[];

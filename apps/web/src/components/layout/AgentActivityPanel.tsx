@@ -49,7 +49,9 @@ function ResizeHandle() {
     document.body.classList.remove("is-resizing");
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = { ArrowLeft: PANEL_WIDTH_STEP, ArrowRight: -PANEL_WIDTH_STEP }[event.key];
+    const step = { ArrowLeft: PANEL_WIDTH_STEP, ArrowRight: -PANEL_WIDTH_STEP }[
+      event.key
+    ];
     if (step === undefined) return;
     event.preventDefault();
     setWidth(width + step);
@@ -103,7 +105,7 @@ export function AgentActivityOpenButton() {
             onPress={() => setOpen(true)}
             className="h-9 w-9 min-w-0 cursor-pointer bg-panel/75 text-accent shadow-lg shadow-black/20 ring-1 ring-line backdrop-blur-md data-[hover=true]:bg-panel/90"
           >
-            <PanelToggleIcon expand className="h-[18px] w-[18px]" />
+            <PanelToggleIcon expand className="h-4.5 w-4.5" />
           </Button>
         </motion.div>
       )}
@@ -149,7 +151,9 @@ function OperationsView() {
                     <div className="activity-meta">
                       <time dateTime={entry.ts}>{clock(entry.ts)}</time>
                       <span className="activity-stage">{entry.stage}</span>
-                      {entry.sku ? <span className="activity-sku">{entry.sku}</span> : null}
+                      {entry.sku ? (
+                        <span className="activity-sku">{entry.sku}</span>
+                      ) : null}
                     </div>
                     <p className="activity-summary">{entry.summary}</p>
                   </motion.li>
@@ -233,7 +237,7 @@ export function AgentActivityPanel() {
                   onPress={() => setOpen(false)}
                   className="ml-auto min-w-0 cursor-pointer text-ink-muted data-[hover=true]:bg-card data-[hover=true]:text-ink"
                 >
-                  <PanelToggleIcon expand={false} className="h-[18px] w-[18px]" />
+                  <PanelToggleIcon expand={false} className="h-4.5 w-4.5" />
                 </Button>
               </div>
               <p className="fixture-note">{t(note)}</p>

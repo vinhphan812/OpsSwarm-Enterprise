@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ApiError } from "@/core/api/client";
 import { notify } from "@/core/notify";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
+import type { HealthResponse, RetailTwinClient } from "@/types/api.type";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { StoreStatus } from "@/components/status/StoreStatus";
 
 vi.mock("@/core/notify", () => ({

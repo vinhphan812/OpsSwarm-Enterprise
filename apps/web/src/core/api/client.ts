@@ -1,5 +1,6 @@
 import i18n from "@/i18n";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "./types";
+import type { HealthResponse, RetailTwinClient } from "@/types/api.type";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 
 export class ApiError extends Error {
   readonly status: number;

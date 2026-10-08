@@ -1,4 +1,4 @@
-import type { ProductInventory } from "@/core/api/types";
+import type { ProductInventory } from "@/types/twin.type";
 import apiFixture from "../../../../data/schemas/store-state.example.json";
 
 /** P001 as `GET /store` serves it from the API's day-0 fixture. */

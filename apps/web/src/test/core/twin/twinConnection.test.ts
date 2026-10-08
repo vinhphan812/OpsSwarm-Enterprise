@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
-import type { StoreResponse } from "@/core/api/types";
+import type { StoreResponse } from "@/types/twin.type";
 import { patchProduct } from "@/core/api/sources/memorySource";
 import { InvalidTwinStateError } from "@/core/api/validate";
 import { connectTwin } from "@/core/twin/twinConnection";

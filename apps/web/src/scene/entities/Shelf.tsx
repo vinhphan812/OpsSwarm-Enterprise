@@ -8,8 +8,7 @@ import { useHover } from "@/hooks/hover.hook";
 import { HoverHitBox, HoverLabel } from "./HoverLabel";
 import { Boxes, Parts, partBuilder, type BoxSpec } from "./equipment/parts";
 import { SlotProducts } from "./SlotProducts";
-import type { StockSurface } from "./stock/surface";
-import type { ProductFixture, ShelfFixture } from "@/scene/types";
+import type { ProductFixture, ShelfFixture, StockSurface } from "@/types/scene.type";
 import { toTuple } from "@/scene/utils/transform";
 
 const { width: W, sideDepth: D, height: H, bays: BAYS, post: P, board: B } = SHELF;
@@ -22,6 +21,8 @@ const BAY_CENTER_X = UPRIGHT_X.slice(0, -1).map((x, i) => (x + UPRIGHT_X[i + 1])
 const BEAM_H = 0.035;
 const FENCE_HEIGHT = 0.06;
 const ROD = 0.012;
+/** Distance of the back-stop rod from the side's center, toward the back edge. */
+const FENCE_Z = D / 2 - 0.02;
 
 /** One shelving side: frame, boards, and fences, front at +Z. Built once and shared. */
 const SHELF_PARTS = (() => {
@@ -41,10 +42,11 @@ const SHELF_PARTS = (() => {
       add("frame", [x, beamY, zFront], [BAY_INNER, BEAM_H, P * 0.7]);
       add("frame", [x, beamY, -zFront], [BAY_INNER, BEAM_H, P * 0.7]);
       add("wood", [x, top - B / 2, 0], [BAY_INNER - 0.01, B, D - 0.01]);
-      // Fence rod on clips along the front edge, so stock cannot slide off.
-      add("frame", [x, top + FENCE_HEIGHT, D / 2 - 0.02], [BAY_INNER - 0.02, ROD, ROD]);
+      // Back-stop rod on clips along the back edge, so stock cannot slide off the back;
+      // the front stays open for picking.
+      add("frame", [x, top + FENCE_HEIGHT, -FENCE_Z], [BAY_INNER - 0.02, ROD, ROD]);
       for (const dx of [-0.3, 0.3]) {
-        add("steel", [x + dx * BAY_INNER, top + FENCE_HEIGHT / 2, D / 2 - 0.02], [ROD, FENCE_HEIGHT, ROD]);
+        add("steel", [x + dx * BAY_INNER, top + FENCE_HEIGHT / 2, -FENCE_Z], [ROD, FENCE_HEIGHT, ROD]);
       }
     }
   }
@@ -86,6 +88,15 @@ const SIDES = [
 /** Clear height above the top deck, which has no deck over it. */
 const TOP_DECK_CLEARANCE = 0.26;
 
+/** Stock reaches this close to the board's open front edge. */
+const STOCK_FRONT_GAP = 0.01;
+/** Stock stays this far in front of the back edge, clear of the back-stop rod and its clips. */
+const STOCK_BACK_GAP = 0.03;
+/** Usable board depth for stock, between the two gaps. */
+const STOCK_DEPTH = D - STOCK_FRONT_GAP - STOCK_BACK_GAP;
+/** Center of the stock area from the side's center, toward the front. */
+const STOCK_CENTER_Z = (STOCK_BACK_GAP - STOCK_FRONT_GAP) / 2;
+
 /** Every bay of every deck on both sides, two product slots per bay. */
 export const SHELF_SURFACES: StockSurface[] = SIDES.flatMap((side) =>
   SHELF.deckTops.flatMap((top, i) => {
@@ -94,10 +105,10 @@ export const SHELF_SURFACES: StockSurface[] = SIDES.flatMap((side) =>
     return BAY_CENTER_X.map(
       (x): StockSurface => ({
         kind: STOCK_KIND.Packaged,
-        // The far side is turned around, so its bays run the other way.
-        center: [side.rotationY === 0 ? x : -x, top, side.z],
+        // The far side is turned around, so its bays run the other way and its front is -Z.
+        center: [side.rotationY === 0 ? x : -x, top, side.z + (side.rotationY === 0 ? 1 : -1) * STOCK_CENTER_Z],
         width: BAY_INNER - 0.02,
-        depth: D - 0.03,
+        depth: STOCK_DEPTH,
         maxHeight,
         rotationY: side.rotationY,
         slots: 2,

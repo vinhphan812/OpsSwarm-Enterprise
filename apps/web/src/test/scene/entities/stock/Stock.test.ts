@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import { toSceneStore } from "@/scene/layout";
 import { buildStock } from "@/scene/entities/stock/Stock";
+import { productLook, stockItemFor } from "@/scene/entities/stock/catalog";
+import { STOCK_KIND } from "@/enums/scene.enum";
 
 function positions(batches: ReturnType<typeof buildStock>) {
   return Object.values(batches)
@@ -76,5 +78,25 @@ describe("buildStock", () => {
       expect(product.slotId.startsWith(`${product.shelfId}-S`)).toBe(true);
     }
     expect(new Set(storeFixture.products.map((p) => p.slotId)).size).toBe(storeFixture.products.length);
+  });
+});
+
+describe("productLook", () => {
+  const item = stockItemFor(STOCK_KIND.Packaged);
+  const ids = Array.from({ length: 50 }, (_, i) => `P${String(i + 1).padStart(3, "0")}`);
+
+  it("is stable per product, from the item's palette, and never taller than the item", () => {
+    for (const id of ids) {
+      const look = productLook(item, id);
+      expect(productLook(item, id)).toEqual(look);
+      expect(item.palette).toContain(look.color);
+      expect(look.height).toBeGreaterThanOrEqual(item.minHeight);
+      expect(look.height).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("spreads products over the palette, so neighbours read apart", () => {
+    const colors = new Set(ids.map((id) => productLook(item, id).color));
+    expect(colors.size).toBeGreaterThanOrEqual(item.palette.length - 2);
   });
 });

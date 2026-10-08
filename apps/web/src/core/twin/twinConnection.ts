@@ -1,5 +1,5 @@
 import type { TwinSource } from "@/core/api/sources/TwinSource";
-import type { StoreResponse } from "@/core/api/types";
+import type { StoreResponse } from "@/types/twin.type";
 import { parseStoreState, type ProductIssue } from "@/core/api/validate";
 import { isNewerVersion } from "@/core/api/version";
 import { TWIN_STATUS, type TwinStatus } from "@/enums/twin.enum";

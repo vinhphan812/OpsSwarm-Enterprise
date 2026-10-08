@@ -1,8 +1,7 @@
-import type { StoreResponse } from "@/core/api/types";
+import type { ProductFixture, StoreFixture } from "@/types/scene.type";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { ProductIssue } from "@/core/api/validate";
 import { storeFixture } from "@/fixtures/storeFixture";
-import { toProductFixtures } from "./productView";
-import type { ProductFixture, StoreFixture } from "./types";
 
 /**
  * Shelf, slot, and equipment positions. The twin state has no geometry yet, so the
@@ -43,6 +42,19 @@ function placementProblem(
   const owner = taken.get(slotId);
   if (owner) return { sku, code: "slotTaken", values: { slotId, owner } };
   return null;
+}
+
+/** API product records as scene products. Placement, facings, and stock come from state. */
+function toProductFixtures(products: ProductInventory[]): ProductFixture[] {
+  return products.map((product) => ({
+    productId: product.sku,
+    shelfId: product.shelf_id,
+    slotId: product.slot_id,
+    facings: product.facings,
+    shelfQuantity: product.shelf_quantity,
+    backroomQuantity: product.backroom_quantity,
+    version: product.version,
+  }));
 }
 
 /** Maps twin state onto the fixed layout. Placement, facings, and stock come from state. */

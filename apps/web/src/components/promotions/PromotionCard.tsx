@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import type { Promotion } from "@/core/api/types";
+import type { Promotion } from "@/types/promotion.type";
 import { PROMOTION_KIND, PROMOTION_STATUS } from "@/enums/commerce.enum";
 import { useFormat } from "@/hooks/format.hook";
 

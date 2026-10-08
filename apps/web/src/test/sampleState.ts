@@ -1,5 +1,5 @@
 import fixture from "../../../../data/schemas/store-state.example.json";
-import type { ProductInventory, StoreResponse } from "@/core/api/types";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { contextRevision } from "@/core/api/version";
 
 /**

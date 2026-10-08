@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { ActivityEntry } from "@/core/api/types";
+import type { ActivityEntry } from "@/types/agent.type";
 import { useRunStore } from "@/state/run.store";
 
 const trigger: ActivityEntry = {

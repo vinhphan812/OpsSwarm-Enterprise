@@ -1,4 +1,4 @@
-import type { StoreResponse } from "@/core/api/types";
+import type { StoreResponse } from "@/types/twin.type";
 
 /**
  * Read-only feed of Live Twin state. The web app never writes through a source.

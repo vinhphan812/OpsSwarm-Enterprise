@@ -14,11 +14,10 @@ import {
 } from "three";
 import { useUiStore } from "@/state/ui.store";
 import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
-import type { SlotFixture, StoreFixture } from "@/scene/types";
-import { entityMatrix, type Tuple3 } from "@/scene/utils/transform";
+import type { SlotFixture, StockSurface, StoreFixture, Tuple3 } from "@/types/scene.type";
+import { entityMatrix } from "@/scene/utils/transform";
 import { STOCK_SHAPE, type StockShape } from "@/enums/stock.enum";
-import { stockItemFor, type StockItem } from "./catalog";
-import type { StockSurface } from "./surface";
+import { idFraction, productLook, stockItemFor, type StockItem } from "./catalog";
 import { surfaceMatrix, surfacesOf } from "./surfaces";
 
 const GEOMETRY: Record<StockShape, BufferGeometry> = {
@@ -33,6 +32,10 @@ const STOCK_MATERIAL = new MeshStandardMaterial({ color: "#ffffff", roughness: 0
 
 const FACING_GAP = 0.008;
 const ROW_GAP = 0.005;
+/** Items are drawn a little under their footprint, so neighbours show a seam between them. */
+const ITEM_INSET = 0.92;
+/** Brightness spread between items of one product, so a facing does not read as flat plastic. */
+const SHADE_SPREAD = 0.12;
 
 type Placed = { matrix: Matrix4; color: Color; productId: string };
 type Batches = Record<StockShape, Placed[]>;
@@ -122,20 +125,28 @@ export function buildStock(store: StoreFixture): Batches {
     if (!holder || !slot || !surface) continue;
 
     const item = stockItemFor(surface.kind);
-    const color = new Color(item.color);
+    const look = productLook(item, product.productId);
+    const base = new Color(look.color);
+    const [w, h, d] = item.size;
+    const height = h * look.height;
+    const inset = item.shape === STOCK_SHAPE.Sphere ? 1 : ITEM_INSET;
+    let index = 0;
     const toWorld = new Matrix4().multiplyMatrices(holder.matrix, surfaceMatrix(surface));
     let stock = product.shelfQuantity;
     const emit: Emit = ([x, y, z]) => {
       if (stock <= 0) return;
       stock -= 1;
+      index += 1;
+      // Scaling y with the height keeps a shorter product standing on its surface and its stack.
       scratch.local.compose(
-        scratch.pos.set(x, y, z),
+        scratch.pos.set(x, y * look.height, z),
         scratch.quat.identity(),
-        scratch.scale.set(...item.size),
+        scratch.scale.set(w * inset, height, d * inset),
       );
+      const shade = 1 + (idFraction(product.productId, index + 1) - 0.5) * SHADE_SPREAD;
       batches[item.shape].push({
         matrix: new Matrix4().multiplyMatrices(toWorld, scratch.local),
-        color,
+        color: base.clone().multiplyScalar(shade),
         productId: product.productId,
       });
     };

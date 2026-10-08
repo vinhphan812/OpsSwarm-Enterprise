@@ -5,7 +5,7 @@ import { GLASS_DOOR_COOLER_SURFACES } from "@/scene/entities/equipment/GlassDoor
 import { OPEN_CHILLER_SURFACES } from "@/scene/entities/equipment/OpenChiller";
 import { PRODUCE_RACK_SURFACES } from "@/scene/entities/equipment/ProduceRack";
 import { SHELF_SURFACES } from "@/scene/entities/Shelf";
-import type { StockSurface } from "./surface";
+import type { StockSurface } from "@/types/scene.type";
 
 /** Display surfaces of every fixture kind that holds products. */
 const SURFACES: Partial<Record<FixtureKind, StockSurface[]>> = {

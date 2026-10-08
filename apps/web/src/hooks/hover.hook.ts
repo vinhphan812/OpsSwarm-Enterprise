@@ -21,6 +21,9 @@ export function useHover() {
     onPointerOver: (event: ThreeEvent<PointerEvent>) => {
       // Only the front-most entity under the pointer is hovered.
       event.stopPropagation();
+      // Not while dragging the camera: labels popping in and out as the pointer sweeps
+      // across shelves re-render whole fixtures mid-drag and stutter the orbit.
+      if (event.buttons !== 0) return;
       setHovered(true);
     },
     onPointerOut: () => setHovered(false),

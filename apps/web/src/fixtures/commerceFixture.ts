@@ -1,4 +1,5 @@
-import type { PromotionsSummary, RevenueSummary, RevenueTotals } from "@/core/api/types";
+import type { PromotionsSummary } from "@/types/promotion.type";
+import type { RevenueSummary, RevenueTotals } from "@/types/revenue.type";
 import { BUCKET_SIZE, REVENUE_PERIOD, type RevenuePeriod } from "@/enums/commerce.enum";
 import { STOCK_KIND } from "@/enums/scene.enum";
 

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entity";
-import type { SlotFixture } from "@/scene/types";
+import type { SlotFixture } from "@/types/scene.type";
 import { toTuple } from "@/scene/utils/transform";
 
 type SlotProps = {

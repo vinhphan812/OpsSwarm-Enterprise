@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { RevenueSummary } from "@/core/api/types";
+import type { RevenueSummary } from "@/types/revenue.type";
 import { BUCKET_SIZE } from "@/enums/commerce.enum";
 import { useFormat } from "@/hooks/format.hook";
 
