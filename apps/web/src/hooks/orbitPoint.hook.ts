@@ -1,7 +1,7 @@
 import type { CameraControls } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { useEffect } from "react";
-import { Box3, Raycaster, Vector2, Vector3, type Intersection, type Object3D } from "three";
+import { Box3, MathUtils, Raycaster, Vector2, Vector3, type Intersection, type Object3D } from "three";
 import { PAN_BOUNDS } from "@/constants/camera.constant";
 
 const ORBIT_BOUNDS = new Box3(new Vector3(...PAN_BOUNDS.min), new Vector3(...PAN_BOUNDS.max));
@@ -30,6 +30,7 @@ export function useOrbitAroundPointer() {
     if (!controls) return;
     const raycaster = new Raycaster();
     const pointer = new Vector2();
+    const orbitPoint = new Vector3();
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.button !== 0 || !event.isPrimary) return;
@@ -43,9 +44,15 @@ export function useOrbitAroundPointer() {
         .intersectObjects(scene.children, true)
         .find((candidate: Intersection) => isShown(candidate.object));
       if (!hit || !ORBIT_BOUNDS.containsPoint(hit.point)) return;
+      // Keep the orbit point on the cursor ray but within the zoom limits; otherwise
+      // camera-controls pushes the camera back to minDistance (or pulls it in to
+      // maxDistance) and every click looks like a zoom step.
+      const distance = MathUtils.clamp(hit.distance, controls.minDistance, controls.maxDistance);
+      orbitPoint.copy(raycaster.ray.direction).multiplyScalar(distance).add(raycaster.ray.origin);
+      if (!ORBIT_BOUNDS.containsPoint(orbitPoint)) return;
       // Settle any running transition first; setOrbitPoint must not run mid-animation.
       controls.stop();
-      controls.setOrbitPoint(hit.point.x, hit.point.y, hit.point.z);
+      controls.setOrbitPoint(orbitPoint.x, orbitPoint.y, orbitPoint.z);
     };
 
     // Capture, so the orbit point is set before camera-controls starts the drag.
