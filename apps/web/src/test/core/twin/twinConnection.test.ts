@@ -105,6 +105,35 @@ describe("connectTwin", () => {
     expect(events.onStatus).not.toHaveBeenCalledWith("error", expect.anything());
   });
 
+  it("reports an outage once and clears it when a state arrives again", async () => {
+    const twin = controlledSource();
+    const events = { ...recorder(), onFeedRestored: vi.fn() };
+    connectTwin(twin.source, events);
+    twin.resolveSnapshot(at(1));
+    await flush();
+    twin.fail(new Error("down"));
+    twin.fail(new Error("still down"));
+    expect(events.onFeedError).toHaveBeenCalledTimes(1);
+
+    twin.push(at(1));
+    expect(events.onFeedRestored).toHaveBeenCalledTimes(1);
+    expect(events.onState).toHaveBeenCalledTimes(1);
+  });
+
+  it("becomes ready when a later read succeeds after the first load failed", async () => {
+    const twin = controlledSource();
+    const events = recorder();
+    connectTwin(twin.source, events);
+    twin.rejectSnapshot(new Error("offline"));
+    await flush();
+    twin.fail(new Error("offline"));
+    expect(events.onStatus.mock.calls.filter(([status]) => status === "error")).toHaveLength(1);
+
+    twin.push(at(1));
+    expect(events.onState).toHaveBeenCalledWith(at(1), []);
+    expect(events.onStatus).toHaveBeenLastCalledWith("ready");
+  });
+
   it("fails the load when the first payload is not a store state", async () => {
     const twin = controlledSource();
     const events = recorder();
