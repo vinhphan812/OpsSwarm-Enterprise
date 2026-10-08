@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { useMemo } from "react";
 import { Box3, Vector3 } from "three";
 import { useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
 import { groupBy } from "@/core/utils/collections";
 import {
   CAMERA_DRAG_SMOOTH_TIME,
@@ -88,6 +89,8 @@ export function LiveStoreContents({ showLabels = true }: { showLabels?: boolean 
   );
 }
 
+const clearSelection = () => useUiStore.getState().select(null);
+
 const PAN_BOX = new Box3(new Vector3(...PAN_BOUNDS.min), new Vector3(...PAN_BOUNDS.max));
 
 export function StoreScene() {
@@ -95,6 +98,7 @@ export function StoreScene() {
     <Canvas
       shadows="soft"
       camera={{ position: INITIAL_CAMERA_POSITION, fov: CAMERA_FOV }}
+      onPointerMissed={clearSelection}
     >
       <color attach="background" args={[SKY_COLOR]} />
       <fog attach="fog" args={[SKY_COLOR, 40, 90]} />

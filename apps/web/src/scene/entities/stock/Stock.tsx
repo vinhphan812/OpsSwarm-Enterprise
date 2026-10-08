@@ -1,3 +1,4 @@
+import type { ThreeEvent } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import {
   BoxGeometry,
@@ -11,6 +12,7 @@ import {
   type BufferGeometry,
   type InstancedMesh,
 } from "three";
+import { useUiStore } from "@/state/ui.store";
 import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
 import type { SlotFixture, StoreFixture } from "@/scene/types";
 import { entityMatrix, type Tuple3 } from "@/scene/utils/transform";
@@ -150,6 +152,14 @@ export function buildStock(store: StoreFixture): Batches {
 function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
   const ref = useRef<InstancedMesh>(null);
 
+  // Products are instances, not objects, so a click is mapped back through the instance id.
+  const onClick = (event: ThreeEvent<MouseEvent>) => {
+    const placed = event.instanceId === undefined ? undefined : items[event.instanceId];
+    if (!placed) return;
+    event.stopPropagation();
+    useUiStore.getState().select(placed.productId);
+  };
+
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
@@ -167,13 +177,14 @@ function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
     <instancedMesh
       ref={ref}
       args={[GEOMETRY[shape], STOCK_MATERIAL, items.length]}
+      onClick={onClick}
       castShadow
       receiveShadow
     />
   );
 }
 
-/** All products in the store as one instanced mesh per primitive shape. */
+/** All products in the store as one instanced mesh per primitive shape. Click an item to select its product. */
 export function Stock({ store }: { store: StoreFixture }) {
   const batches = useMemo(() => buildStock(store), [store]);
 
