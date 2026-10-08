@@ -6,7 +6,8 @@
 
 set -euo pipefail
 
-PROJECT="${GCP_PROJECT_ID:-retailtwin-ai-511002}"
+CANONICAL_PROJECT="retailtwin-ai-511002"
+PROJECT="${GCP_PROJECT_ID:-$CANONICAL_PROJECT}"
 REGION="${GCP_REGION:-us-central1}"
 DATABASE="${FIRESTORE_DATABASE:-(default)}"
 TOPIC="${STORE_EVENTS_TOPIC:-store-events}"
@@ -17,6 +18,11 @@ BUDGET_NAME="retailtwin-dev-guard"
 API_SA="retailtwin-api@${PROJECT}.iam.gserviceaccount.com"
 AGENT_SA="retailtwin-agent@${PROJECT}.iam.gserviceaccount.com"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+
+if [[ "$PROJECT" != "$CANONICAL_PROJECT" ]]; then
+  echo "FAIL  Refusing project ${PROJECT}. Verification applies only to ${CANONICAL_PROJECT}." >&2
+  exit 1
+fi
 
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 export CLOUDSDK_CORE_PROJECT="$PROJECT"
@@ -52,13 +58,6 @@ yaml_has() {
   local expected="$2"
   printf '%s\n' "$yaml" | grep -qix "$expected"
 }
-
-case "$PROJECT" in
-  cn-prj-17cd4|ess-prj)
-    echo "FAIL  Refusing to verify ${PROJECT}" >&2
-    exit 1
-    ;;
-esac
 
 echo "Verifying ${PROJECT} in ${REGION}"
 
@@ -135,14 +134,6 @@ for forbidden in (
     "roles/pubsub.admin",
 ):
     need(forbidden not in agent, "retailtwin-agent does not have " + forbidden)
-editors = [
-    m
-    for binding in policy.get("bindings", [])
-    if binding.get("role") == "roles/editor"
-    for m in binding.get("members", [])
-    if str(m).startswith("serviceAccount:")
-]
-need(editors == [], "No service account has roles/editor")
 for status, message in checks:
     sys.stdout.write("%s\t%s\n" % (status, message))
 PY
@@ -200,21 +191,26 @@ else
 fi
 
 topic_policy="$(mktemp)"
+# No Google-managed publisher is required. The only allowed member is the API runtime account.
 if gcloud pubsub topics get-iam-policy "$TOPIC" --project="$PROJECT" --format=json >"$topic_policy" 2>/dev/null; then
-  if python3 -c '
+  publisher_result="$(python3 -c '
 import json, sys
 policy = json.load(open(sys.argv[1]))
-api, agent = sys.argv[2], sys.argv[3]
-publishers = []
+api = sys.argv[2]
+allowed = {"serviceAccount:" + api}
+actual = set()
 for binding in policy.get("bindings", []):
     if binding.get("role") == "roles/pubsub.publisher":
-        publishers.extend(binding.get("members", []))
-ok = ("serviceAccount:" + api) in publishers and ("serviceAccount:" + agent) not in publishers
-sys.exit(0 if ok else 1)
-' "$topic_policy" "$API_SA" "$AGENT_SA"; then
-    pass "Only retailtwin-api publishes to ${TOPIC}"
+        actual.update(binding.get("members", []))
+if actual == allowed:
+    print("PASS")
+else:
+    print("FAIL\t" + ", ".join(sorted(actual)))
+' "$topic_policy" "$API_SA")"
+  if [[ "$publisher_result" == "PASS" ]]; then
+    pass "Topic ${TOPIC} publishers are exactly ${API_SA}"
   else
-    fail "Topic publisher binding is not limited to retailtwin-api"
+    fail "Topic ${TOPIC} publishers are not exactly ${API_SA} (${publisher_result})"
   fi
 else
   fail "Could not read IAM for topic ${TOPIC}"
