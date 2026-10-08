@@ -1,42 +1,18 @@
-import { AgentActivityOpenButton, AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
-import { LensSwitcher } from "@/components/layout/LensSwitcher";
-import { ProductInspector } from "@/components/twin/ProductInspector";
-import { TwinIssuesNotice } from "@/components/twin/TwinIssuesNotice";
-import { TwinStatusOverlay } from "@/components/twin/TwinStatusOverlay";
-import { pickSource } from "@/core/twin/devSources";
-import { useProductParam } from "@/hooks/productParam.hook";
-import { useTwinSource } from "@/hooks/twinSource.hook";
-import { StoreScene } from "@/scene/StoreScene";
+import { Route, Routes } from "react-router";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { Providers } from "./Providers";
+import { TwinPage } from "@/pages/TwinPage";
 import "./App.css";
-
-const source = pickSource();
-
-function TwinView() {
-  useTwinSource(source);
-  useProductParam();
-
-  return (
-    <div className="app">
-      <main className="viewport relative">
-        <StoreScene />
-        <TwinStatusOverlay />
-        <div className="lens-switcher">
-          <LensSwitcher />
-        </div>
-        <AgentActivityOpenButton />
-        <ProductInspector />
-        <TwinIssuesNotice />
-      </main>
-      <AgentActivityPanel />
-    </div>
-  );
-}
 
 export function App() {
   return (
     <Providers>
-      <TwinView />
+      <div className="app">
+        <Routes>
+          <Route path="/" element={<TwinPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </div>
     </Providers>
   );
 }
