@@ -26,7 +26,7 @@ import { Walls } from "./entities/Walls";
 import { SKY_COLOR } from "@/constants/scene.constant";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entities/entity";
-import { sceneOf } from "./layout";
+import { sceneOf, storeLayout } from "./layout";
 import "./scene.css";
 import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 
@@ -81,23 +81,19 @@ export function StoreContents({
   );
 }
 
-/** The live twin state on the static layout; the empty room until the first state. */
+/**
+ * The live twin state on the static layout. Until the first state arrives, or when it
+ * cannot be loaded, the layout is drawn with empty shelves.
+ */
 export function LiveStoreContents({
   showLabels = true,
 }: {
   showLabels?: boolean;
 }) {
   const live = useTwinStore((state) => state.live);
-  const store = useMemo(() => (live ? sceneOf(live).store : null), [live]);
+  const store = useMemo(() => (live ? sceneOf(live).store : storeLayout), [live]);
 
-  return store ? (
-    <StoreContents store={store} showLabels={showLabels} />
-  ) : (
-    <>
-      <Floor />
-      <Walls />
-    </>
-  );
+  return <StoreContents store={store} showLabels={showLabels} />;
 }
 
 const clearSelection = () => useUiStore.getState().select(null);
