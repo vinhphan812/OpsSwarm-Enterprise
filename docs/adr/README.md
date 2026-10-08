@@ -35,4 +35,5 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0001](0001-record-architecture-decisions-in-pull-requests.md) | Record architecture decisions in pull requests | Accepted |
 | [0002](0002-render-store-entities-as-named-primitives.md) | Render store entities as named primitives | Accepted |
 | [0003](0003-serve-store-reads-through-the-api.md) | Serve store reads through the API | Accepted |
+| [0004](0004-keep-the-cloud-foundation-on-free-tier.md) | Keep the cloud foundation on the free tier | Accepted |
 
