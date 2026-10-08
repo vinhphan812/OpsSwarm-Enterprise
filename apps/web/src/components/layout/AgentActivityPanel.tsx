@@ -1,12 +1,11 @@
 import { Button } from "@heroui/react";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
-import { useRef, type KeyboardEvent, type PointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIcon, PanelToggleIcon } from "@/components/icons";
 import { PromotionsPanel } from "@/components/promotions/PromotionsPanel";
 import { RevenuePanel } from "@/components/revenue/RevenuePanel";
 import { StoreStatus } from "@/components/status/StoreStatus";
-import { PANEL_WIDTH, PANEL_WIDTH_STEP } from "@/constants/app.constant";
+import { PANEL_WIDTH } from "@/constants/app.constant";
 import { LENS } from "@/enums/ui.enum";
 import { usePanelStore } from "@/state/panel.store";
 import { useRunStore } from "@/state/run.store";
@@ -22,60 +21,6 @@ const LENS_SWAP: Transition = { duration: 0.18, ease: "easeOut" };
 /** HH:MM:SS of an ISO timestamp, in the viewer's time zone. */
 function clock(ts: string) {
   return new Date(ts).toLocaleTimeString([], { hour12: false });
-}
-
-/**
- * Drag handle on the panel's left edge. Dragging left widens the panel; arrow keys step
- * it, and a double click restores the default width.
- */
-function ResizeHandle() {
-  const { t } = useTranslation();
-  const width = usePanelStore((state) => state.width);
-  const setWidth = usePanelStore((state) => state.setWidth);
-  const drag = useRef<{ x: number; width: number } | null>(null);
-
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { x: event.clientX, width };
-    document.body.classList.add("is-resizing");
-  };
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (!drag.current) return;
-    setWidth(drag.current.width + (drag.current.x - event.clientX));
-  };
-  const onPointerUp = () => {
-    drag.current = null;
-    document.body.classList.remove("is-resizing");
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = { ArrowLeft: PANEL_WIDTH_STEP, ArrowRight: -PANEL_WIDTH_STEP }[
-      event.key
-    ];
-    if (step === undefined) return;
-    event.preventDefault();
-    setWidth(width + step);
-  };
-
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={t("activity.resize")}
-      aria-valuemin={PANEL_WIDTH.min}
-      aria-valuemax={PANEL_WIDTH.max}
-      aria-valuenow={width}
-      tabIndex={0}
-      title={t("activity.resize")}
-      className="panel-resizer"
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerUp}
-      onKeyDown={onKeyDown}
-      onDoubleClick={() => setWidth(PANEL_WIDTH.default)}
-    />
-  );
 }
 
 /** Floating button over the 3D view that brings the closed panel back. */
@@ -188,7 +133,6 @@ const LENS_BODY = {
 export function AgentActivityPanel() {
   const { t } = useTranslation();
   const open = usePanelStore((state) => state.open);
-  const width = usePanelStore((state) => state.width);
   const setOpen = usePanelStore((state) => state.setOpen);
   const lens = useUiStore((state) => state.lens);
   const { title, note, Icon } = LENS_VIEW[lens];
@@ -202,13 +146,12 @@ export function AgentActivityPanel() {
           className="agent-activity"
           data-testid="agent-activity"
           data-lens={lens}
-          style={{ width }}
+          style={{ width: PANEL_WIDTH }}
           initial={PANEL_HIDDEN}
           animate={{ x: 0, opacity: 1 }}
           exit={PANEL_HIDDEN}
           transition={PANEL_SLIDE}
         >
-          <ResizeHandle />
           <div className="agent-activity-inner">
             <header className="agent-activity-header">
               <div className="agent-activity-titlebar">

@@ -95,7 +95,6 @@ export const en: Messages = {
     empty: "No agent activity yet.",
     timeline: "Agent activity timeline",
     section: "Activity",
-    resize: "Drag to resize the panel",
   },
   panel: {
     close: "Close the {{title}} panel",

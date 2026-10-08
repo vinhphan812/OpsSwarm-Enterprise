@@ -95,7 +95,6 @@ export const vi = {
     empty: "Chưa có hoạt động nào của agent.",
     timeline: "Dòng thời gian hoạt động của agent",
     section: "Hoạt động",
-    resize: "Kéo để đổi độ rộng bảng",
   },
   panel: {
     close: "Đóng bảng {{title}}",
