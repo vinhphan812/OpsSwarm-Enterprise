@@ -6,6 +6,8 @@ import { notify } from "@/core/notify";
 import type { HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { StoreStatus } from "@/components/status/StoreStatus";
+import { TWIN_STATUS } from "@/enums/twin.enum";
+import { useTwinStore } from "@/state/twin.store";
 
 vi.mock("@/core/notify", () => ({
   notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
@@ -45,6 +47,8 @@ function client(overrides: Partial<RetailTwinClient> = {}): RetailTwinClient {
 }
 
 beforeEach(() => {
+  // The store comes from the scene's live twin, which polls GET /store.
+  useTwinStore.setState({ live: store, status: TWIN_STATUS.Ready });
   vi.stubGlobal("fetch", vi.fn(async () => {
     throw new TypeError("offline");
   }));
@@ -56,7 +60,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-test("shows the store returned by the API", async () => {
+test("shows the live store and the API health", async () => {
   render(<StoreStatus client={client()} />);
 
   expect(await screen.findByRole("heading", { name: "store-001" })).toBeTruthy();
@@ -70,10 +74,8 @@ test("keeps the page up when the API cannot be reached", async () => {
     health: vi.fn(async () => {
       throw new ApiError(0, "network_error", "The API is unreachable.");
     }),
-    store: vi.fn(async () => {
-      throw new ApiError(0, "network_error", "The API is unreachable.");
-    }),
   });
+  useTwinStore.setState({ live: null, status: TWIN_STATUS.Error });
 
   render(<StoreStatus client={failing} />);
 
@@ -114,4 +116,38 @@ test("asks for a SKU before calling the API", async () => {
 
   expect(notify.warning).toHaveBeenCalledWith("Enter a SKU.");
   expect(api.inventory).not.toHaveBeenCalled();
+});
+
+test("reads health once, however often the panel reopens, and never fetches the store itself", async () => {
+  const api = client();
+  const first = render(<StoreStatus client={api} />);
+  await screen.findByText("API ok · test · store-001");
+  first.unmount();
+
+  render(<StoreStatus client={api} />);
+  expect(screen.getByText("API ok · test · store-001")).toBeTruthy();
+  expect(api.health).toHaveBeenCalledTimes(1);
+  expect(api.store).not.toHaveBeenCalled();
+});
+
+test("retries health on the next open after a failed read", async () => {
+  const api = client({
+    health: vi
+      .fn<RetailTwinClient["health"]>()
+      .mockRejectedValueOnce(new ApiError(0, "network_error", "The API is unreachable."))
+      .mockResolvedValue({
+        status: "ok",
+        service: "retailtwin-api",
+        environment: "test",
+        store_id: "store-001",
+        fixture_loaded: true,
+      }),
+  });
+  const first = render(<StoreStatus client={api} />);
+  await waitFor(() => expect(notify.error).toHaveBeenCalledTimes(1));
+  first.unmount();
+
+  render(<StoreStatus client={api} />);
+  expect(await screen.findByText("API ok · test · store-001")).toBeTruthy();
+  expect(api.health).toHaveBeenCalledTimes(2);
 });
