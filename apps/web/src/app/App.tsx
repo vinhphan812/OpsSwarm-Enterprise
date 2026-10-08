@@ -1,5 +1,5 @@
-import { AgentActivityPanel } from "./layout/AgentActivityPanel";
-import { StoreScene } from "./scene/StoreScene";
+import { AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
+import { StoreScene } from "@/scene/StoreScene";
 import "./App.css";
 
 export function App() {

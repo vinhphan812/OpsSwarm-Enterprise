@@ -8,11 +8,11 @@ import {
   MAX_CAMERA_DISTANCE,
   ORBIT_TARGET,
   cameraPositionForAspect,
-} from "./cameraFrame";
-import { Floor } from "./Floor";
-import { Shelf } from "./Shelf";
-import { entityProps } from "./entity";
-import { storeFixture } from "./storeFixture";
+} from "@/scene/camera/cameraFrame";
+import { Floor } from "@/scene/entities/Floor";
+import { Shelf } from "@/scene/entities/Shelf";
+import { entityProps } from "@/scene/entities/entity";
+import { storeFixture } from "@/fixtures/storeFixture";
 import type { StoreFixture } from "./types";
 
 const INITIAL_CAMERA_POSITION: [number, number, number] = [

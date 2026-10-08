@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { App } from "./App";
+import { App } from "@/app/App";
 
-vi.mock("./scene/StoreScene", () => ({
+vi.mock("@/scene/StoreScene", () => ({
   StoreScene: () => null,
 }));
 

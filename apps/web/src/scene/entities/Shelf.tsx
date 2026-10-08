@@ -1,9 +1,9 @@
 import { Html } from "@react-three/drei";
-import { MIDDLE_DECK_TOP, SHELF } from "./dimensions";
+import { MIDDLE_DECK_TOP, SHELF } from "@/constants/dimensions.constant";
 import { entityProps } from "./entity";
 import { Product } from "./Product";
 import { Slot } from "./Slot";
-import type { ProductFixture, ShelfFixture } from "./types";
+import type { ProductFixture, ShelfFixture } from "@/scene/types";
 
 const DECK_TOPS = [0.08, MIDDLE_DECK_TOP, 1.68] as const;
 

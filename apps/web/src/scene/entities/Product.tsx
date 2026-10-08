@@ -1,6 +1,6 @@
 import { Html } from "@react-three/drei";
 import { entityProps } from "./entity";
-import type { ProductFixture } from "./types";
+import type { ProductFixture } from "@/scene/types";
 
 const FACING_W = 0.16;
 const FACING_H = 0.22;

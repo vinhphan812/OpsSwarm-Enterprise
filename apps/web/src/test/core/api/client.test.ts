@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
-import { ApiError, createClient } from "./client";
-import type { HealthResponse, ProductInventory, StoreResponse } from "./types";
+import { ApiError, createClient } from "@/core/api/client";
+import type { HealthResponse, ProductInventory, StoreResponse } from "@/core/api/types";
 
 const health: HealthResponse = {
   status: "ok",

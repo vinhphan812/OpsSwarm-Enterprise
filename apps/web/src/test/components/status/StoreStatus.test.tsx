@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { ApiError } from "../api/client";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "../api/types";
-import { StoreStatus } from "./StoreStatus";
+import { ApiError } from "@/core/api/client";
+import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
+import { StoreStatus } from "@/components/status/StoreStatus";
 
 const product: ProductInventory = {
   store_id: "store-001",
