@@ -1,145 +1,64 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Button } from "@heroui/react";
+import { useTranslation } from "react-i18next";
 import { defaultClient } from "@/core/api/client";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
+import type { ProductInventory, RetailTwinClient } from "@/core/api/types";
+import { useStoreStatus } from "@/hooks/storeStatus.hook";
 import "./StoreStatus.css";
+
+/** Columns of the product table, in order. */
+const COLUMNS = [
+  { label: "storeStatus.sku", value: (item: ProductInventory) => item.sku },
+  { label: "storeStatus.shelf", value: (item: ProductInventory) => item.shelf_id },
+  { label: "storeStatus.slot", value: (item: ProductInventory) => item.slot_id },
+  { label: "storeStatus.facings", value: (item: ProductInventory) => item.facings },
+  { label: "storeStatus.onShelf", value: (item: ProductInventory) => item.shelf_quantity },
+  { label: "storeStatus.backroom", value: (item: ProductInventory) => item.backroom_quantity },
+] as const;
 
 type StoreStatusProps = {
   client?: RetailTwinClient;
 };
 
 export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [store, setStore] = useState<StoreResponse | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [sku, setSku] = useState("");
-  const [inventory, setInventory] = useState<ProductInventory | null>(null);
-  const [inventoryError, setInventoryError] = useState<string | null>(null);
-  const [lookupPending, setLookupPending] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      setLoading(true);
-      const [healthResult, storeResult] = await Promise.allSettled([client.health(), client.store()]);
-      if (cancelled) return;
-
-      if (healthResult.status === "fulfilled") {
-        setHealth(healthResult.value);
-      } else {
-        setHealth(null);
-      }
-      if (storeResult.status === "fulfilled") {
-        setStore(storeResult.value);
-      } else {
-        setStore(null);
-      }
-
-      let failure: unknown = null;
-      if (healthResult.status === "rejected") {
-        failure = healthResult.reason;
-      } else if (storeResult.status === "rejected") {
-        failure = storeResult.reason;
-      }
-      if (failure instanceof Error) {
-        setLoadError(failure.message);
-      } else if (failure) {
-        setLoadError("The API request failed.");
-      } else {
-        setLoadError(null);
-      }
-      setLoading(false);
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
-
-  async function onLookup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const query = sku.trim();
-    if (!query) {
-      setInventory(null);
-      setInventoryError("Enter a SKU.");
-      return;
-    }
-    setLookupPending(true);
-    setInventoryError(null);
-    try {
-      setInventory(await client.inventory(query));
-    } catch (error) {
-      setInventory(null);
-      setInventoryError(error instanceof Error ? error.message : "Inventory lookup failed.");
-    } finally {
-      setLookupPending(false);
-    }
-  }
+  const { t } = useTranslation();
+  const { health, store, loading, sku, setSku, inventory, lookupPending, onLookup } = useStoreStatus(client);
 
   return (
     <section className="store-status">
-      <h2>Store API</h2>
-      <p className="store-status-note">Reads come from the API. This column does not change live inventory.</p>
+      <h2>{t("storeStatus.title")}</h2>
+      <p className="store-status-note">{t("storeStatus.note")}</p>
 
-      {loading ? <p>Loading store…</p> : null}
-      {loadError ? (
-        <p role="alert" className="store-status-error">
-          {loadError}
-        </p>
-      ) : null}
+      {loading ? <p className="store-status-muted">{t("storeStatus.loading")}</p> : null}
       {health ? (
-        <p>
-          API {health.status} · {health.environment} · {health.store_id}
+        <p className="store-status-health">
+          {t("storeStatus.health", { status: health.status, environment: health.environment, storeId: health.store_id })}
         </p>
       ) : null}
 
       {store ? (
         <>
-          <h2>{store.store_id}</h2>
-          <p>
-            Context {store.context_version} · version {store.version}
-          </p>
+          <h2 className="store-status-store">{store.store_id}</h2>
+          <p className="store-status-muted">{t("storeStatus.context", { contextVersion: store.context_version, version: store.version })}</p>
           <div className="store-status-table">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">SKU</th>
-                  <th scope="col">Shelf</th>
-                  <th scope="col">Slot</th>
-                  <th scope="col">Facings</th>
-                  <th scope="col">On shelf</th>
-                  <th scope="col">Backroom</th>
+                  {COLUMNS.map((column) => (
+                    <th key={column.label} scope="col">
+                      {t(column.label)}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {store.products.map((item) => (
                   <tr key={item.sku}>
-                    <td>
-                      <span className="store-status-label">SKU</span>
-                      {item.sku}
-                    </td>
-                    <td>
-                      <span className="store-status-label">Shelf</span>
-                      {item.shelf_id}
-                    </td>
-                    <td>
-                      <span className="store-status-label">Slot</span>
-                      {item.slot_id}
-                    </td>
-                    <td>
-                      <span className="store-status-label">Facings</span>
-                      {item.facings}
-                    </td>
-                    <td>
-                      <span className="store-status-label">On shelf</span>
-                      {item.shelf_quantity}
-                    </td>
-                    <td>
-                      <span className="store-status-label">Backroom</span>
-                      {item.backroom_quantity}
-                    </td>
+                    {COLUMNS.map((column) => (
+                      <td key={column.label}>
+                        <span className="store-status-label">{t(column.label)}</span>
+                        {column.value(item)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>
@@ -149,27 +68,36 @@ export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
       ) : null}
 
       <form className="store-status-lookup" onSubmit={onLookup}>
-        <label htmlFor="sku">SKU</label>
-        <input
-          id="sku"
-          name="sku"
-          value={sku}
-          onChange={(event) => setSku(event.target.value)}
-          autoComplete="off"
-        />
-        <button type="submit" disabled={lookupPending}>
-          {lookupPending ? "Looking up…" : "Look up inventory"}
-        </button>
+        <label htmlFor="sku">{t("storeStatus.sku")}</label>
+        <div className="store-status-lookup-row">
+          <input
+            id="sku"
+            name="sku"
+            value={sku}
+            placeholder="P017"
+            onChange={(event) => setSku(event.target.value)}
+            autoComplete="off"
+          />
+          <Button
+            type="submit"
+            radius="sm"
+            size="sm"
+            isDisabled={lookupPending}
+            className="h-9 shrink-0 cursor-pointer bg-accent px-3 text-[13px] font-semibold text-canvas data-[hover=true]:bg-accent-hover data-[disabled=true]:cursor-not-allowed"
+          >
+            {t(lookupPending ? "storeStatus.lookingUp" : "storeStatus.lookup")}
+          </Button>
+        </div>
       </form>
-      {inventoryError ? (
-        <p role="alert" className="store-status-error">
-          {inventoryError}
-        </p>
-      ) : null}
       {inventory ? (
-        <p>
-          {inventory.sku} on {inventory.shelf_id} / {inventory.slot_id}: {inventory.shelf_quantity} on shelf,{" "}
-          {inventory.backroom_quantity} in the backroom.
+        <p className="store-status-result">
+          {t("storeStatus.result", {
+            sku: inventory.sku,
+            shelf: inventory.shelf_id,
+            slot: inventory.slot_id,
+            onShelf: inventory.shelf_quantity,
+            backroom: inventory.backroom_quantity,
+          })}
         </p>
       ) : null}
     </section>
