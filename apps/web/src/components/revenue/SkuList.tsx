@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { SKU_LIST_SIZE } from "@/constants/commerce.constant";
-import type { SkuRevenue } from "@/core/api/types";
+import type { SkuRevenue } from "@/types/revenue.type";
 import { useFormat } from "@/hooks/format.hook";
 
 /** Ranked SKUs with their revenue, each with a thin bar relative to the first row. */

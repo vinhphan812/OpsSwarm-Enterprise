@@ -1,5 +1,5 @@
 import { GLAZING } from "@/constants/dimensions.constant";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 import { GLAZING_FRAME_COLOR } from "@/constants/scene.constant";
 
 const F = GLAZING.frame;

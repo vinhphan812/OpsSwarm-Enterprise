@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { EQUIPMENT_LABEL } from "@/constants/scene.constant";
 import { EQUIPMENT_SIZE } from "@/constants/dimensions.constant";
 import { ENTITY_TYPE, EQUIPMENT_KIND, type EquipmentKind } from "@/enums/scene.enum";
-import type { EquipmentFixture, ProductFixture } from "@/scene/types";
+import type { EquipmentFixture, ProductFixture } from "@/types/scene.type";
 import { toTuple } from "@/scene/utils/transform";
 import { entityProps } from "@/scene/entities/entity";
 import { LABEL_LIFT } from "@/constants/scene.constant";

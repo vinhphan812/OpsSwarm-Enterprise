@@ -1,7 +1,7 @@
 import { PRODUCE_RACK } from "@/constants/dimensions.constant";
 import { STOCK_KIND } from "@/enums/scene.enum";
-import type { StockSurface } from "@/scene/entities/stock/surface";
-import { tiltX, type Tuple3 } from "@/scene/utils/transform";
+import type { StockSurface, Tuple3 } from "@/types/scene.type";
+import { tiltX } from "@/scene/utils/transform";
 import { Parts, partBuilder } from "./parts";
 
 const { bays: BAYS, bayWidth: BW, depth: D, frontHeight: FH, backHeight: BH, tilt: TILT } = PRODUCE_RACK;

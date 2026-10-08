@@ -1,6 +1,6 @@
 import i18n from "@/i18n";
 import type { Messages } from "@/i18n/locales/vi";
-import type { ProductInventory, StoreResponse } from "./types";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 
 /** Why a product is not drawn: a key under `issue` in the locale files. */
 export type IssueCode = keyof Messages["issue"];

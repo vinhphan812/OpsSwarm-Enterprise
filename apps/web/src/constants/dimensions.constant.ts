@@ -1,5 +1,5 @@
 import type { EquipmentKind } from "@/enums/scene.enum";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 
 /** Meters. Y is up. The floor top sits on the XZ plane at y = 0. */
 export const STORE_FLOOR = {

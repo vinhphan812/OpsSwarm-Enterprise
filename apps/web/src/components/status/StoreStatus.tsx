@@ -1,7 +1,8 @@
 import { Button } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { defaultClient } from "@/core/api/client";
-import type { ProductInventory, RetailTwinClient } from "@/core/api/types";
+import type { RetailTwinClient } from "@/types/api.type";
+import type { ProductInventory } from "@/types/twin.type";
 import { useStoreStatus } from "@/hooks/storeStatus.hook";
 import "./StoreStatus.css";
 

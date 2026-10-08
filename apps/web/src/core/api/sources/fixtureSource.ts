@@ -1,11 +1,15 @@
-import { mockStoreState } from "@/mocks";
-import type { StoreResponse } from "@/core/api/types";
+import { storeFixture } from "@/fixtures/storeFixture";
+import type { StoreResponse } from "@/types/twin.type";
 import type { TwinSource } from "./TwinSource";
 
-/** Store state from the mock JSON. Dev and test only, never Live Twin truth. */
+/**
+ * `GET /store` for the layout's store with empty shelves: the scene draws only the
+ * shelves and equipment until a real source sends products. Dev and test only, never
+ * Live Twin truth. A new object per call, so a caller that edits it cannot change the next.
+ */
 export function fixtureStoreState(): StoreResponse {
-  // A copy, so a caller that edits its state cannot change the next snapshot.
-  return structuredClone(mockStoreState);
+  const storeId = storeFixture.storeId;
+  return { store_id: storeId, context_version: `${storeId}:v1`, version: "v1", products: [] };
 }
 
 /** A source whose state never changes after the snapshot. */

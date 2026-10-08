@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import type { PromotionsSummary, RevenueSummary } from "@/core/api/types";
+import type { PromotionsSummary } from "@/types/promotion.type";
+import type { RevenueSummary } from "@/types/revenue.type";
 import type { RevenuePeriod } from "@/enums/commerce.enum";
 import { emptyPromotions, emptyRevenue } from "@/fixtures/commerceFixture";
 import { storeFixture } from "@/fixtures/storeFixture";

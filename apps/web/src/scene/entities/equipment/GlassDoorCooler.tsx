@@ -1,6 +1,6 @@
 import { GLASS_DOOR_COOLER } from "@/constants/dimensions.constant";
 import { STOCK_KIND } from "@/enums/scene.enum";
-import type { StockSurface } from "@/scene/entities/stock/surface";
+import type { StockSurface } from "@/types/scene.type";
 import { Parts, partBuilder } from "./parts";
 
 const { width: W, height: H, depth: D } = GLASS_DOOR_COOLER;

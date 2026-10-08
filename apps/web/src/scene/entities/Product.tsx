@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useUiStore } from "@/state/ui.store";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entity";
-import type { ProductFixture } from "@/scene/types";
+import type { ProductFixture } from "@/types/scene.type";
 import { TAG_LIFT } from "@/constants/scene.constant";
 
 /**

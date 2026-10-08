@@ -1,7 +1,7 @@
 import { EQUIPMENT_SIZE, SHELF } from "@/constants/dimensions.constant";
-import type { StoreFixture, Vec3 } from "@/scene/types";
-import { footprintCorners, type Tuple3 } from "@/scene/utils/transform";
-import { CAMERA_FOV, FRAME_PADDING, INITIAL_CAMERA_OFFSET, ORBIT_TARGET } from "@/constants/camera.constant";
+import type { StoreFixture, Tuple3, Vec3 } from "@/types/scene.type";
+import { footprintCorners } from "@/scene/utils/transform";
+import { CAMERA_FOV, INITIAL_CAMERA_OFFSET, ORBIT_TARGET } from "@/constants/camera.constant";
 
 /** Radius around the orbit target that holds every shelf and piece of equipment. */
 function storeBoundingRadius(store: StoreFixture): number {
@@ -22,7 +22,7 @@ function storeBoundingRadius(store: StoreFixture): number {
   for (const item of store.equipment) {
     includeBox(item.position, item.rotationY, EQUIPMENT_SIZE[item.kind]);
   }
-  return radius * FRAME_PADDING;
+  return radius;
 }
 
 function fitDistance(radius: number, aspect: number, fovDeg = CAMERA_FOV): number {

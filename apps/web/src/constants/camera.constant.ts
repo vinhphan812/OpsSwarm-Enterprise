@@ -1,5 +1,5 @@
 import { STORE_FLOOR, STORE_WALL } from "@/constants/dimensions.constant";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 
 export const CAMERA_FOV = 45;
 export const ORBIT_TARGET: Tuple3 = [0, 0.8, 0];
@@ -9,8 +9,6 @@ export const INITIAL_CAMERA_OFFSET: Tuple3 = [6, 4.2, 8];
 export const MIN_CAMERA_DISTANCE = 3.5;
 /** Zoom-out room past the distance that fits the whole store; recomputed on resize. */
 export const MAX_DISTANCE_FACTOR = 1.4;
-
-export const FRAME_PADDING = 1.0;
 
 export const INITIAL_CAMERA_POSITION: Tuple3 = [
   ORBIT_TARGET[0] + INITIAL_CAMERA_OFFSET[0],

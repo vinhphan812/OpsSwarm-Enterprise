@@ -1,6 +1,6 @@
 import { CameraControls, Environment, Lightformer } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
-import { useMemo } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { useEffect, useMemo } from "react";
 import { Box3, Vector3 } from "three";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
@@ -28,7 +28,7 @@ import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entities/entity";
 import { sceneOf } from "./layout";
 import "./scene.css";
-import type { ProductFixture, StoreFixture } from "./types";
+import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 
 /** Keeps the camera framing the whole store as the canvas resizes, and orbits around the pointer. */
 function FrameCamera() {
@@ -44,10 +44,17 @@ type StoreContentsProps = {
 
 const NO_PRODUCTS: ProductFixture[] = [];
 
-export function StoreContents({ store, showLabels = true }: StoreContentsProps) {
+export function StoreContents({
+  store,
+  showLabels = true,
+}: StoreContentsProps) {
   // One pass over the products instead of a filter per shelf and per slot.
-  const byHolder = useMemo(() => groupBy(store.products, (product) => product.shelfId), [store.products]);
-  const productsOf = (holderId: string) => byHolder.get(holderId) ?? NO_PRODUCTS;
+  const byHolder = useMemo(
+    () => groupBy(store.products, (product) => product.shelfId),
+    [store.products],
+  );
+  const productsOf = (holderId: string) =>
+    byHolder.get(holderId) ?? NO_PRODUCTS;
 
   return (
     <group {...entityProps(store.storeId, ENTITY_TYPE.Store)}>
@@ -75,7 +82,11 @@ export function StoreContents({ store, showLabels = true }: StoreContentsProps) 
 }
 
 /** The live twin state on the static layout; the empty room until the first state. */
-export function LiveStoreContents({ showLabels = true }: { showLabels?: boolean }) {
+export function LiveStoreContents({
+  showLabels = true,
+}: {
+  showLabels?: boolean;
+}) {
   const live = useTwinStore((state) => state.live);
   const store = useMemo(() => (live ? sceneOf(live).store : null), [live]);
 
@@ -91,12 +102,42 @@ export function LiveStoreContents({ showLabels = true }: { showLabels?: boolean 
 
 const clearSelection = () => useUiStore.getState().select(null);
 
-const PAN_BOX = new Box3(new Vector3(...PAN_BOUNDS.min), new Vector3(...PAN_BOUNDS.max));
+/**
+ * Lights and fixtures do not move, so the shadow map is drawn when the stock changes
+ * (and when a wall hides or shows), not on every frame of an orbit.
+ */
+function StaticShadows() {
+  const gl = useThree((state) => state.gl);
+  const live = useTwinStore((state) => state.live);
+
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    return () => {
+      gl.shadowMap.autoUpdate = true;
+    };
+  }, [gl]);
+
+  // Effects run after Stock's layout effect has written the new instance matrices.
+  useEffect(() => {
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, live]);
+
+  return null;
+}
+
+/** Device pixel ratio range: crisp on retina, without rendering 4x the pixels. */
+const DPR: [number, number] = [1, 1.5];
+
+const PAN_BOX = new Box3(
+  new Vector3(...PAN_BOUNDS.min),
+  new Vector3(...PAN_BOUNDS.max),
+);
 
 export function StoreScene() {
   return (
     <Canvas
       shadows="soft"
+      dpr={DPR}
       camera={{ position: INITIAL_CAMERA_POSITION, fov: CAMERA_FOV }}
       onPointerMissed={clearSelection}
     >
@@ -144,6 +185,7 @@ export function StoreScene() {
         />
       </Environment>
       <FrameCamera />
+      <StaticShadows />
       <Exterior />
       <LiveStoreContents />
       {/* Left drag orbits around the point under the cursor, right drag (or two fingers) pans, the wheel zooms toward the cursor. */}

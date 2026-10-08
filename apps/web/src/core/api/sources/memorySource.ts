@@ -1,6 +1,6 @@
-import type { ProductInventory, StoreResponse } from "@/core/api/types";
 import { contextRevision } from "@/core/api/version";
 import type { TwinSource } from "./TwinSource";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 
 /** A twin held in memory that pushes every change, like a live backend. Dev and test only. */
 export type MemoryTwin = {

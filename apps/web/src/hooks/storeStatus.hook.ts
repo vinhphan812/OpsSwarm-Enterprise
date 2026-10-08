@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/core/notify";
-import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
+import type { HealthResponse, RetailTwinClient } from "@/types/api.type";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 
 /** API health and store loaded once per client, plus a SKU lookup form. Failures show as toasts. */
 export function useStoreStatus(client: RetailTwinClient) {

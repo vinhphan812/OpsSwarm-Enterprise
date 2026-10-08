@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { CATEGORY_COLOR, OTHER_CATEGORY_COLOR } from "@/constants/commerce.constant";
-import type { CategoryRevenue } from "@/core/api/types";
+import type { CategoryRevenue } from "@/types/revenue.type";
 import type { StockKind } from "@/enums/scene.enum";
 import { useFormat } from "@/hooks/format.hook";
 

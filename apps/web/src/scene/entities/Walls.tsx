@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { Object3D, type Camera, type Group, type InstancedMesh } from "three";
 import { GLAZING, STORE_FLOOR, STORE_WALL, WALL_SLATS } from "@/constants/dimensions.constant";
 import { CurtainWall, SlidingDoor } from "./Glazing";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 import { WALL_CAP_COLOR, WALL_COLOR, WALL_GAP_COLOR, WALL_SLAT_COLOR } from "@/constants/scene.constant";
 
 const HALF_W = STORE_FLOOR.width / 2;
@@ -88,10 +88,13 @@ function solidRuns(length: number, openings: Opening[]): Array<[number, number]>
 function Wall({ name, length, position, rotationY, isBehind, openings = [], children }: WallProps) {
   const ref = useRef<Group>(null);
 
-  useFrame(({ camera }) => {
-    if (ref.current) {
-      ref.current.visible = !isBehind(camera);
-    }
+  useFrame(({ camera, gl }) => {
+    if (!ref.current) return;
+    const visible = !isBehind(camera);
+    if (ref.current.visible === visible) return;
+    ref.current.visible = visible;
+    // Shadows are drawn on demand (StaticShadows); a wall that comes or goes changes them.
+    gl.shadowMap.needsUpdate = true;
   });
 
   return (

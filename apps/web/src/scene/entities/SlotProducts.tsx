@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { groupBy } from "@/core/utils/collections";
-import type { ProductFixture, SlotFixture } from "@/scene/types";
+import type { ProductFixture, SlotFixture } from "@/types/scene.type";
 import { Product } from "./Product";
 import { Slot } from "./Slot";
 
@@ -10,8 +10,8 @@ type SlotProductsProps = {
   products: ProductFixture[];
 };
 
-/** Every slot of a fixture with the products placed in it. */
-export function SlotProducts({ slots, products }: SlotProductsProps) {
+/** Every slot of a fixture with the products placed in it. Memoized: a hover on the fixture leaves it alone. */
+export const SlotProducts = memo(function SlotProducts({ slots, products }: SlotProductsProps) {
   const bySlot = useMemo(() => groupBy(products, (product) => product.slotId), [products]);
   return (
     <>
@@ -24,4 +24,4 @@ export function SlotProducts({ slots, products }: SlotProductsProps) {
       ))}
     </>
   );
-}
+});

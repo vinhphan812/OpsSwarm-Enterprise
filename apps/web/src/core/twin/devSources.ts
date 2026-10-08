@@ -7,7 +7,7 @@ import {
 } from "@/core/api/sources/fixtureSource";
 import { createMemoryTwin, patchProduct } from "@/core/api/sources/memorySource";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
-import type { ProductInventory } from "@/core/api/types";
+import type { ProductInventory } from "@/types/twin.type";
 import { FIXTURE_P001 } from "@/constants/twin.constant";
 
 /** Simulated twins for checking the status screens; development builds only. */

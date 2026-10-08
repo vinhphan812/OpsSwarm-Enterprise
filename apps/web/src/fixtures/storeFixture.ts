@@ -7,12 +7,7 @@ import {
   type FixtureKind,
 } from "@/enums/scene.enum";
 import { surfacePoint, surfacesOf } from "@/scene/entities/stock/surfaces";
-import type {
-  EquipmentFixture,
-  ShelfFixture,
-  SlotFixture,
-  StoreFixture,
-} from "@/scene/types";
+import type { EquipmentFixture, ShelfFixture, SlotFixture, StoreFixture } from "@/types/scene.type";
 import { padId } from "@/core/utils/ids";
 
 const { Checkout, Barrier, GlassDoorCooler, OpenChiller, ProduceRack, CrateWood, CratePlastic } =

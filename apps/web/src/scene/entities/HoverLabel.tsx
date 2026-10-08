@@ -1,6 +1,6 @@
 import { Html } from "@react-three/drei";
 import type { HoverHandlers } from "@/hooks/hover.hook";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 
 type HoverLabelProps = {
   title: string;

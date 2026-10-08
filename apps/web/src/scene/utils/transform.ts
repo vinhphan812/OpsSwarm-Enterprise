@@ -1,7 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
-import type { Vec3 } from "@/scene/types";
-
-export type Tuple3 = [number, number, number];
+import type { Tuple3, Vec3 } from "@/types/scene.type";
 
 export function toTuple({ x, y, z }: Vec3): Tuple3 {
   return [x, y, z];

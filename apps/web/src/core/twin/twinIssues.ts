@@ -1,4 +1,4 @@
-import type { ProductInventory, StoreResponse } from "@/core/api/types";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { ProductIssue } from "@/core/api/validate";
 import { INSPECTION_KIND } from "@/enums/twin.enum";
 import { sceneOf } from "@/scene/layout";

@@ -7,7 +7,7 @@ import {
   type InstancedMesh,
   type Material,
 } from "three";
-import type { Tuple3 } from "@/scene/utils/transform";
+import type { Tuple3 } from "@/types/scene.type";
 
 /** One box part: center, size, and optional Euler rotation, all in the model's local frame. */
 export type BoxSpec = {

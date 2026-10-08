@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { PRODUCT_FIELDS, parseStoreState } from "@/core/api/validate";
 import { toSceneStore } from "@/scene/layout";
 import { sampleStoreState } from "@/test/sampleState";
-import { mockStoreState } from "@/mocks";
-import apiSchemas from "../../../../api/retailtwin_api/schemas.py?raw";
+import { fixtureStoreState } from "@/core/api/sources/fixtureSource";
+import apiSchemas from "../../../../../../api/retailtwin_api/schemas.py?raw";
 
 /** Field names of a pydantic model in apps/api, in declaration order. */
 function apiModelFields(model: string): string[] {
@@ -11,10 +11,12 @@ function apiModelFields(model: string): string[] {
   return [...body.matchAll(/^    (\w+): /gm)].map((match) => match[1]);
 }
 
-describe("store-001 mock JSON", () => {
-  it("is the store with empty shelves", () => {
-    expect(parseStoreState(mockStoreState).issues).toEqual([]);
-    expect(mockStoreState.products).toEqual([]);
+describe("fixture store state", () => {
+  it("is the layout's store with empty shelves", () => {
+    const state = fixtureStoreState();
+    expect(parseStoreState(state).issues).toEqual([]);
+    expect(state.store_id).toBe("store-001");
+    expect(state.products).toEqual([]);
   });
 });
 
