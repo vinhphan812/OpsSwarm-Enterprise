@@ -5,7 +5,8 @@
 
 set -euo pipefail
 
-PROJECT="${GCP_PROJECT_ID:-retailtwin-ai-511002}"
+CANONICAL_PROJECT="retailtwin-ai-511002"
+PROJECT="${GCP_PROJECT_ID:-$CANONICAL_PROJECT}"
 REGION="${GCP_REGION:-us-central1}"
 DATABASE="${FIRESTORE_DATABASE:-(default)}"
 TOPIC="${STORE_EVENTS_TOPIC:-store-events}"
@@ -19,10 +20,6 @@ BUDGET_NAME="retailtwin-dev-guard"
 API_SA="${API_SA_ID}@${PROJECT}.iam.gserviceaccount.com"
 AGENT_SA="${AGENT_SA_ID}@${PROJECT}.iam.gserviceaccount.com"
 
-export CLOUDSDK_CORE_DISABLE_PROMPTS=1
-export CLOUDSDK_CORE_PROJECT="$PROJECT"
-export CLOUDSDK_BILLING_QUOTA_PROJECT="$PROJECT"
-
 die() {
   echo "error: $*" >&2
   exit 1
@@ -32,15 +29,17 @@ if [[ "${CONFIRM_GCP_BOOTSTRAP:-}" != "yes" ]]; then
   die "Set CONFIRM_GCP_BOOTSTRAP=yes to apply the foundation to ${PROJECT}."
 fi
 
-case "$PROJECT" in
-  cn-prj-17cd4|ess-prj)
-    die "Refusing ${PROJECT}. RetailTwin uses ${GCP_PROJECT_ID:-retailtwin-ai-511002} only."
-    ;;
-esac
+if [[ "$PROJECT" != "$CANONICAL_PROJECT" ]]; then
+  die "Refusing project ${PROJECT}. This foundation applies only to ${CANONICAL_PROJECT}."
+fi
 
 if [[ "$REGION" != "us-central1" ]]; then
   die "Refusing region ${REGION}. Cloud Storage free tier and this foundation use us-central1."
 fi
+
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
+export CLOUDSDK_CORE_PROJECT="$PROJECT"
+export CLOUDSDK_BILLING_QUOTA_PROJECT="$PROJECT"
 
 echo "Project:  ${PROJECT}"
 echo "Region:   ${REGION}"
@@ -74,52 +73,8 @@ gcloud services enable \
   cloudresourcemanager.googleapis.com \
   iam.googleapis.com
 
-# New projects can still grant Editor to a default service agent. Strip it.
-# Human owners stay owners. The runtime identities below are the narrow ones.
-echo "Checking service accounts for roles/editor"
-policy_file="$(mktemp)"
-iam_err="$(mktemp)"
-iam_ready=0
-for _try in 1 2 3 4 5 6; do
-  if gcloud projects get-iam-policy "$PROJECT" --format=json >"$policy_file" 2>"$iam_err"; then
-    iam_ready=1
-    break
-  fi
-  echo "IAM policy is not readable yet (attempt ${_try}). Waiting for the API."
-  sleep 10
-done
-if [[ "$iam_ready" -ne 1 ]]; then
-  cat "$iam_err" >&2
-  rm -f "$policy_file" "$iam_err"
-  die "Cannot read the project IAM policy."
-fi
-rm -f "$iam_err"
-editor_members="$(
-  python3 -c '
-import json, sys
-policy = json.load(open(sys.argv[1]))
-for binding in policy.get("bindings", []):
-    if binding.get("role") != "roles/editor":
-        continue
-    for member in binding.get("members", []):
-        if member.startswith("serviceAccount:"):
-            print(member)
-' "$policy_file"
-)"
-rm -f "$policy_file"
-if [[ -n "$editor_members" ]]; then
-  echo "$editor_members" | while IFS= read -r member; do
-    [[ -z "$member" ]] && continue
-    echo "Removing roles/editor from ${member}"
-    gcloud projects remove-iam-policy-binding "$PROJECT" \
-      --member="$member" \
-      --role="roles/editor" \
-      --quiet >/dev/null
-  done
-else
-  echo "No service account has roles/editor"
-fi
-
+# IAM changes below name retailtwin-api and retailtwin-agent only.
+# Do not remove roles from other service accounts in this project.
 ensure_service_account() {
   local sa_id="$1"
   local display="$2"

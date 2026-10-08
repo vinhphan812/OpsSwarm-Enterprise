@@ -47,7 +47,7 @@ Expected net spend is 0 USD while usage stays inside the table above. Free-tier 
 
 The alert is a monthly budget named `retailtwin-dev-guard` for 25,000 VND on this project only, at 50%, 90%, and 100% of actual spend. The billing account currency is VND, so the amount is about 1 USD. The alert does not disable billing.
 
-`j.dangkhoa.1108@gmail.com` created this budget. `j.dangkhoa.118@gmail.com` can use the project and cannot view billing budgets.
+A billing administrator created this budget. An operator account can use the project without permission to view billing budgets.
 
 ## Apply and check
 
@@ -56,7 +56,7 @@ CONFIRM_GCP_BOOTSTRAP=yes infrastructure/gcp/bootstrap.sh
 infrastructure/gcp/verify.sh
 ```
 
-`bootstrap.sh` is idempotent. It refuses `cn-prj-17cd4` and `ess-prj`, refuses a project with billing disabled, and refuses a region other than `us-central1`. It does not create keys, documents, subscriptions, secrets, Cloud Run services, or Vertex calls.
+`bootstrap.sh` is idempotent. It accepts only `retailtwin-ai-511002` and refuses every other project id before it calls `gcloud`. It also refuses a project with billing disabled and a region other than `us-central1`. It binds roles only on `retailtwin-api` and `retailtwin-agent`. It does not create keys, documents, subscriptions, secrets, Cloud Run services, or Vertex calls.
 
 `verify.sh` exits 0 when the foundation and the budget both match. It exits 2 when only the budget is missing. It exits 1 for any other mismatch.
 

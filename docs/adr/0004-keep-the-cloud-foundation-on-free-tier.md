@@ -44,9 +44,10 @@ Non-secret variables live in the repository root `.env.example`, which is the fi
 - Issue #2 is the first change allowed to call Vertex AI. Those calls are the spend that the 25,000 VND alert is there to catch.
 - Issue #9 deploys Cloud Run in `us-central1` with request-based billing, minimum instances at 0, and runtime service account `retailtwin-api`. The agent identity is not that runtime account.
 - The operator account remains a project owner. Owner is broader than either runtime identity. Day-0 code uses the service accounts, not a downloaded key.
+- `bootstrap.sh` and `verify.sh` accept only `retailtwin-ai-511002`. Any other project id stops the script before `gcloud` runs. The scripts grant roles only to `retailtwin-api` and `retailtwin-agent`.
 - The local API still reads the committed fixture and still starts without GCP credentials.
 - Foundation gate #10 stays open. This record does not seed data, call Gemini, or deploy a service.
-- `j.dangkhoa.1108@gmail.com` created the budget. `j.dangkhoa.118@gmail.com` can see the billing link and cannot list budgets.
+- A billing administrator created the budget. The operator account can see that billing is linked and cannot list budgets.
 - Pull request:
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/5
 - Supersedes:
