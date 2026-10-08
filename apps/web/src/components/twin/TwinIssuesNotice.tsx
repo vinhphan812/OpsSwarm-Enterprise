@@ -1,7 +1,7 @@
 import { Button, Card, CardBody } from "@heroui/react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ISSUES_SHOWN } from "@/constants/app.constant";
+import { ISSUES_SHOWN, PANEL_WIDTH } from "@/constants/app.constant";
 import { usePanelStore } from "@/state/panel.store";
 import { issueReason } from "@/core/api/validate";
 import { useTwinIssues } from "@/hooks/twinIssues.hook";
@@ -13,7 +13,7 @@ export function TwinIssuesNotice() {
   const issues = useTwinIssues();
   const select = useUiStore((state) => state.select);
   // Sit left of the floating Agent Activity panel instead of under it.
-  const panelInset = usePanelStore((state) => (state.open ? state.width + 24 : 0));
+  const panelInset = usePanelStore((state) => (state.open ? PANEL_WIDTH + 24 : 0));
 
   useEffect(() => {
     if (issues.length > 0) console.warn(t("issues.console"), issues);

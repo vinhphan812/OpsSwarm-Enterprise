@@ -2,7 +2,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MotionGlobalConfig } from "framer-motion";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { PANEL_WIDTH } from "@/constants/app.constant";
 import { LENS } from "@/enums/ui.enum";
 import { usePanelStore } from "@/state/panel.store";
 import { useUiStore } from "@/state/ui.store";
@@ -14,7 +13,7 @@ vi.mock("@/components/status/StoreStatus", () => ({ StoreStatus: () => null }));
 MotionGlobalConfig.skipAnimations = true;
 
 beforeEach(() => {
-  usePanelStore.setState({ open: true, width: PANEL_WIDTH.default });
+  usePanelStore.setState({ open: true });
   useUiStore.setState({ lens: LENS.Operations });
 });
 

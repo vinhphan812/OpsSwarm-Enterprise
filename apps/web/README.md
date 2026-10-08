@@ -30,7 +30,7 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
   - `TwinStatusOverlay`: shows loading and errors. Before the first state, it covers the room. After that, it shows a small banner, and the last state stays on screen.
   - `ProductInspector`: the twin figures of the selected product.
   - `TwinIssuesNotice`: products the scene left out, with the reason for each.
-- **Agent Activity panel**: a side panel. You can resize it, close it, and open it again. Its width and open state are saved per browser. Each lens shows different content:
+- **Agent Activity panel**: a side panel with a fixed width of 380px (`PANEL_WIDTH`). You can close it and open it again, and the open state is saved per browser. Each lens shows different content:
   - **Operations**: `StoreStatus` and the agent activity timeline from `run.store`. `StoreStatus` reads `GET /health` once, shows the live store that the scene already polls (it does not call `GET /store` itself), and looks up `GET /inventory/{sku}`.
   - **Revenue**: metric tiles, a revenue chart, category share, and the best and worst SKUs. All figures are 0 until `GET /sales/summary` exists (`useRevenue`).
   - **Promotions**: promotion cards by status. The list is empty until `GET /promotions` exists (`usePromotions`).
@@ -132,7 +132,7 @@ src/
     twin.store.ts           live state, issues, status, stale flag, retry
     run.store.ts            agent activity (deduplicated by id) and the current loop stage
     ui.store.ts             selected entity, lens, live/simulation view mode
-    panel.store.ts          side panel width and open state, saved in localStorage
+    panel.store.ts          side panel open state, saved in localStorage
   scene/
     StoreScene.tsx          Canvas, lights, environment, camera controls, StoreContents
     layout.ts               storeLayout, toSceneStore / sceneOf: twin state onto the layout
