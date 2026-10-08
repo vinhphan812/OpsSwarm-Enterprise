@@ -72,7 +72,7 @@ TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live 
 ```
 
 1. `TwinPage` picks a `TwinSource` (`pickSource`) and passes it to `useTwinSource`. By default this is `apiSource`, which reads `GET /store` from `apps/api`.
-2. `connectTwin` loads `snapshot()`, then follows `subscribe()`. `apiSource` has no push channel yet, so it polls `GET /store` every 5 s (`TWIN_POLL_MS`). An outage is reported once. The next readable state ends it, and the stale banner goes away.
+2. `connectTwin` loads `snapshot()`, then follows `subscribe()`. `apiSource` has no push channel yet, so it polls `GET /store` every 5 s (`TWIN_POLL_MS`). It does not poll while the tab is hidden. Each failed read doubles the wait, up to 60 s (`TWIN_POLL_MAX_MS`), and a good read brings it back to 5 s. An outage is reported once. The next readable state ends it, and the stale banner goes away.
 3. Each payload is checked by `parseStoreState` against the `GET /store` contract (`StoreResponse` in `types/twin.type.ts`, matching `apps/api`):
    - If the payload is not a store response, the first load fails. After the first state, the feed is marked stale instead.
    - A broken product is left out and reported as an issue. The rest of the store is still drawn.
@@ -87,7 +87,7 @@ Every build reads `apiSource` by default: the Live Twin from `GET /store` on `VI
 
 | `?twin=` | Source |
 | --- | --- |
-| (none) | `apiSource`: `GET /store`, polled every 5 s |
+| (none) | `apiSource`: `GET /store`, polled every 5 s, backing off to 60 s while it fails |
 | `fixture` | `fixtureSource`: empty shelves, no live updates |
 | `memory` | empty shelves in memory, editable from the browser console: `twin.add()` adds the API fixture's P001, then `twin.patch("P001", { facings: 5 })`, `twin.patch("P001", null)`, `twin.state()` |
 | `slow` | the snapshot takes 4 s |
@@ -181,7 +181,7 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | Test | Covers |
 | --- | --- |
 | `twinBinding.test.tsx` | P001 follows a live twin change, and a broken record is dropped and reported |
-| `core/api/sources/apiSource.test.ts` | snapshot and polling of `GET /store`, failed reads, unsubscribe |
+| `core/api/sources/apiSource.test.ts` | snapshot and polling of `GET /store`, backoff after failed reads, unsubscribe |
 | `core/api/sources/fixtureSource.test.ts` | the fixture state is valid; `PRODUCT_FIELDS` matches the pydantic models in `apps/api` |
 | `core/api/validate.test.ts` | contract check: bad envelopes throw, bad products are left out with a reason |
 | `core/api/version.test.ts` | context version parsing and ordering |
