@@ -26,7 +26,7 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
 - **Overlays on the 3D view**:
   - `LensSwitcher` (top): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it.
   - `CameraHelp` (bottom left): lists the camera gestures.
-  - `TwinStatusOverlay`: shows loading and errors. Before the first state, it covers the room. After that, it shows a small banner, and the last state stays on screen.
+  - `TwinStatusOverlay`: a spinner while the first state loads, then a small banner for problems (load failed, connection lost), with a retry button. The store always stays on screen: with empty shelves until a state arrives, then the last state. Errors also show as a toast.
   - `ProductInspector`: the twin figures of the selected product.
   - `TwinIssuesNotice`: products the scene left out, with the reason for each.
 - **Agent Activity panel**: a side panel with a fixed width of 380px (`PANEL_WIDTH`). You can close it and open it again, and the open state is saved per browser. Each lens shows different content:
@@ -213,7 +213,7 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
   1. Run the API (`python -m retailtwin_api` in `apps/api`) and the web app (`npm run dev`). P001 shows on `A01-S01`.
   2. In the seed, change P001's `facings`, `shelf_quantity`, or `slot_id`, and bump `version` (for example to `v2`).
   3. Restart the API. Within 5 s the scene redraws P001. A page reload rebuilds the same state.
-- With the API stopped, the page shows the load error and a retry button. When the API comes back, the next poll loads the store.
+- With the API stopped, the page shows a toast and a small "Could not load" banner over the store with empty shelves. When the API comes back, the next poll loads the store.
 - `StoreStatus` also calls the API (issue #8).
 - Revenue and promotions read `GET /revenue` and `GET /promotions`, which `apps/api` does not serve yet (`TODO(BE)`).
 - Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.
