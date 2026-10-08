@@ -1,12 +1,8 @@
 import { PerspectiveCamera, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { SHELF } from "@/constants/dimensions.constant";
-import {
-  CAMERA_FOV,
-  INITIAL_CAMERA_OFFSET,
-  ORBIT_TARGET,
-  cameraPositionForAspect,
-} from "@/scene/camera/cameraFrame";
+import { CAMERA_FOV, INITIAL_CAMERA_OFFSET, ORBIT_TARGET } from "@/constants/camera.constant";
+import { cameraPositionForAspect } from "@/scene/camera/cameraFrame";
 import { storeFixture } from "@/fixtures/storeFixture";
 
 function shelfCornerNdc(width: number, height: number, position: [number, number, number]): number[] {

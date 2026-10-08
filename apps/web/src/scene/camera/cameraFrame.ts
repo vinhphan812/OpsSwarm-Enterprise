@@ -1,34 +1,31 @@
-import { SHELF } from "@/constants/dimensions.constant";
-import type { StoreFixture } from "@/scene/types";
+import { EQUIPMENT_SIZE, SHELF } from "@/constants/dimensions.constant";
+import type { StoreFixture, Vec3 } from "@/scene/types";
+import { footprintCorners, type Tuple3 } from "@/scene/utils/transform";
+import { CAMERA_FOV, FRAME_PADDING, INITIAL_CAMERA_OFFSET, ORBIT_TARGET } from "@/constants/camera.constant";
 
-export const CAMERA_FOV = 45;
-export const ORBIT_TARGET: [number, number, number] = [0, 0.8, 0];
-/** Offset from the orbit target for the initial view. Y is up. */
-export const INITIAL_CAMERA_OFFSET: [number, number, number] = [6, 4.2, 8];
-/** High enough that a fitted phone distance is not clamped back into the shelves. */
-export const MAX_CAMERA_DISTANCE = 200;
-
-const FRAME_PADDING = 1.2;
-
-export function shelfBoundingRadius(store: StoreFixture): number {
+/** Radius around the orbit target that holds every shelf and piece of equipment. */
+function storeBoundingRadius(store: StoreFixture): number {
   const [targetX, targetY, targetZ] = ORBIT_TARGET;
   let radius = 0;
-  for (const shelf of store.shelves) {
-    const xs = [shelf.position.x - SHELF.width / 2, shelf.position.x + SHELF.width / 2];
-    const ys = [shelf.position.y, shelf.position.y + SHELF.height];
-    const zs = [shelf.position.z - SHELF.depth / 2, shelf.position.z + SHELF.depth / 2];
-    for (const x of xs) {
-      for (const y of ys) {
-        for (const z of zs) {
-          radius = Math.max(radius, Math.hypot(x - targetX, y - targetY, z - targetZ));
-        }
-      }
+  const include = (x: number, y: number, z: number) => {
+    radius = Math.max(radius, Math.hypot(x - targetX, y - targetY, z - targetZ));
+  };
+  const includeBox = (position: Vec3, rotationY: number, [w, h, d]: Readonly<Tuple3>) => {
+    for (const { x, z } of footprintCorners(position, rotationY, w, d)) {
+      include(x, position.y, z);
+      include(x, position.y + h, z);
     }
+  };
+  for (const shelf of store.shelves) {
+    includeBox(shelf.position, shelf.rotationY, [SHELF.width, SHELF.height, SHELF.depth]);
+  }
+  for (const item of store.equipment) {
+    includeBox(item.position, item.rotationY, EQUIPMENT_SIZE[item.kind]);
   }
   return radius * FRAME_PADDING;
 }
 
-export function fitDistance(radius: number, aspect: number, fovDeg = CAMERA_FOV): number {
+function fitDistance(radius: number, aspect: number, fovDeg = CAMERA_FOV): number {
   const verticalHalf = ((fovDeg * Math.PI) / 180) / 2;
   const horizontalHalf = Math.atan(Math.tan(verticalHalf) * Math.max(aspect, 0.05));
   return radius / Math.sin(Math.min(verticalHalf, horizontalHalf));
@@ -37,9 +34,9 @@ export function fitDistance(radius: number, aspect: number, fovDeg = CAMERA_FOV)
 export function cameraPositionForAspect(
   aspect: number,
   store: StoreFixture,
-  direction: [number, number, number] = INITIAL_CAMERA_OFFSET,
-): [number, number, number] {
-  const distance = fitDistance(shelfBoundingRadius(store), aspect);
+  direction: Tuple3 = INITIAL_CAMERA_OFFSET,
+): Tuple3 {
+  const distance = fitDistance(storeBoundingRadius(store), aspect);
   const length = Math.hypot(direction[0], direction[1], direction[2]) || 1;
   const [targetX, targetY, targetZ] = ORBIT_TARGET;
   return [
