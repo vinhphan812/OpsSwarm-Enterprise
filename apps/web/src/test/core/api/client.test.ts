@@ -94,3 +94,14 @@ describe("createClient", () => {
     await expect(client.store()).rejects.toEqual(new ApiError(502, "request_failed", "Request failed (502)."));
   });
 });
+
+test("asks the revenue and promotions routes for their payloads", async () => {
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL) => jsonResponse({}));
+  const client = createClient("http://127.0.0.1:8000/", fetchImpl);
+  await client.revenue("7d");
+  await client.promotions();
+  expect(fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([
+    "http://127.0.0.1:8000/revenue?period=7d",
+    "http://127.0.0.1:8000/promotions",
+  ]);
+});
