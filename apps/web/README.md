@@ -191,6 +191,7 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 
 | Test | Covers |
 | --- | --- |
+| `apiBinding.test.tsx` | issue #4 over HTTP: P001 from the committed seed, a seed change redraws it, a reload rebuilds the same state, reads only |
 | `twinBinding.test.tsx` | P001 follows a live twin change, and a broken record is dropped and reported |
 | `core/api/sources/apiSource.test.ts` | snapshot and polling of `GET /store`, backoff after failed reads, unsubscribe |
 | `core/api/sources/fixtureSource.test.ts` | the fixture state is valid; `PRODUCT_FIELDS` matches the pydantic models in `apps/api` |
