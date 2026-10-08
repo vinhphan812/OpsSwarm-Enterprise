@@ -1,28 +1,50 @@
 .store-status {
   box-sizing: border-box;
-  margin: 12px 0;
-  padding-top: 12px;
-  border-top: 1px solid #2a3544;
+  margin: 0 0 20px;
+  padding: 16px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
 }
 
 .store-status h2 {
-  margin: 0 0 8px;
-  font-size: 16px;
+  margin: 0 0 4px;
+  font-size: 12px;
   font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent);
 }
 
 .store-status p {
   margin: 0 0 12px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.store-status-note {
-  color: #b7c3d1;
+.store-status-note,
+.store-status-muted {
+  color: var(--color-ink-muted);
+}
+
+.store-status-health {
+  color: var(--color-ink-soft);
+}
+
+.store-status h2.store-status-store {
+  margin-top: 4px;
   font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-ink);
 }
 
-.store-status-error {
-  color: #ffb4a8;
+.store-status-result {
+  padding: 8px 10px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
 }
 
 .store-status thead {
@@ -31,7 +53,12 @@
 
 .store-status tr {
   display: block;
-  padding: 8px 0 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.store-status tr:last-child {
+  border-bottom: 0;
 }
 
 .store-status td {
@@ -39,11 +66,11 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 0;
-  padding: 3px 0;
+  padding: 2px 0;
 }
 
 .store-status-label {
-  color: #b7c3d1;
+  color: var(--color-ink-muted);
 }
 
 .store-status-table {
@@ -58,32 +85,49 @@
 
 .store-status-lookup {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-  margin-top: 8px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+
+.store-status-lookup:last-child {
+  margin-bottom: 0;
+}
+
+.store-status-lookup label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+.store-status-lookup-row {
+  display: flex;
+  gap: 8px;
 }
 
 .store-status-lookup input {
-  min-width: 8rem;
-  padding: 8px 10px;
-  color: #e8edf2;
-  background: #18202b;
-  border: 1px solid #2a3544;
-  border-radius: 4px;
-}
-
-.store-status-lookup button {
-  padding: 8px 12px;
-  color: #121820;
-  background: #d5e4f5;
-  border: 0;
-  border-radius: 4px;
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
   font: inherit;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  transition: border-color 0.2s;
 }
 
-.store-status-lookup button:disabled {
-  opacity: 0.7;
+.store-status-lookup input::placeholder {
+  color: var(--color-ink-faint);
 }
 
+.store-status-lookup input:hover {
+  border-color: var(--color-line-strong);
+}
 
+.store-status-lookup input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}

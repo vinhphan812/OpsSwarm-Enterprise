@@ -1,3 +1,4 @@
+import i18n from "@/i18n";
 import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "./types";
 
 export class ApiError extends Error {
@@ -28,7 +29,7 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
     try {
       response = await doFetch(`${base}${path}`, init);
     } catch {
-      throw new ApiError(0, "network_error", "The API is unreachable.");
+      throw new ApiError(0, "network_error", i18n.t("errors.unreachable"));
     }
     if (!response.ok) {
       throw await toApiError(response);
@@ -55,7 +56,7 @@ async function toApiError(response: Response): Promise<ApiError> {
   const message =
     typeof envelope?.error?.message === "string"
       ? envelope.error.message
-      : `Request failed (${response.status}).`;
+      : i18n.t("errors.requestFailed", { status: response.status });
   return new ApiError(response.status, code, message);
 }
 

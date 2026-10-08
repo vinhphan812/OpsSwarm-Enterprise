@@ -2,8 +2,13 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ApiError } from "@/core/api/client";
+import { notify } from "@/core/notify";
 import type { HealthResponse, ProductInventory, RetailTwinClient, StoreResponse } from "@/core/api/types";
 import { StoreStatus } from "@/components/status/StoreStatus";
+
+vi.mock("@/core/notify", () => ({
+  notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+}));
 
 const product: ProductInventory = {
   store_id: "store-001",
@@ -47,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.clearAllMocks();
 });
 
 test("shows the store returned by the API", async () => {
@@ -70,7 +76,9 @@ test("keeps the page up when the API cannot be reached", async () => {
 
   render(<StoreStatus client={failing} />);
 
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The API is unreachable.");
+  await waitFor(() => {
+    expect(notify.error).toHaveBeenCalledWith("The API request failed.", expect.any(ApiError));
+  });
   expect(screen.getByRole("textbox", { name: "SKU" })).toBeTruthy();
   expect(screen.queryByRole("heading", { name: "store-001" })).toBeNull();
 });
@@ -87,10 +95,12 @@ test("shows an inventory error without dropping the store", async () => {
   fireEvent.change(screen.getByRole("textbox", { name: "SKU" }), { target: { value: "P017" } });
   fireEvent.click(screen.getByRole("button", { name: "Look up inventory" }));
 
-  expect(await screen.findByRole("alert")).toHaveProperty(
-    "textContent",
-    "SKU 'P017' is not in store store-001.",
-  );
+  await waitFor(() => {
+    expect(notify.error).toHaveBeenCalledWith(
+      "Inventory lookup failed.",
+      expect.objectContaining({ message: "SKU 'P017' is not in store store-001." }),
+    );
+  });
   expect(screen.getByRole("heading", { name: "store-001" })).toBeTruthy();
 });
 
@@ -101,8 +111,6 @@ test("asks for a SKU before calling the API", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: "Look up inventory" }));
 
-  await waitFor(() => {
-    expect(screen.getByRole("alert").textContent).toBe("Enter a SKU.");
-  });
+  expect(notify.warning).toHaveBeenCalledWith("Enter a SKU.");
   expect(api.inventory).not.toHaveBeenCalled();
 });
