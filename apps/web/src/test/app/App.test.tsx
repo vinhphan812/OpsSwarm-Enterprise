@@ -39,3 +39,11 @@ test("the app shows an API failure without crashing", async () => {
   expect(screen.getByRole("textbox", { name: "SKU" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Look up inventory" })).toBeTruthy();
 });
+
+test("hides the lens switch until apps/api serves the revenue and promotions routes", () => {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+  render(<App />);
+  expect(screen.queryByRole("radiogroup", { name: "View" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "Revenue" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "Promotions" })).toBeNull();
+});

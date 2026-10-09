@@ -24,7 +24,7 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
 
 - **3D view** (`StoreScene`): the store room, its fixtures, and the stock that twin state puts on them.
 - **Overlays on the 3D view**:
-  - `LensSwitcher` (top): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it.
+  - `LensSwitcher` (top): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it. Commented out in `TwinPage` (`TODO(BE)`) until `apps/api` serves the revenue and promotions routes, so the panel shows Operations only.
   - `CameraHelp` (bottom left): lists the camera gestures.
   - `TwinStatusOverlay`: a spinner while the first state loads, then a small banner for problems (load failed, connection lost), with a retry button. The store always stays on screen: with empty shelves until a state arrives, then the last state. Errors also show as a toast.
   - `ProductInspector`: the twin figures of the selected product.
@@ -90,7 +90,7 @@ A product's entity id is its `sku`.
 
 `useRevenue` and `usePromotions` read the route the first time a lens (or a period) opens, then cache the result, so switching lenses does not call the API again. The lens shows the empty report (`emptyRevenue`, `emptyPromotions`) until the read lands. A failed read shows one toast and is retried the next time the lens opens.
 
-`apps/api` does not serve either route yet (`TODO(BE)` on the types), so today both lenses show the empty report and a toast.
+`apps/api` does not serve either route yet (`TODO(BE)` on the types). The lens switch is the only way into either lens, so `TwinPage` keeps it commented out and neither route is read. Uncomment it once both routes exist.
 
 ### Twin sources
 
@@ -216,5 +216,5 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
   3. Restart the API. Within 5 s the scene redraws P001. A page reload rebuilds the same state.
 - With the API stopped, the page shows a toast and a small "Could not load" banner over the store with empty shelves. When the API comes back, the next poll loads the store.
 - `StoreStatus` also calls the API (issue #8).
-- Revenue and promotions read `GET /revenue` and `GET /promotions`, which `apps/api` does not serve yet (`TODO(BE)`).
+- Revenue and promotions read `GET /revenue` and `GET /promotions`, which `apps/api` does not serve yet (`TODO(BE)`). The lens switch is commented out in `TwinPage` until they do.
 - Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.
