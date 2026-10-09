@@ -1,21 +1,22 @@
-from datetime import datetime
-from retailtwin_api.contracts import Decision, Action, ActionType
-from retailtwin_api.schemas import StoreEvent
-import pytz
+from datetime import datetime, timezone
+from retailtwin_api.contracts import Decision, EvidenceBundle, EvidenceItem
+from typing import List
 
 def validate_example():
     print("Validating example decision...")
     try:
-        # Create a mock StoreEvent
-        event = StoreEvent(
-            event_id="e1",
-            correlation_id="c1",
-            event_type="test",
+        # Create a mock EvidenceBundle
+        bundle = EvidenceBundle(
+            bundle_id="b1",
+            provenance="test",
+            source="test",
+            entity_versions={"v1": "1.0"},
+            collected_at=datetime.now(timezone.utc),
+            freshness=datetime.now(timezone.utc),
             store_id="s1",
-            sku="sku1",
-            quantity=1,
-            occurred_at=datetime.now(pytz.utc),
-            source="test-source"
+            correlation_id="c1",
+            is_sufficient=True,
+            items=[EvidenceItem(event_type="test", payload={"foo": "bar"})]
         )
 
         # Valid decision
@@ -23,10 +24,10 @@ def validate_example():
             decision_id="d1",
             agent_id="a1",
             context_version="v1",
-            context_timestamp=datetime.now(),
-            evidence=[event],
-            proposed_actions=[Action(action_id="act1", type=ActionType.CANDIDATE, payload={"foo": "bar"})],
-            expected_impact={"score": 100}
+            context_timestamp=datetime.now(timezone.utc),
+            evidence=[bundle],
+            proposed_actions=[],
+            expected_impact={"kpi_score": 100.0, "description": "test"},
         )
         print("Success: Decision is valid.")
         return True
