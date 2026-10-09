@@ -1,10 +1,10 @@
-# 0005. Use HeroUI v2 for app status UI
+# 0006. Use HeroUI v2 for app status UI
 
 Date: 2026-10-08
 
 ## Status
 
-Proposed
+Accepted
 
 ## Context
 
@@ -28,7 +28,7 @@ Use `@heroui/react` 2.8.10 with `framer-motion` 12, Tailwind CSS 4 through `@tai
 - Tailwind's base styles now apply to the whole page.
 - HeroUI v2 is the previous major line. Moving to v3 waits for the React 19 upgrade that ADR 0002 already defers, and both upgrades should happen together.
 - The JavaScript bundle grows by the component kit and framer-motion.
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/65
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/4
 - Supersedes:
 - Superseded by:

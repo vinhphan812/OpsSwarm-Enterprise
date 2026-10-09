@@ -37,7 +37,7 @@ The monthly budget `retailtwin-dev-guard` is 25,000 VND, about 1 USD, on this pr
 ## Work in progress
 
 Issue #4 is in progress on branch `feat/issue-4-store-ui`. It is not on `main` yet.
-- The scene reads `GET /store` from `apps/api` and places products on the static layout (ADR 0006). P001 is bound by its SKU.
+- The scene reads `GET /store` from `apps/api` and places products on the static layout (ADR 0007). P001 is bound by its SKU.
 - The scene polls `GET /store` every 5 s. When reads fail, it backs off up to 60 s. It keeps the last state, or empty shelves, on screen when the API is down.
 - The web app only reads the API. It does not call `POST /events`.
 - Tests cover the HTTP path from the committed seed to the scene: a P001 change in the seed redraws P001, and a reload rebuilds the same state.

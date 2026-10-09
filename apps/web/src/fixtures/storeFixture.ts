@@ -125,7 +125,7 @@ const shelves: ShelfFixture[] = SHELF_ROWS.flatMap(({ row, z, color }) =>
 );
 
 /**
- * Store layout (docs/adr/0006): shelves and equipment, no products. The scene takes
+ * Store layout (docs/adr/0007): shelves and equipment, no products. The scene takes
  * products from twin state.
  */
 export const storeFixture: StoreFixture = {

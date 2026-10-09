@@ -77,7 +77,7 @@ TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live 
    - If the payload is not a store response, the first load fails. After the first state, the feed is marked stale instead.
    - A broken product is left out and reported as an issue. The rest of the store is still drawn.
 4. A state is kept only when its `context_version` is newer than the last one, so a late snapshot or a replayed update never rolls the scene back.
-5. `sceneOf` maps the live state onto the static layout (docs/adr/0006). Shelf, slot, facings, and stock come from state. A product is left out and reported if its shelf is unknown, its slot is not on that shelf, or its slot is already taken.
+5. `sceneOf` maps the live state onto the static layout (docs/adr/0007). Shelf, slot, facings, and stock come from state. A product is left out and reported if its shelf is unknown, its slot is not on that shelf, or its slot is already taken.
 
 A product's entity id is its `sku`.
 
@@ -167,7 +167,7 @@ src/
 ## Rules
 
 - **Read only.** A `TwinSource` never writes. The Zustand stores are copies of backend state, not the source of truth.
-- **Layout is static** until the twin serves geometry (docs/adr/0006). Positions live in `fixtures/storeFixture.ts`. Sizes in meters live in `constants/dimensions.constant.ts`, not inline in meshes.
+- **Layout is static** until the twin serves geometry (docs/adr/0007). Positions live in `fixtures/storeFixture.ts`. Sizes in meters live in `constants/dimensions.constant.ts`, not inline in meshes.
 - **Naming**:
   - Shared data types go in `types/<domain>.type.ts`.
   - Value sets go in `enums/<area>.enum.ts`, written as `as const` objects plus a type.
