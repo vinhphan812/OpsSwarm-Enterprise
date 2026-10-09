@@ -1,0 +1,237 @@
+@import "tailwindcss";
+@plugin "./hero.ts";
+/* HeroUI component classes live in its theme package, outside src. */
+@source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
+@custom-variant dark (&:is(.dark *));
+
+/* One palette for the whole UI: CSS reads var(--color-*), Tailwind gets bg-panel, text-ink, etc. */
+@theme {
+  --color-canvas: #121820;
+  --color-panel: #18202b;
+  --color-card: #1e2733;
+  --color-line: #2a3544;
+  --color-line-strong: #3d4d61;
+  --color-ink: #e8edf2;
+  --color-ink-soft: #b7c3d1;
+  --color-ink-muted: #8ea0b5;
+  --color-ink-faint: #5d6d80;
+  --color-accent: #d5e4f5;
+  --color-accent-hover: #bfd5ee;
+  --color-alert: #ffb4a8;
+  /* Chart series (dataviz categorical slots 1-4, dark steps) and reserved status colors. */
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  --color-series-4: #c98500;
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", sans-serif;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+}
+
+/* The 3D view fills the window; the Agent Activity panel floats over its right side. */
+.app {
+  position: relative;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.viewport {
+  height: 100%;
+}
+
+.viewport canvas {
+  display: block;
+}
+
+.agent-activity {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 20;
+  box-sizing: border-box;
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-panel) 96%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+}
+
+.agent-activity-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.agent-activity-header {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.agent-activity-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.agent-activity-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-activity-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-radius: 8px;
+}
+
+.agent-activity h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.agent-activity-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px 20px;
+  overflow: auto;
+}
+
+.fixture-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-ink-muted);
+}
+
+.activity-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.activity-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  font-size: 11px;
+  text-align: center;
+  letter-spacing: 0;
+  color: var(--color-ink-muted);
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--color-ink-muted);
+  border: 1px dashed var(--color-line);
+  border-radius: 10px;
+}
+
+.empty p {
+  margin: 0;
+}
+
+.empty-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--color-ink-faint);
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-item {
+  padding: 10px 12px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--color-accent);
+  border-radius: 8px;
+}
+
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.activity-meta time {
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-stage {
+  padding: 1px 6px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-radius: 4px;
+}
+
+.activity-sku {
+  margin-left: auto;
+  color: var(--color-ink-soft);
+}
+
+.activity-summary {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+/* Bottom sheet on narrow screens. */
+@media (max-width: 800px) {
+  .agent-activity {
+    top: auto;
+    left: 12px;
+    height: 45dvh;
+    width: auto !important;
+  }
+}

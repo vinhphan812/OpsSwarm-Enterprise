@@ -1,0 +1,569 @@
+/* Revenue and promotion views, and the segmented control they and the lens switch share. */
+
+/* ---- Segmented control ---- */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+}
+
+.segmented-panel {
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+}
+
+.segmented-glass {
+  background: color-mix(in srgb, var(--color-panel) 75%, transparent);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2), 0 0 0 1px var(--color-line);
+  backdrop-filter: blur(12px);
+  transition: background-color 0.2s;
+}
+
+.segmented-glass:hover {
+  background: color-mix(in srgb, var(--color-panel) 90%, transparent);
+}
+
+.segmented-chips {
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin-bottom: 12px;
+  border-radius: 0;
+}
+
+.segmented-option {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  height: 28px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  transition: color 0.2s;
+}
+
+.segmented-glass .segmented-option {
+  flex: none;
+  height: 30px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.segmented-chips .segmented-option {
+  flex: none;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+}
+
+.segmented-option:hover {
+  color: var(--color-ink);
+}
+
+.segmented-option[data-selected="true"] {
+  color: var(--color-panel);
+  cursor: default;
+}
+
+.segmented-chips .segmented-option[data-selected="true"] {
+  border-color: transparent;
+}
+
+.segmented-option:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 60%, transparent);
+  outline-offset: 1px;
+}
+
+.segmented-thumb {
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+.segmented-content {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.segmented-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.segmented-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  font-size: 10px;
+  line-height: 16px;
+  color: inherit;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 999px;
+}
+
+/* Lens switch: centered over the 3D view, icons only on narrow screens. */
+.lens-switcher {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 10;
+  transform: translateX(-50%);
+}
+
+@media (max-width: 640px) {
+  .segmented-glass .segmented-label {
+    display: none;
+  }
+
+  .segmented-glass .segmented-option {
+    padding: 0 12px;
+  }
+}
+
+/* ---- Views ---- */
+.commerce {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.empty-compact {
+  padding: 16px;
+}
+
+/* ---- Metric tiles ---- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  transition: border-color 0.2s;
+}
+
+.metric:hover {
+  border-color: var(--color-line-strong);
+}
+
+.metric[data-wide] {
+  grid-column: 1 / -1;
+}
+
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.metric-alert-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--color-serious);
+}
+
+.metric-value {
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--color-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric[data-wide] .metric-value {
+  font-size: 28px;
+}
+
+.metric-change {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-soft);
+}
+
+.metric-change-note {
+  color: var(--color-ink-faint);
+}
+
+.metric-trend-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.metric-change[data-trend="up"] .metric-trend-icon {
+  color: var(--color-good);
+}
+
+.metric-change[data-trend="down"] .metric-trend-icon {
+  color: var(--color-serious);
+}
+
+/* ---- Revenue chart ---- */
+.revenue-chart {
+  margin: 0;
+}
+
+.revenue-chart-plot {
+  position: relative;
+  height: 132px;
+}
+
+.revenue-chart-grid {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.revenue-chart-grid span {
+  border-top: 1px dashed color-mix(in srgb, var(--color-line) 70%, transparent);
+}
+
+.revenue-chart-grid span:last-child {
+  border-top: 1px solid var(--color-line-strong);
+}
+
+.revenue-chart-bars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 2px;
+  align-items: end;
+}
+
+/* The slot is the hit target: the whole column, not just the bar. */
+.revenue-chart-slot {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+  border-radius: 4px 4px 0 0;
+  transition: background-color 0.12s;
+}
+
+.revenue-chart-slot[data-hovered] {
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+
+.revenue-chart-bar {
+  width: 100%;
+  min-height: 2px;
+  background: var(--color-series-1);
+  border-radius: 4px 4px 0 0;
+}
+
+/* A stub, not a bar: zero shows as part of the baseline, not as data. */
+.revenue-chart-bar[data-zero] {
+  background: var(--color-line-strong);
+}
+
+.revenue-chart-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  pointer-events: none;
+}
+
+.revenue-chart-tip {
+  position: absolute;
+  top: 4px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 9px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--color-ink);
+  pointer-events: none;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 0.35);
+  translate: -50% 0;
+}
+
+.revenue-chart-tip-time {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.revenue-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-faint);
+}
+
+/* ---- Category share ---- */
+.category-share-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  overflow: hidden;
+  background: var(--color-line);
+  border-radius: 999px;
+}
+
+.category-share-segment {
+  flex-basis: 0;
+  min-width: 0;
+}
+
+.category-share-segment:first-child {
+  border-radius: 999px 0 0 999px;
+}
+
+.category-share-segment:last-child {
+  border-radius: 0 999px 999px 0;
+}
+
+.category-share-legend {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-share-legend li {
+  display: grid;
+  grid-template-columns: 10px 1fr auto 44px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.category-share-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.category-share-name {
+  color: var(--color-ink-soft);
+}
+
+.category-share-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+
+.category-share-pct {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--color-ink-muted);
+}
+
+/* ---- SKU lists ---- */
+.sku-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sku-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px 10px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.sku-rank {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--color-ink-faint);
+}
+
+.sku-name {
+  min-width: 0;
+  color: var(--color-ink-soft);
+}
+
+.sku-name strong {
+  color: var(--color-ink);
+}
+
+.sku-name small {
+  display: block;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.sku-revenue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sku-bar {
+  position: absolute;
+  bottom: 3px;
+  left: 10px;
+  height: 2px;
+  max-width: calc(100% - 20px);
+  background: var(--color-series-1);
+  border-radius: 2px;
+}
+
+/* ---- Promotions ---- */
+.promotion-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.promotion-card {
+  --status: var(--color-ink-faint);
+  padding: 12px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--status);
+  border-radius: 8px;
+}
+
+.promotion-card[data-status="active"] {
+  --status: var(--color-good);
+}
+
+.promotion-card[data-status="scheduled"] {
+  --status: var(--color-accent);
+}
+
+.promotion-card[data-status="pending_review"] {
+  --status: var(--color-warning);
+}
+
+.promotion-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.promotion-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.promotion-status-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--status);
+  border-radius: 999px;
+}
+
+.promotion-card[data-status="active"] .promotion-status-dot {
+  animation: promotion-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes promotion-pulse {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--status) 25%, transparent);
+  }
+}
+
+.promotion-kind {
+  padding: 1px 7px;
+  font-weight: 650;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  border-radius: 4px;
+}
+
+.promotion-name {
+  margin: 8px 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.promotion-meta {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+.promotion-progress {
+  height: 3px;
+  margin-top: 10px;
+  overflow: hidden;
+  background: var(--color-line);
+  border-radius: 999px;
+}
+
+.promotion-progress span {
+  display: block;
+  height: 100%;
+  background: var(--status);
+}
+
+.promotion-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.promotion-figures dt {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.promotion-figures dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .promotion-card[data-status="active"] .promotion-status-dot {
+    animation: none;
+  }
+}

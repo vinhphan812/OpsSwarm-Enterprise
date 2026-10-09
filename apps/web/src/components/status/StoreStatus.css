@@ -1,0 +1,133 @@
+.store-status {
+  box-sizing: border-box;
+  margin: 0 0 20px;
+  padding: 16px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.store-status h2 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.store-status p {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.store-status-note,
+.store-status-muted {
+  color: var(--color-ink-muted);
+}
+
+.store-status-health {
+  color: var(--color-ink-soft);
+}
+
+.store-status h2.store-status-store {
+  margin-top: 4px;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-ink);
+}
+
+.store-status-result {
+  padding: 8px 10px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+
+.store-status thead {
+  display: none;
+}
+
+.store-status tr {
+  display: block;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.store-status tr:last-child {
+  border-bottom: 0;
+}
+
+.store-status td {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 0;
+  padding: 2px 0;
+}
+
+.store-status-label {
+  color: var(--color-ink-muted);
+}
+
+.store-status-table {
+  overflow-x: auto;
+}
+
+.store-status table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 12px;
+}
+
+.store-status-lookup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+
+.store-status-lookup:last-child {
+  margin-bottom: 0;
+}
+
+.store-status-lookup label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+.store-status-lookup-row {
+  display: flex;
+  gap: 8px;
+}
+
+.store-status-lookup input {
+  box-sizing: border-box;
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.store-status-lookup input::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.store-status-lookup input:hover {
+  border-color: var(--color-line-strong);
+}
+
+.store-status-lookup input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
