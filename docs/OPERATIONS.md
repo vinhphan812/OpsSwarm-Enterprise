@@ -58,6 +58,9 @@ The `/health` endpoint (`GET /health`) requires no authentication and always
 returns `{"ok": true, "version": "<version>"}` — safe for liveness probes and load
 balancers.
 
+The `/ready` endpoint (`GET /ready`) requires no authentication and returns `200`
+when the application is fully started, or `503` during startup or shutdown (draining).
+
 For the production integration boundary, Prometheus scrape configuration, metric definitions, and
 external operations ownership (dashboards, alerts, tracing, persistence), see the
 [Metrics Integration Guide](guides/METRICS_INTEGRATION.md).
