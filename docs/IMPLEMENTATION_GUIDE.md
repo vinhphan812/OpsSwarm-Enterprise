@@ -4,14 +4,15 @@
 
 Before coding:
 1. Read `docs/PROJECT_CONTEXT.md`.
-2. Read `docs/CURRENT_STATUS.md` so you know what is actually on `main` now.
+2. Read `docs/CURRENT_STATUS.md` to distinguish current implementation from the target architecture.
 3. Read `docs/ARCHITECTURE.md`.
 4. Read `docs/DOMAIN_AND_DATA_MODEL.md`.
-5. Read `docs/DEVELOPMENT_WORKFLOW.md`.
+5. Read `docs/DEVELOPMENT_WORKFLOW.md` before preparing a pull request.
 6. Read accepted records in `docs/adr/` that constrain the issue.
 7. Identify your role below.
-8. Open GitHub Issues filtered by your `role:*` label and follow their dependencies.
-9. Do not add Competition-100 features while release gates are failing.
+8. Open GitHub Issues filtered by your `role:*` label.
+9. Follow dependencies in the issue before implementing it.
+10. Do not add Competition-100 features while release gates are failing.
 
 ## 2. Critical path
 
@@ -111,11 +112,7 @@ Build:
 
 This role owns integration quality, not only presentation.
 
-## 7. Current implementation note
-
-The phases below are delivery targets, not claims that those components already exist. `docs/CURRENT_STATUS.md` is authoritative for repository maturity. As of 2026-10-07, `main` has the view-only 3D scaffold from issue #3 and the fixture-backed FastAPI plus frontend integration from issue #8. Event intake is in-memory and immutable by event id. The API is not Firestore Live Twin. Issue #58, Firestore (#6), Pub/Sub (#7), the Gemini read tool (#2), Cloud Run (#9), and Foundation Gate #10 through G06 remain open.
-
-## 8. Build phases
+## 7. Build phases
 
 ### Phase 0 — Foundation
 Target: web + API + Firestore + Pub/Sub + Gemini real tool + Cloud Run.
@@ -129,18 +126,46 @@ Add complete verification/replan, 2–3 candidates, polished Agent Activity/DCG 
 ### Phase 3 — COMPETITION-100
 Only after stability: multi-agent ADK, advanced optimizer, customer heatmap, richer assets, rollback, vision or other enhancements.
 
-## 9. Release gates
+## 8. Release-gate evidence
 
-**Foundation Gate** — web/API/Firestore/Gemini/PubSub/Cloud Run integrated.  
-**G02 Twin Control** — real agent tool changes Simulation Twin and 3D, not Live.  
-**G03 Autonomous** — event triggers AI without prompt.  
-**G04 Guard** — stale decision is blocked.  
-**G05 Live Commit** — valid guarded decision changes Live Twin and 3D.  
-**G06 Submission** — flagship scenario passes 20 consecutive E2E runs.
+```mermaid
+flowchart LR
+  subgraph Foundation ["Foundation"]
+    F[Foundation<br/>web + API + Firestore +<br/>Pub/Sub + Gemini + Cloud Run]
+  end
 
-Do not consider the project “demo ready” merely because individual services work.
+  subgraph G02 ["G02 Twin Control"]
+    G2[G02 Twin Control<br/>Simulation Twin control]
+  end
 
-## 10. Development conventions
+  subgraph G03 ["G03 Autonomous"]
+    G3[G03 Autonomous<br/>autonomous event trigger]
+  end
+
+  subgraph G04 ["G04 Guard"]
+    G4[G04 Guard<br/>stale blocking]
+  end
+
+  subgraph G05 ["G05 Live Commit"]
+    G5[G05 Live Commit<br/>guarded Live Twin commit]
+  end
+
+  subgraph G06 ["G06 Submission"]
+    G6[G06 Submission<br/>20 consecutive E2E runs]
+  end
+
+  F --> G2 --> G3 --> G4 --> G5 --> G6
+  classDef pending fill:#fff2cc,stroke:#9a6700
+  class F,G2,G3,G4,G5,G6 pending
+```
+
+No gate is considered passed without repository-linked test, deployment, or run evidence. Current documentation describes acceptance criteria; it does not claim that Foundation or G02–G06 has passed.
+
+Gate definitions: Foundation integrates web/API/Firestore/Gemini/Pub/Sub/Cloud Run; G02 proves Simulation Twin control; G03 proves autonomous trigger; G04 proves stale blocking; G05 proves guarded Live Twin commit; G06 proves 20 consecutive E2E runs.
+
+Do not consider the project demo ready merely because individual services work.
+
+## 9. Development conventions
 
 - One issue should have one clear outcome.
 - Reference issue number in PR/commit.
@@ -152,7 +177,7 @@ Do not consider the project “demo ready” merely because individual services 
 - Keep demo data resettable.
 - A PR touching a public schema, state transition, tool or action contract, or security invariant must update the relevant docs and the ADR log in the same change.
 
-## 11. Automatic scope reduction
+## 10. Automatic scope reduction
 
 If time is short:
 1. Cut photorealistic assets.

@@ -1,6 +1,6 @@
 # RetailTwin AI — Current Project Status
 
-**Status date:** 2026-10-08  
+**Status date:** 2026-10-08
 **Purpose:** separate what is implemented now from the target architecture described elsewhere.
 
 ## Current baseline on main
