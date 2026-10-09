@@ -16,7 +16,7 @@ export type Formatters = {
 };
 
 function formatters(locale: string, currency: string): Formatters {
-  const money = new Intl.NumberFormat(locale, { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 });
+  const money = new Intl.NumberFormat(locale, { style: "currency", currency, notation: "compact", minimumFractionDigits: 0, maximumFractionDigits: 1 });
   const moneyExact = new Intl.NumberFormat(locale, { style: "currency", currency });
   const count = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
