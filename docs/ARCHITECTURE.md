@@ -44,6 +44,43 @@ POS / Inventory / Promotion / Demo Events
                         Verifier
 ```
 
+## 2. Architecture end-to-end flow (planned vs implemented)
+
+```mermaid
+flowchart LR
+  subgraph Events ["Events"]
+    E[Store events<br/>POS / inventory / promotion]
+    PS[Pub/Sub]
+  end
+
+  E --> PS
+  PS --> O[Observer]
+  O --> I[Investigator]
+  I --> P[Gemini planner]
+  P --> S[Simulation Twin]
+  S --> K[KPI evaluator]
+  K --> G[Decision Context Guard]
+
+  G -- "ALLOW + authorization" --> X[Executor]
+  G -- REFRESH_REQUIRED --> P
+  G -- DENY --> F[Fail closed]
+  G -- HUMAN_REVIEW --> H[Human review]
+  H -.-> P
+
+  X --> L[Live Twin]
+  L --> V[3D view]
+  V --> Z[Verifier]
+
+  classDef implemented fill:#d9f7e8,stroke:#16794a
+  classDef planned fill:#fff2cc,stroke:#9a6700
+  classDef event fill:#eaf4fc,stroke:#3772a5
+  class E,PS event
+  class V implemented
+  class O,I,P,S,K,G,X,L,F,H,Z planned
+```
+
+Gate posture (per `docs/CURRENT_STATUS.md`): all gates **pending** — no linked test, deployment, or 20-run evidence was available in the checked-out repository.
+
 ## 2. Technology stack
 
 ### Frontend

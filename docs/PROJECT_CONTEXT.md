@@ -1,6 +1,6 @@
 # RetailTwin AI — Project Context and Product Specification
 
-> **Read this file first.** This document explains the product target: what RetailTwin AI is, why it exists, what problem it solves, and how the completed competition system is intended to behave. For what is actually implemented on `main` today, read `docs/CURRENT_STATUS.md` immediately after this file.
+> **Read this file first.** This document explains what RetailTwin AI is, why it exists, what problem it solves, how the system behaves, and what the team is building.
 
 ## 1. Executive summary
 
@@ -163,13 +163,50 @@ The strongest proof is the stale-context demonstration:
 **Verifier** — checks observed result after execution.  
 **Agent Activity** — user-visible evidence/action timeline, not hidden reasoning.
 
-## 11. Where to read next
+## 12. Current implementation status
 
-1. `docs/CURRENT_STATUS.md` — current implementation, open integration work and gate status.
-2. `docs/ARCHITECTURE.md` — target components, data flow, security and DCG.
-3. `docs/DOMAIN_AND_DATA_MODEL.md` — target entities, schemas, events and actions.
+The current baseline is recorded in [CURRENT_STATUS.md](CURRENT_STATUS.md). It includes both the React Three Fiber store scaffold from merged PR #56 and the fixture-backed FastAPI/frontend API integration from merged PR #57. The autonomous event loop, Gemini planner, simulation service, DCG, guarded Executor, Firestore Live Twin persistence, verifier and Cloud Run deployment remain planned or under active issue/PR work. Do not infer completion from the target architecture below.
+
+```mermaid
+flowchart LR
+  subgraph Foundation ["Foundation"]
+    F[Foundation<br/>web + API + Firestore +<br/>Pub/Sub + Gemini + Cloud Run]
+  end
+
+  subgraph G02 ["G02 Twin Control"]
+    G2[G02 Twin Control<br/>Simulation Twin control]
+  end
+
+  subgraph G03 ["G03 Autonomous"]
+    G3[G03 Autonomous<br/>autonomous event trigger]
+  end
+
+  subgraph G04 ["G04 Guard"]
+    G4[G04 Guard<br/>stale blocking]
+  end
+
+  subgraph G05 ["G05 Live Commit"]
+    G5[G05 Live Commit<br/>guarded Live Twin commit]
+  end
+
+  subgraph G06 ["G06 Submission"]
+    G6[G06 Submission<br/>20 consecutive E2E runs]
+  end
+
+  F --> G2 --> G3 --> G4 --> G5 --> G6
+  classDef pending fill:#fff2cc,stroke:#9a6700
+  class F,G2,G3,G4,G5,G6 pending
+```
+
+At audit time PR #59 and PR #57 are merged. PR #57 provides a fixture-backed API integration only; it is not evidence that the autonomous planner, simulation, guard, guarded commit or release gates are complete.
+
+## 13. Where to read next
+
+1. `docs/CURRENT_STATUS.md` — authoritative current maturity, work in progress and release-gate status.
+2. `docs/ARCHITECTURE.md` — components, data flow, security and DCG.
+3. `docs/DOMAIN_AND_DATA_MODEL.md` — entities, schemas, events and actions.
 4. `docs/IMPLEMENTATION_GUIDE.md` — role-by-role work and build order.
-5. `docs/DEVELOPMENT_WORKFLOW.md` — branch/PR/verification rules.
+5. `docs/DEVELOPMENT_WORKFLOW.md` — issue, branch, PR and verification rules.
 6. `docs/DEMO_AND_ACCEPTANCE.md` — flagship demo and release gates.
 7. `docs/adr/` — architecture decision log. Pull requests name the ADR they track.
 8. GitHub Issues — executable work tickets and Definition of Done.
