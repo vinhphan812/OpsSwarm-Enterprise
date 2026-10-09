@@ -40,35 +40,26 @@ Retail conditions can change between the moment an AI makes a decision and the m
 
 ## Architecture at a glance
 
-```text
-Store/POS/Inventory Events
-          ↓
-       Pub/Sub
-          ↓
-       Observer
-          ↓
-     Investigator
-          ↓
- Gemini Planner
-          ↓
- Candidate Plans
-          ↓
-  Simulation Twin
-          ↓
-    KPI Evaluator
-          ↓
- Selected Decision
-          ↓
-Decision Context Guard
-   ↓       ↓       ↓
- DENY   REFRESH   ALLOW
-           ↓        ↓
-        Re-plan  Executor
-                    ↓
-                 Live Twin
-                    ↓
-              3D Store + Verifier
+```mermaid
+flowchart LR
+  E[Store events] --> O[Observer]
+  O --> I[Investigator]
+  I --> P[Gemini planner]
+  P --> S[Simulation Twin]
+  S --> K[KPI evaluator]
+  K --> G[Decision Context Guard]
+  G -->|ALLOW| X[Executor]
+  G -->|REFRESH_REQUIRED| P
+  G -->|DENY| N[No commit]
+  X --> L[Live Twin]
+  L --> V[3D view and verifier]
+  classDef implemented fill:#d9f7e8,stroke:#16794a
+  classDef planned fill:#fff2cc,stroke:#9a6700
+  class V implemented
+  class E,O,I,P,S,K,G,X,L planned
 ```
+
+Green components are implemented or scaffolded in the current repository; yellow components remain planned or require integration evidence. A diagram is not a claim that a release gate has passed.
 
 ## Technology
 
