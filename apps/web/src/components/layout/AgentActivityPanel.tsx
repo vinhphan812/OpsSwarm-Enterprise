@@ -6,10 +6,11 @@ import { PromotionsPanel } from "@/components/promotions/PromotionsPanel";
 import { RevenuePanel } from "@/components/revenue/RevenuePanel";
 import { StoreStatus } from "@/components/status/StoreStatus";
 import { PANEL_WIDTH } from "@/constants/app.constant";
+import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { LENS } from "@/enums/ui.enum";
 import { usePanelStore } from "@/state/panel.store";
 import { useRunStore } from "@/state/run.store";
-import { useUiStore } from "@/state/ui.store";
+import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { LENS_VIEW } from "./lens";
 
 /** Panel slide: quick, settles without a visible bounce. Transform only, so the 3D view never resizes. */
@@ -58,10 +59,12 @@ export function AgentActivityOpenButton() {
   );
 }
 
-/** Operations lens: the store API check and the agent's timeline. */
+/** Operations lens: the store API check and the agent's timeline. A SKU in the timeline selects that product. */
 function OperationsView() {
   const { t } = useTranslation();
   const activity = useRunStore((state) => state.activity);
+  const select = useUiStore((state) => state.select);
+  const selected = useUiStore(selectedProductId);
 
   return (
     <>
@@ -97,7 +100,15 @@ function OperationsView() {
                       <time dateTime={entry.ts}>{clock(entry.ts)}</time>
                       <span className="activity-stage">{entry.stage}</span>
                       {entry.sku ? (
-                        <span className="activity-sku">{entry.sku}</span>
+                        <button
+                          type="button"
+                          className="activity-sku"
+                          aria-label={t("activity.selectProduct", { sku: entry.sku })}
+                          aria-pressed={selected === entry.sku}
+                          onClick={() => select(entry.sku!, ENTITY_TYPE.Product)}
+                        >
+                          {entry.sku}
+                        </button>
                       ) : null}
                     </div>
                     <p className="activity-summary">{entry.summary}</p>

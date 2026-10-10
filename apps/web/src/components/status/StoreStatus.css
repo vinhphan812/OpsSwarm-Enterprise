@@ -47,40 +47,138 @@
   border-radius: 6px;
 }
 
-.store-status thead {
-  display: none;
+/* Three small totals under the store name. */
+.store-status-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0 0 14px;
 }
 
-.store-status tr {
-  display: block;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--color-line);
+.store-status-stats > div {
+  padding: 8px 10px;
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
 }
 
-.store-status tr:last-child {
-  border-bottom: 0;
-}
-
-.store-status td {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 0;
-  padding: 2px 0;
-}
-
-.store-status-label {
+.store-status-stats dt {
+  font-size: 11px;
   color: var(--color-ink-muted);
 }
 
-.store-status-table {
-  overflow-x: auto;
+.store-status-stats dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
 }
 
-.store-status table {
+.store-status-stats [data-state="low"] dd {
+  color: var(--color-warning);
+}
+
+.store-status-stats [data-state="out"] dd {
+  color: var(--color-serious);
+}
+
+/* One line per product: state dot, SKU, slot, on shelf / facings, backroom. */
+.store-status-list {
+  margin-top: 4px;
+}
+
+.store-status-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.store-status-row {
+  display: grid;
+  grid-template-columns: 10px 1fr 1.3fr 0.8fr 0.6fr;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 12px;
+  padding: 6px 8px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  color: var(--color-ink);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+}
+
+.store-status-row > span:nth-child(n + 4) {
+  text-align: right;
+}
+
+button.store-status-row {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+button.store-status-row:hover {
+  background: var(--color-panel);
+}
+
+button.store-status-row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+}
+
+button.store-status-row:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.store-status-head {
+  padding-top: 0;
+  padding-bottom: 4px;
+  font-size: 11px;
+  color: var(--color-ink-faint);
+  border-bottom: 1px solid var(--color-line);
+  border-radius: 0;
+}
+
+.store-status-sku {
+  font-weight: 600;
+}
+
+.store-status-faint {
+  color: var(--color-ink-faint);
+}
+
+.store-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-good);
+}
+
+.store-status-dot[data-state="low"] {
+  background: var(--color-warning);
+}
+
+.store-status-dot[data-state="out"] {
+  background: var(--color-serious);
+}
+
+.store-status-more {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: none;
+  border: 1px dashed var(--color-line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.store-status-more:hover {
+  border-color: var(--color-line-strong);
 }
 
 .store-status-lookup {
@@ -90,7 +188,8 @@
   margin: 4px 0 12px;
 }
 
-.store-status-lookup:last-child {
+.store-status-lookup:last-child,
+.store-status-result:last-child {
   margin-bottom: 0;
 }
 
@@ -105,29 +204,21 @@
   gap: 8px;
 }
 
-.store-status-lookup input {
-  box-sizing: border-box;
-  flex: 1;
-  min-width: 0;
-  height: 36px;
-  padding: 0 10px;
-  font: inherit;
-  color: var(--color-ink);
-  background: var(--color-canvas);
-  border: 1px solid var(--color-line);
-  border-radius: 6px;
-  transition: border-color 0.2s;
+/* The products table's own columns: a state dot first, stock tinted by its state. */
+.products-table th:first-child,
+.products-table td:first-child {
+  width: 18px;
+  padding-right: 0;
 }
 
-.store-status-lookup input::placeholder {
-  color: var(--color-ink-faint);
+.products-table td .store-status-dot {
+  display: inline-block;
 }
 
-.store-status-lookup input:hover {
-  border-color: var(--color-line-strong);
+.products-table td[data-state="low"] {
+  color: var(--color-warning);
 }
 
-.store-status-lookup input:focus {
-  border-color: var(--color-accent);
-  outline: none;
+.products-table td[data-state="out"] {
+  color: var(--color-serious);
 }

@@ -51,7 +51,8 @@ export function Segmented<T extends string>({ label, options, value, onChange, l
             role="radio"
             aria-checked={selected}
             aria-label={option.label}
-            title={option.label}
+            // The glass switch hides its labels on small screens; elsewhere the label is on show.
+            title={variant === "glass" ? option.label : undefined}
             tabIndex={selected ? 0 : -1}
             className="segmented-option"
             data-selected={selected}

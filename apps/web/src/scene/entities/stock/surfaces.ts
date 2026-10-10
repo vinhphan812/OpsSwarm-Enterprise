@@ -1,17 +1,15 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from "three";
 import { ENTITY_TYPE, EQUIPMENT_KIND, type FixtureKind } from "@/enums/scene.enum";
-import { WOOD_CRATE_SURFACES } from "@/scene/entities/equipment/Crate";
 import { GLASS_DOOR_COOLER_SURFACES } from "@/scene/entities/equipment/GlassDoorCooler";
 import { OPEN_CHILLER_SURFACES } from "@/scene/entities/equipment/OpenChiller";
 import { PRODUCE_RACK_SURFACES } from "@/scene/entities/equipment/ProduceRack";
 import { SHELF_SURFACES } from "@/scene/entities/Shelf";
 import type { StockSurface } from "@/types/scene.type";
 
-/** Display surfaces of every fixture kind that holds products. */
+/** Display surfaces of every fixture kind that holds products. Crates and barriers hold none: they are decor, not shelves. */
 const SURFACES: Partial<Record<FixtureKind, StockSurface[]>> = {
   [ENTITY_TYPE.Shelf]: SHELF_SURFACES,
   [EQUIPMENT_KIND.ProduceRack]: PRODUCE_RACK_SURFACES,
-  [EQUIPMENT_KIND.CrateWood]: WOOD_CRATE_SURFACES,
   [EQUIPMENT_KIND.GlassDoorCooler]: GLASS_DOOR_COOLER_SURFACES,
   [EQUIPMENT_KIND.OpenChiller]: OPEN_CHILLER_SURFACES,
 };

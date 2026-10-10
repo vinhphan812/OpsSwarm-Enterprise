@@ -40,7 +40,7 @@ function ancestorNames(object: Object3D): string[] {
 describe("store scene graph", () => {
   it("names store, shelves, slots, products, and equipment with entity ids", async () => {
     const renderer = await ReactThreeTestRenderer.create(
-      <StoreContents store={toSceneStore(sampleStoreState()).store} showLabels={false} />,
+      <StoreContents store={toSceneStore(sampleStoreState()).store} interactive={false} />,
     );
     const scene = renderer.scene as unknown as TestNode;
 
@@ -79,7 +79,7 @@ describe("store scene graph", () => {
 
   it("draws the layout with empty shelves when the twin could not be loaded", async () => {
     useTwinStore.setState({ live: null, status: TWIN_STATUS.Error });
-    const renderer = await ReactThreeTestRenderer.create(<LiveStoreContents showLabels={false} />);
+    const renderer = await ReactThreeTestRenderer.create(<LiveStoreContents interactive={false} />);
     const scene = renderer.scene as unknown as TestNode;
 
     for (const id of ["store-001", "A01", "A01-S01", "CK01", "GDC01"]) {

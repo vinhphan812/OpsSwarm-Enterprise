@@ -1,4 +1,5 @@
-import type { ThreeEvent } from "@react-three/fiber";
+import type { Intersection } from "three";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import {
   BoxGeometry,
@@ -12,12 +13,28 @@ import {
   type BufferGeometry,
   type InstancedMesh,
 } from "three";
-import { useUiStore } from "@/state/ui.store";
+import { selectedProductId, useUiStore } from "@/state/ui.store";
+import { useAnomalyStore, worstSeverities } from "@/state/anomaly.store";
+import { ANOMALY_SEVERITIES, type AnomalySeverity } from "@/enums/anomaly.enum";
+import { prefersReducedMotion } from "@/core/utils/motion";
+import { ANOMALY_HALO_GLOW, ANOMALY_HALO_OPACITY, ANOMALY_PULSE_DEPTH, ANOMALY_PULSE_HZ, SELECTION_ITEM_GLOW } from "@/constants/scene.constant";
+import { anomalyColor, selectionColor } from "@/core/utils/theme";
 import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
-import type { SlotFixture, StockSurface, StoreFixture, Tuple3 } from "@/types/scene.type";
+import { isDrag } from "@/scene/utils/pointer";
+import type {
+  SlotFixture,
+  StockSurface,
+  StoreFixture,
+  Tuple3,
+} from "@/types/scene.type";
 import { entityMatrix } from "@/scene/utils/transform";
 import { STOCK_SHAPE, type StockShape } from "@/enums/stock.enum";
-import { idFraction, productLook, stockItemFor, type StockItem } from "./catalog";
+import {
+  idFraction,
+  productLook,
+  stockItemFor,
+  type StockItem,
+} from "./catalog";
 import { surfaceMatrix, surfacesOf } from "./surfaces";
 
 const GEOMETRY: Record<StockShape, BufferGeometry> = {
@@ -28,7 +45,58 @@ const GEOMETRY: Record<StockShape, BufferGeometry> = {
 const SHAPES = Object.keys(GEOMETRY) as StockShape[];
 
 /** White base; each instance carries its own color. */
-const STOCK_MATERIAL = new MeshStandardMaterial({ color: "#ffffff", roughness: 0.6 });
+const STOCK_MATERIAL = new MeshStandardMaterial({
+  color: "#ffffff",
+  roughness: 0.6,
+});
+/**
+ * The selected product's items, drawn again over the stock: their own colors, lit up.
+ * Made on first use, once the theme stylesheet has loaded.
+ */
+let selectedMaterial: MeshStandardMaterial | null = null;
+function selectedItemMaterial() {
+  selectedMaterial ??= new MeshStandardMaterial({
+    color: "#ffffff",
+    roughness: 0.6,
+    emissive: selectionColor(),
+    emissiveIntensity: SELECTION_ITEM_GLOW,
+  });
+  return selectedMaterial;
+}
+/** The glowing copy is a little larger, so it covers the item without z-fighting. */
+const SELECTED_SCALE = new Matrix4().makeScale(1.04, 1.04, 1.04);
+
+/**
+ * A see-through shell around each item of a product with an open anomaly, in its worst
+ * severity's color. It sits outside the selection glow, so a selected product with an
+ * anomaly shows both. One material per severity, made on first use; `pulseHalos` breathes them.
+ */
+const haloMaterials = new Map<AnomalySeverity, MeshStandardMaterial>();
+function anomalyHaloMaterial(severity: AnomalySeverity) {
+  let material = haloMaterials.get(severity);
+  if (!material) {
+    material = new MeshStandardMaterial({
+      color: anomalyColor(severity),
+      emissive: anomalyColor(severity),
+      emissiveIntensity: ANOMALY_HALO_GLOW,
+      transparent: true,
+      opacity: ANOMALY_HALO_OPACITY,
+      depthWrite: false,
+    });
+    haloMaterials.set(severity, material);
+  }
+  return material;
+}
+
+/** Brightens and dims every halo together; `wave` runs from -1 to 1. */
+function pulseHalos(wave: number) {
+  const factor = 1 + ANOMALY_PULSE_DEPTH * wave;
+  for (const material of haloMaterials.values()) {
+    material.opacity = Math.min(0.9, ANOMALY_HALO_OPACITY * factor);
+    material.emissiveIntensity = ANOMALY_HALO_GLOW * factor;
+  }
+}
+const ANOMALY_SCALE = new Matrix4().makeScale(1.12, 1.12, 1.12);
 
 const FACING_GAP = 0.008;
 const ROW_GAP = 0.005;
@@ -37,21 +105,61 @@ const ITEM_INSET = 0.92;
 /** Brightness spread between items of one product, so a facing does not read as flat plastic. */
 const SHADE_SPREAD = 0.12;
 
-type Placed = { matrix: Matrix4; color: Color; productId: string };
+/** One drawn item. `holderId` is the shelf or equipment it stands on. */
+type Placed = {
+  matrix: Matrix4;
+  color: Color;
+  productId: string;
+  holderId: string;
+};
 type Batches = Record<StockShape, Placed[]>;
 
 /** Takes an item position in the surface's own frame. */
 type Emit = (position: Tuple3) => void;
 
 /**
+ * The item shrunk to fit its slot: `facings` items side by side never run past the
+ * slot's edges, and one item never rises above the surface's clear height. The count
+ * stays what the twin says; only the drawn size gives way. Fruit shrinks evenly so it
+ * stays round.
+ */
+export function fitItem(
+  item: StockItem,
+  surface: StockSurface,
+  slot: SlotFixture,
+  facings: number,
+): StockItem {
+  const [w, h, d] = item.size;
+  if (item.shape === STOCK_SHAPE.Sphere) {
+    const scale = Math.min(
+      1,
+      slot.width / (Math.max(1, facings) * w),
+      surface.maxHeight / h,
+    );
+    return { ...item, size: [w * scale, h * scale, d * scale] };
+  }
+  const gaps = FACING_GAP * Math.max(0, facings - 1);
+  const width = Math.min(w, (slot.width - gaps) / Math.max(1, facings));
+  return { ...item, size: [width, Math.min(h, surface.maxHeight), d] };
+}
+
+/**
  * Packaged goods: the facings side by side, rows behind them, stacked when the item
  * stacks. Emitted front row first, so a short stock empties the shelf from the back.
  */
-function layFacings(surface: StockSurface, slot: SlotFixture, item: StockItem, facings: number, emit: Emit) {
+function layFacings(
+  surface: StockSurface,
+  slot: SlotFixture,
+  item: StockItem,
+  facings: number,
+  emit: Emit,
+) {
   const [w, h, d] = item.size;
   const total = facings * (w + FACING_GAP) - FACING_GAP;
   const rows = Math.max(1, Math.floor(surface.depth / (d + ROW_GAP)));
-  const layers = item.stacks ? Math.max(1, Math.min(3, Math.floor(surface.maxHeight / h))) : 1;
+  const layers = item.stacks
+    ? Math.max(1, Math.min(3, Math.floor(surface.maxHeight / h)))
+    : 1;
   for (let row = 0; row < rows; row += 1) {
     const z = surface.depth / 2 - d / 2 - row * (d + ROW_GAP);
     for (let layer = 0; layer < layers; layer += 1) {
@@ -67,10 +175,19 @@ function layFacings(surface: StockSurface, slot: SlotFixture, item: StockItem, f
  * Loose fruit: `facings` columns across the slot, a full bottom layer and a smaller
  * heap on top. Emitted bottom layer first, so a short stock loses the heap first.
  */
-function layHeap(surface: StockSurface, slot: SlotFixture, item: StockItem, facings: number, emit: Emit) {
+function layHeap(
+  surface: StockSurface,
+  slot: SlotFixture,
+  item: StockItem,
+  facings: number,
+  emit: Emit,
+) {
   const [w, h, d] = item.size;
   const back = Math.max(1, Math.floor(surface.depth / d));
-  const layers = Math.max(1, Math.min(3, Math.floor(surface.maxHeight / (h * 0.85))));
+  const layers = Math.max(
+    1,
+    Math.min(3, Math.floor(surface.maxHeight / (h * 0.85))),
+  );
   const left = slot.offset - (facings * w) / 2;
   for (let layer = 0; layer < layers; layer += 1) {
     // Each layer sits in the hollows of the one below and shrinks toward the middle.
@@ -85,7 +202,11 @@ function layHeap(surface: StockSurface, slot: SlotFixture, item: StockItem, faci
   }
 }
 
-type Holder = { matrix: Matrix4; surfaces: StockSurface[]; slots: Map<string, SlotFixture> };
+type Holder = {
+  matrix: Matrix4;
+  surfaces: StockSurface[];
+  slots: Map<string, SlotFixture>;
+};
 
 /**
  * Every product drawn at its slot with its facings, one item per unit of shelf
@@ -124,14 +245,18 @@ export function buildStock(store: StoreFixture): Batches {
     const surface = slot ? holder?.surfaces[slot.surface] : undefined;
     if (!holder || !slot || !surface) continue;
 
-    const item = stockItemFor(surface.kind);
+    const facings = Math.max(0, product.facings);
+    const item = fitItem(stockItemFor(surface.kind), surface, slot, facings);
     const look = productLook(item, product.productId);
     const base = new Color(look.color);
     const [w, h, d] = item.size;
     const height = h * look.height;
     const inset = item.shape === STOCK_SHAPE.Sphere ? 1 : ITEM_INSET;
     let index = 0;
-    const toWorld = new Matrix4().multiplyMatrices(holder.matrix, surfaceMatrix(surface));
+    const toWorld = new Matrix4().multiplyMatrices(
+      holder.matrix,
+      surfaceMatrix(surface),
+    );
     let stock = product.shelfQuantity;
     const emit: Emit = ([x, y, z]) => {
       if (stock <= 0) return;
@@ -143,14 +268,15 @@ export function buildStock(store: StoreFixture): Batches {
         scratch.quat.identity(),
         scratch.scale.set(w * inset, height, d * inset),
       );
-      const shade = 1 + (idFraction(product.productId, index + 1) - 0.5) * SHADE_SPREAD;
+      const shade =
+        1 + (idFraction(product.productId, index + 1) - 0.5) * SHADE_SPREAD;
       batches[item.shape].push({
         matrix: new Matrix4().multiplyMatrices(toWorld, scratch.local),
         color: base.clone().multiplyScalar(shade),
         productId: product.productId,
+        holderId: product.shelfId,
       });
     };
-    const facings = Math.max(0, product.facings);
     if (surface.kind === STOCK_KIND.Fruit) {
       layHeap(surface, slot, item, facings, emit);
     } else {
@@ -160,34 +286,53 @@ export function buildStock(store: StoreFixture): Batches {
   return batches;
 }
 
-function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
+/** The stock item a raycast hit, if it hit one. Fixture hit boxes use it to let their own items take a click. */
+export function stockItemAt(hit: Intersection): Placed | undefined {
+  const items = hit.object.userData.stockItems as Placed[] | undefined;
+  return items && hit.instanceId !== undefined
+    ? items[hit.instanceId]
+    : undefined;
+}
+
+/** Writes each item's matrix and color into the instanced mesh. */
+function useInstances(
+  items: Placed[],
+  matrixOf: (item: Placed) => Matrix4 = (item) => item.matrix,
+) {
   const ref = useRef<InstancedMesh>(null);
-
-  // Products are instances, not objects, so a click is mapped back through the instance id.
-  const onClick = (event: ThreeEvent<MouseEvent>) => {
-    const placed = event.instanceId === undefined ? undefined : items[event.instanceId];
-    if (!placed) return;
-    event.stopPropagation();
-    useUiStore.getState().select(placed.productId);
-  };
-
   useLayoutEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
     items.forEach((item, index) => {
-      mesh.setMatrixAt(index, item.matrix);
+      mesh.setMatrixAt(index, matrixOf(item));
       mesh.setColorAt(index, item.color);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
+    // matrixOf is a module function per caller, so only the items change.
   }, [items]);
+  return ref;
+}
+
+function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
+  const ref = useInstances(items);
+
+  // Products are instances, not objects, so a click is mapped back through the instance id.
+  const onClick = (event: ThreeEvent<MouseEvent>) => {
+    const placed =
+      event.instanceId === undefined ? undefined : items[event.instanceId];
+    if (!placed || isDrag(event)) return;
+    event.stopPropagation();
+    useUiStore.getState().select(placed.productId);
+  };
 
   if (items.length === 0) return null;
   return (
     <instancedMesh
       ref={ref}
       args={[GEOMETRY[shape], STOCK_MATERIAL, items.length]}
+      userData={{ stockItems: items }}
       onClick={onClick}
       castShadow
       receiveShadow
@@ -195,15 +340,107 @@ function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
   );
 }
 
-/** All products in the store as one instanced mesh per primitive shape. Click an item to select its product. */
+const glowMatrix = (item: Placed) =>
+  new Matrix4().multiplyMatrices(item.matrix, SELECTED_SCALE);
+
+/** The selected product's items again, glowing. Takes no pointer events and casts no shadow. */
+function SelectedMesh({
+  shape,
+  items,
+}: {
+  shape: StockShape;
+  items: Placed[];
+}) {
+  const ref = useInstances(items, glowMatrix);
+  if (items.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[GEOMETRY[shape], selectedItemMaterial(), items.length]}
+      name={`stock-selected-${shape}`}
+    />
+  );
+}
+
+const haloMatrix = (item: Placed) =>
+  new Matrix4().multiplyMatrices(item.matrix, ANOMALY_SCALE);
+
+/** Items of products with an open anomaly, inside their halo. Takes no pointer events and casts no shadow. */
+function AnomalyMesh({
+  shape,
+  severity,
+  items,
+}: {
+  shape: StockShape;
+  severity: AnomalySeverity;
+  items: Placed[];
+}) {
+  const ref = useInstances(items, haloMatrix);
+  if (items.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[GEOMETRY[shape], anomalyHaloMaterial(severity), items.length]}
+      name={`stock-anomaly-${severity}-${shape}`}
+      renderOrder={1}
+    />
+  );
+}
+
+/** The items of `batches` whose product passes `keep`, per shape. */
+function pick(batches: Batches, keep: (productId: string) => boolean) {
+  return Object.fromEntries(
+    SHAPES.map((shape) => [shape, batches[shape].filter((item) => keep(item.productId))]),
+  ) as Batches;
+}
+
+/**
+ * All products in the store as one instanced mesh per primitive shape. Click an item to
+ * select its product. The selected product glows, and a product with an open anomaly
+ * gets a halo; only products in the twin state are drawn, so a stale anomaly shows nothing.
+ */
 export function Stock({ store }: { store: StoreFixture }) {
   const batches = useMemo(() => buildStock(store), [store]);
+  const productId = useUiStore(selectedProductId);
+  const anomalies = useAnomalyStore((state) => state.anomalies);
+  const selected = useMemo(
+    () => pick(batches, (id) => id === productId),
+    [batches, productId],
+  );
+  const anomalous = useMemo(() => {
+    const worst = worstSeverities(anomalies);
+    return ANOMALY_SEVERITIES.map((severity) => ({
+      severity,
+      batches: pick(batches, (id) => worst.get(id) === severity),
+    }));
+  }, [batches, anomalies]);
+  const pulse = useMemo(() => !prefersReducedMotion(), []);
+  useFrame(({ clock }) => {
+    if (pulse && anomalies.length) pulseHalos(Math.sin(clock.elapsedTime * Math.PI * 2 * ANOMALY_PULSE_HZ));
+  });
 
   return (
     <group name="stock">
       {SHAPES.map((shape) => (
         <StockMesh key={shape} shape={shape} items={batches[shape]} />
       ))}
+      {SHAPES.map((shape) => (
+        <SelectedMesh
+          key={`selected-${shape}`}
+          shape={shape}
+          items={selected[shape]}
+        />
+      ))}
+      {anomalous.flatMap(({ severity, batches: items }) =>
+        SHAPES.map((shape) => (
+          <AnomalyMesh
+            key={`anomaly-${severity}-${shape}`}
+            shape={shape}
+            severity={severity}
+            items={items[shape]}
+          />
+        )),
+      )}
     </group>
   );
 }

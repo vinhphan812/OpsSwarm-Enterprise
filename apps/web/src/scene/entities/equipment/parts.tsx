@@ -35,6 +35,12 @@ export const MAT = {
   /** Painted cabinet sheet metal of coolers and the checkout. */
   cabinet: new MeshStandardMaterial({ color: "#4a4d52", roughness: 0.6, metalness: 0.2 }),
   cabinetDark: new MeshStandardMaterial({ color: "#2a2c30", roughness: 0.7, metalness: 0.1 }),
+  /** Warm white laminate of the checkout counter's body. */
+  laminate: new MeshStandardMaterial({ color: "#ebe7e1", roughness: 0.55 }),
+  /** Satin stainless worktop the checkout's stations sit in. */
+  worktop: new MeshStandardMaterial({ color: "#c7ccd1", roughness: 0.35, metalness: 0.6 }),
+  /** Store accent stripe along the checkout's shopper side. */
+  accent: new MeshStandardMaterial({ color: "#2f8f83", roughness: 0.5 }),
   /** Rubber belt and well bottoms. */
   rubber: new MeshStandardMaterial({ color: "#1d1f22", roughness: 0.9 }),
   /** Cooler shelves. */

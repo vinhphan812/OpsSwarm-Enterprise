@@ -33,3 +33,20 @@ export const PAN_BOUNDS = {
   min: [-STORE_FLOOR.width / 2, 0, -STORE_FLOOR.depth / 2] as Tuple3,
   max: [STORE_FLOOR.width / 2, STORE_WALL.height, STORE_FLOOR.depth / 2] as Tuple3,
 } as const;
+
+/** Camera distance from a focused product's slot: the minimum zoom, so a whole bay is in view. */
+export const FOCUS_PRODUCT_DISTANCE = MIN_CAMERA_DISTANCE;
+/** Height of the camera's view over a focused product, as an angle above the horizontal. */
+export const FOCUS_ELEVATION = 0.42;
+/** Angle above the horizontal of the view of a focused shelf or piece of equipment: higher, to take in all of it. */
+export const FOCUS_FIXTURE_ELEVATION = 0.6;
+/** A focused view keeps the camera this far inside the walls, so it never looks at the back of one. */
+export const FOCUS_WALL_CLEARANCE = 0.4;
+/** Steepest view a focus may take to see over other fixtures, as an angle above the horizontal. */
+export const FOCUS_MAX_ELEVATION = 1.3;
+/** Step the focus raises its view by while another fixture blocks the line of sight. */
+export const FOCUS_ELEVATION_STEP = 0.04;
+/** Room around a focused shelf or piece of equipment, as a share of its size. */
+export const FOCUS_FIXTURE_MARGIN = 1.2;
+/** Seconds the camera takes to fly to a selected entity; slower than a wheel step, so the move reads. */
+export const FOCUS_SMOOTH_TIME = 0.55;

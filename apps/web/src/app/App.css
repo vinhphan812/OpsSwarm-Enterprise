@@ -28,6 +28,16 @@
   --color-serious: #ec835a;
 }
 
+/* Read by the 3D scene at runtime (core/utils/theme.ts), not by any class, so always emitted. */
+@theme static {
+  /* Glow of the selected product, shelf, or equipment. */
+  --color-selection: #ffffff;
+  /* Halo of a product with an open anomaly, by severity. */
+  --color-anomaly-high: #ff4d3d;
+  --color-anomaly-medium: #ff9f1a;
+  --color-anomaly-low: #f2d34b;
+}
+
 html,
 body,
 #root {
@@ -217,7 +227,21 @@ body {
 
 .activity-sku {
   margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
   color: var(--color-ink-soft);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.activity-sku:hover,
+.activity-sku[aria-pressed="true"] {
+  background: var(--color-card);
+  color: var(--color-ink);
 }
 
 .activity-summary {
@@ -234,4 +258,205 @@ body {
     height: 45dvh;
     width: auto !important;
   }
+}
+
+/* Text input shared by the panel and its dialogs: the SKU lookup and the product search. */
+.text-field {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  transition: border-color 0.2s;
+}
+
+.text-field::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.text-field:hover {
+  border-color: var(--color-line-strong);
+}
+
+.text-field:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
+/* ---- List dialogs (ListDialog): toolbar, then a table that alone scrolls ---- */
+
+/* Filters and search on one row, all 36px high like a text field. */
+.dialog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.dialog-toolbar .segmented-chips {
+  margin-bottom: 0;
+}
+
+.dialog-toolbar .segmented-chips .segmented-option {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.dialog-search {
+  width: 240px;
+  margin-left: auto;
+}
+
+/* Fills the dialog under the toolbar and scrolls on its own. */
+.data-table-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.data-table {
+  width: 100%;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  position: sticky;
+  top: 0;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--color-ink-faint);
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.data-table .num {
+  text-align: right;
+}
+
+/* Rows that do something when clicked. */
+.data-table tbody tr[tabindex] {
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.data-table tbody tr[tabindex]:hover {
+  background: var(--color-card);
+}
+
+.data-table tbody tr[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* Totals above a list dialog's toolbar. */
+.dialog-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.dialog-summary > div {
+  padding: 8px 12px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.dialog-summary dt {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.dialog-summary dd {
+  margin: 2px 0 0;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Payment receipts: a sale's row opens its lines under it ---- */
+.data-table tbody tr[data-open="true"] {
+  background: var(--color-card);
+}
+
+.receipt-caret {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 8px;
+  vertical-align: middle;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 5px solid var(--color-ink-faint);
+  transition: transform 0.15s;
+}
+
+tr[data-open="true"] .receipt-caret {
+  transform: rotate(90deg);
+}
+
+.data-table .receipt-row > td {
+  padding: 4px 10px 12px 28px;
+  background: var(--color-card);
+}
+
+.receipt {
+  width: 100%;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-collapse: collapse;
+}
+
+.receipt th {
+  padding: 4px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--color-ink-faint);
+  border-bottom: 1px dashed var(--color-line);
+}
+
+.receipt td {
+  padding: 4px 8px;
+}
+
+.receipt .num {
+  text-align: right;
+}
+
+.receipt tfoot td {
+  color: var(--color-ink-muted);
+  border-top: 1px dashed var(--color-line);
+}
+
+.receipt-sku {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.receipt-sku:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }

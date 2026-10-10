@@ -1,23 +1,54 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MetricTile } from "@/components/commerce/MetricTile";
 import { Segmented } from "@/components/commerce/Segmented";
 import { PromotionIcon } from "@/components/icons";
+import { PROMOTION_FLASH_MS } from "@/constants/app.constant";
 import { PROMOTION_STATUS, PROMOTION_STATUSES, type PromotionStatus } from "@/enums/commerce.enum";
 import { usePromotions } from "@/hooks/commerce.hook";
 import { format as f } from "@/core/utils/format";
-import { PromotionCard } from "./PromotionCard";
+import { useUiStore } from "@/state/ui.store";
+import { PromotionCard, promotionCardId } from "./PromotionCard";
 
 const ALL = "all";
 type StatusFilter = PromotionStatus | typeof ALL;
 
-/** Promotions tab of the side panel, read-only: what runs, what earned, and every program by status. */
+/**
+ * Promotions tab of the side panel, read-only: what runs, what earned, and every program by
+ * status. A promotion opened from a product's details (`focusPromotion`) is scrolled to and
+ * flashes for a moment; a status filter that hides it goes back to all.
+ */
 export function PromotionsPanel() {
   const { t } = useTranslation();
   const summary = usePromotions();
   const [filter, setFilter] = useState<StatusFilter>(ALL);
   const { promotions } = summary;
+  const focusedId = useUiStore((state) => state.focusedPromotionId);
+  const focusPromotion = useUiStore((state) => state.focusPromotion);
+  const [flashId, setFlashId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const focused = promotions.find((promotion) => promotion.id === focusedId);
+    // Waits for the promotions to load; the request stays until the card is there.
+    if (!focused) return;
+    if (filter !== ALL && focused.status !== filter) setFilter(ALL);
+    setFlashId(focused.id);
+    focusPromotion(null);
+  }, [focusedId, promotions, filter, focusPromotion]);
+
+  useEffect(() => {
+    if (!flashId) return;
+    // After the lens and the list have animated in.
+    const scroll = window.setTimeout(() => {
+      document.getElementById(promotionCardId(flashId))?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    }, 250);
+    const clear = window.setTimeout(() => setFlashId(null), PROMOTION_FLASH_MS);
+    return () => {
+      window.clearTimeout(scroll);
+      window.clearTimeout(clear);
+    };
+  }, [flashId]);
   const countOf = (status: PromotionStatus) => promotions.filter((promotion) => promotion.status === status).length;
   const shown = filter === ALL ? promotions : promotions.filter((promotion) => promotion.status === filter);
 
@@ -63,7 +94,7 @@ export function PromotionsPanel() {
                     exit={{ opacity: 0, scale: 0.98 }}
                     transition={{ duration: 0.22, ease: "easeOut" }}
                   >
-                    <PromotionCard promotion={promotion} />
+                    <PromotionCard promotion={promotion} focused={promotion.id === flashId} />
                   </motion.div>
                 ))}
               </AnimatePresence>

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ApiError } from "@/core/api/client";
 import { notify } from "@/core/notify";
@@ -8,6 +8,9 @@ import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { StoreStatus } from "@/components/status/StoreStatus";
 import { TWIN_STATUS } from "@/enums/twin.enum";
 import { useTwinStore } from "@/state/twin.store";
+import { selectedProductId, useUiStore } from "@/state/ui.store";
+import { STORE_STATUS_ROWS } from "@/constants/app.constant";
+import { stockedStoreState } from "@/test/stockedState";
 
 vi.mock("@/core/notify", () => ({
   notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
@@ -51,6 +54,7 @@ function client(overrides: Partial<RetailTwinClient> = {}): RetailTwinClient {
 beforeEach(() => {
   // The store comes from the scene's live twin, which polls GET /store.
   useTwinStore.setState({ live: store, status: TWIN_STATUS.Ready });
+  useUiStore.getState().select(null);
   vi.stubGlobal("fetch", vi.fn(async () => {
     throw new TypeError("offline");
   }));
@@ -109,6 +113,18 @@ test("shows an inventory error without dropping the store", async () => {
   expect(screen.getByRole("heading", { name: "store-001" })).toBeTruthy();
 });
 
+test("selects the product GET /inventory/{sku} finds", async () => {
+  const api = client();
+  render(<StoreStatus client={api} />);
+  await screen.findByRole("heading", { name: "store-001" });
+
+  fireEvent.change(screen.getByRole("textbox", { name: "SKU" }), { target: { value: "P001" } });
+  fireEvent.click(screen.getByRole("button", { name: "Look up inventory" }));
+
+  await waitFor(() => expect(selectedProductId(useUiStore.getState())).toBe("P001"));
+  expect(api.inventory).toHaveBeenCalledWith("P001");
+});
+
 test("asks for a SKU before calling the API", async () => {
   const api = client();
   render(<StoreStatus client={api} />);
@@ -152,4 +168,73 @@ test("retries health on the next open after a failed read", async () => {
   render(<StoreStatus client={api} />);
   expect(await screen.findByText("API ok · test · store-001")).toBeTruthy();
   expect(api.health).toHaveBeenCalledTimes(2);
+});
+
+test("lists products one per line, out and low stock first, and opens the rest in a dialog", async () => {
+  const many: StoreResponse = { ...store, products: stockedStoreState().products };
+  useTwinStore.setState({ live: many, status: TWIN_STATUS.Ready });
+  useUiStore.getState().select(null);
+  render(<StoreStatus client={client()} />);
+  await screen.findByRole("heading", { name: "store-001" });
+
+  const rows = () => screen.getAllByRole("button", { name: /^Show P\d+ in the store$/ });
+  // P003 and P010 are out, P004 and P007 low; then the rest by SKU.
+  expect(rows().map((row) => row.getAttribute("aria-label")!.split(" ")[1])).toEqual([
+    "P003",
+    "P010",
+    "P004",
+    "P007",
+    "P001",
+  ]);
+  expect(rows()).toHaveLength(STORE_STATUS_ROWS);
+
+  fireEvent.click(screen.getByRole("button", { name: `Show all ${many.products.length}` }));
+  const dialog = await screen.findByRole("dialog");
+  const dialogRows = () => within(dialog).getAllByRole("row", { name: /^Show P\d+ in the store$/ });
+  expect(dialogRows()).toHaveLength(many.products.length);
+
+  // Filter by state, then search within it.
+  fireEvent.click(within(dialog).getByRole("radio", { name: "Out of stock" }));
+  expect(dialogRows().map((row) => row.getAttribute("aria-label"))).toEqual([
+    "Show P003 in the store",
+    "Show P010 in the store",
+  ]);
+  fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search SKU, shelf, or slot" }), {
+    target: { value: "oc01" },
+  });
+  expect(dialogRows()).toHaveLength(1);
+
+  // A row selects the product in the 3D view and closes the dialog.
+  fireEvent.click(dialogRows()[0]);
+  expect(selectedProductId(useUiStore.getState())).toBe("P010");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("selects a product in the 3D view from its line", async () => {
+  useUiStore.getState().select(null);
+  render(<StoreStatus client={client()} />);
+  const row = await screen.findByRole("button", { name: "Show P001 in the store" });
+  fireEvent.click(row);
+  expect(selectedProductId(useUiStore.getState())).toBe("P001");
+  expect(row.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("reads GET /health from apps/api by default", async () => {
+  render(<StoreStatus />);
+  await waitFor(() => expect(notify.error).toHaveBeenCalledWith("The API request failed.", expect.anything()));
+  expect(vi.mocked(fetch).mock.calls.map(([url]) => new URL(String(url)).pathname)).toContain("/health");
+});
+
+test("under ?twin=demo, calls no API and looks a SKU up in the demo store", async () => {
+  window.history.replaceState(null, "", "/?twin=demo");
+  render(<StoreStatus />);
+  expect(await screen.findByRole("heading", { name: "store-001" })).toBeTruthy();
+  expect(screen.queryByText(/^API /)).toBeNull();
+
+  fireEvent.change(screen.getByRole("textbox", { name: "SKU" }), { target: { value: "p001" } });
+  fireEvent.click(screen.getByRole("button", { name: "Look up inventory" }));
+  expect(screen.getByText("P001 on A01 / A01-S01: 8 on shelf, 42 in the backroom.")).toBeTruthy();
+  expect(selectedProductId(useUiStore.getState())).toBe("P001");
+  expect(fetch).not.toHaveBeenCalled();
+  window.history.replaceState(null, "", "/");
 });

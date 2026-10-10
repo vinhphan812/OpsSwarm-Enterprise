@@ -32,7 +32,7 @@ const STOCK_ITEM: Record<StockKind, StockItem> = {
     palette: ["#e8b33c", "#d9534f", "#3f7cc4", "#4e9a5b", "#f08a3c", "#8e5bb5", "#f2e2c4", "#2f9c9c", "#c8443f", "#f5c542"],
     minHeight: 0.78,
   },
-  /** Apples heaped in the produce trays and crates. */
+  /** Apples heaped in the produce trays. */
   [STOCK_KIND.Fruit]: {
     shape: STOCK_SHAPE.Sphere,
     size: [0.075, 0.072, 0.075],
