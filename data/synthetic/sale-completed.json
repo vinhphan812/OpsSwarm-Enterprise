@@ -1,0 +1,10 @@
+{
+  "event_id": "evt-sale-0001",
+  "correlation_id": "run-20261007-001",
+  "event_type": "sale.completed",
+  "store_id": "store-001",
+  "sku": "P001",
+  "quantity": 3,
+  "occurred_at": "2026-10-07T08:01:00Z",
+  "source": "synthetic-pos"
+}

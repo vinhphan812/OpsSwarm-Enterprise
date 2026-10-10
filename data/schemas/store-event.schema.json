@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vinhphan812/retailtwin-ai/data/schemas/store-event.schema.json",
+  "title": "Normalized store event",
+  "description": "Minimum store event. occurred_at is the event timestamp. correlation_id ties the event to one autonomous run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "correlation_id",
+    "event_type",
+    "store_id",
+    "sku",
+    "quantity",
+    "occurred_at",
+    "source"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Immutable id of this event. A replay of the same id is a duplicate."
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Id copied onto the Pub/Sub message and the BigQuery row."
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "sale.completed lands in sales_events. inventory.* lands in inventory_events. agent.* lands in agent_actions."
+    },
+    "store_id": {"type": "string", "minLength": 1},
+    "sku": {"type": "string", "minLength": 1},
+    "quantity": {"type": "integer", "minimum": 1},
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the event happened, with a timezone."
+    },
+    "source": {"type": "string", "minLength": 1}
+  }
+}

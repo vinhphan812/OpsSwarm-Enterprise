@@ -1,0 +1,56 @@
+[
+  {
+    "name": "event_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Immutable id of one normalized event."
+  },
+  {
+    "name": "correlation_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Id that ties this event to one autonomous run."
+  },
+  {
+    "name": "event_type",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Normalized type, such as sale.completed."
+  },
+  {
+    "name": "store_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Store the event belongs to."
+  },
+  {
+    "name": "sku",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Product SKU carried by the event."
+  },
+  {
+    "name": "quantity",
+    "type": "INT64",
+    "mode": "REQUIRED",
+    "description": "Positive quantity carried by the event."
+  },
+  {
+    "name": "occurred_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the event happened. Partition field. Not the ingest time."
+  },
+  {
+    "name": "source",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "System that produced the event."
+  },
+  {
+    "name": "ingested_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the row was written. Not part of event identity."
+  }
+]
