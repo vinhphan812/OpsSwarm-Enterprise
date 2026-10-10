@@ -157,3 +157,79 @@ def test_accepted_event_logs_the_correlation_id(client, caplog) -> None:
     assert response.status_code == 201
     assert "run-20261007-001" in caplog.text
     assert "evt-000123" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Direct EventLog unit tests — raise branch coverage to 85%+
+# ---------------------------------------------------------------------------
+from retailtwin_api.events import EventLog, EventConflict  # noqa: E402
+from retailtwin_api.schemas import StoreEvent  # noqa: E402
+
+
+def _make_event(event_id: str, **overrides) -> StoreEvent:
+    base = {
+        "event_id": event_id,
+        "correlation_id": "run-test",
+        "event_type": "sale.completed",
+        "store_id": "store-001",
+        "sku": "P001",
+        "quantity": 3,
+        "occurred_at": "2026-10-07T08:00:00Z",
+        "source": "test",
+    }
+    base.update(overrides)
+    return StoreEvent(**base)
+
+
+class TestEventLogGet:
+    def test_get_missing_returns_none(self) -> None:
+        log = EventLog()
+        result = log.get("nonexistent")
+        assert result is None
+
+    def test_get_existing_returns_copy(self) -> None:
+        log = EventLog()
+        stored, _ = log.accept(_make_event("evt-001"))
+        retrieved = log.get("evt-001")
+        assert retrieved is not None
+        assert retrieved.event_id == "evt-001"
+        # Mutation of retrieved must not affect stored
+        retrieved.quantity = 999
+        _, is_dup = log.accept(_make_event("evt-001"))
+        assert is_dup is True  # original stored unchanged
+
+
+class TestEventLogAccept:
+    def test_accept_new_event(self) -> None:
+        log = EventLog()
+        stored, is_dup = log.accept(_make_event("evt-new"))
+        assert is_dup is False
+        assert stored.event_id == "evt-new"
+        assert stored.quantity == 3
+
+    def test_accept_exact_duplicate_returns_stored_copy(self) -> None:
+        log = EventLog()
+        first, _ = log.accept(_make_event("evt-dup"))
+        second, is_dup = log.accept(_make_event("evt-dup"))
+        assert is_dup is True
+        assert second.event_id == "evt-dup"
+        # Returns existing stored event
+        assert second.quantity == 3
+
+    def test_accept_conflict_on_different_payload(self) -> None:
+        log = EventLog()
+        log.accept(_make_event("evt-c1", quantity=5))
+        with pytest.raises(EventConflict) as exc_info:
+            log.accept(_make_event("evt-c1", quantity=99))
+        assert exc_info.value.event_id == "evt-c1"
+
+    def test_accept_multiple_distinct_events(self) -> None:
+        log = EventLog()
+        e1, d1 = log.accept(_make_event("evt-a"))
+        e2, d2 = log.accept(_make_event("evt-b"))
+        e3, d3 = log.accept(_make_event("evt-c"))
+        assert (d1, d2, d3) == (False, False, False)
+        assert (e1.event_id, e2.event_id, e3.event_id) == ("evt-a", "evt-b", "evt-c")
+        assert log.get("evt-a") is not None
+        assert log.get("evt-b") is not None
+        assert log.get("evt-c") is not None

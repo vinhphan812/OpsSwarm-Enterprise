@@ -45,3 +45,22 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload web coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
+          retention-days: 14
+
+      - name: Coverage summary
+        run: |
+          echo "## Web Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          # Read the text summary produced by @vitest/coverage-v8 (always generated)
+          cat apps/web/coverage/coverage-summary.json 2>/dev/null || cat apps/web/coverage/text-summary.txt 2>/dev/null || echo "(run npm run test:coverage locally for details)"
+          echo '```' >> $GITHUB_STEP_SUMMARY
