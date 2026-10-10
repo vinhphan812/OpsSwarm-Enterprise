@@ -11,7 +11,7 @@ import { LensSwitcher } from "@/components/layout/LensSwitcher";
 vi.mock("@/components/status/StoreStatus", () => ({ StoreStatus: () => null }));
 vi.mock("@/core/notify", () => ({
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
-  notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+  notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
 /** apps/api does not serve the revenue and promotions routes yet. */

@@ -67,6 +67,11 @@
   color: var(--color-ink);
 }
 
+.segmented-option:disabled {
+  color: var(--color-ink-faint);
+  cursor: not-allowed;
+}
+
 .segmented-option[data-selected="true"] {
   color: var(--color-panel);
   cursor: default;
@@ -103,6 +108,28 @@
   text-overflow: ellipsis;
 }
 
+.segmented-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  background: var(--color-simulation);
+  border-radius: 999px;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-simulation) 60%, transparent);
+  animation: segmented-dot-pulse 1.6s ease-out infinite;
+}
+
+@keyframes segmented-dot-pulse {
+  to {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segmented-dot {
+    animation: none;
+  }
+}
+
 .segmented-badge {
   min-width: 18px;
   padding: 0 5px;
@@ -113,12 +140,15 @@
   border-radius: 999px;
 }
 
-/* Lens switch: centered over the 3D view, icons only on narrow screens. */
+/* Lens and view-mode switches: top left over the 3D view, icons only on narrow screens. */
 .lens-switcher {
   position: absolute;
   top: 16px;
   left: 16px;
   z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 @media (max-width: 640px) {

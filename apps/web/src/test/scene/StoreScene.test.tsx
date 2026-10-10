@@ -1,7 +1,7 @@
 import ReactThreeTestRenderer from "@react-three/test-renderer";
 import type { Object3D } from "three";
 import { describe, expect, it } from "vitest";
-import { LiveStoreContents, StoreContents } from "@/scene/StoreScene";
+import { TwinStoreContents, StoreContents } from "@/scene/StoreScene";
 import { sampleStoreState } from "@/test/sampleState";
 import { toSceneStore } from "@/scene/layout";
 import { TWIN_STATUS } from "@/enums/twin.enum";
@@ -79,7 +79,7 @@ describe("store scene graph", () => {
 
   it("draws the layout with empty shelves when the twin could not be loaded", async () => {
     useTwinStore.setState({ live: null, status: TWIN_STATUS.Error });
-    const renderer = await ReactThreeTestRenderer.create(<LiveStoreContents interactive={false} />);
+    const renderer = await ReactThreeTestRenderer.create(<TwinStoreContents interactive={false} />);
     const scene = renderer.scene as unknown as TestNode;
 
     for (const id of ["store-001", "A01", "A01-S01", "CK01", "GDC01"]) {

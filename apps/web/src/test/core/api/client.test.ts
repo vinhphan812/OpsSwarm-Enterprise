@@ -105,3 +105,14 @@ test("asks the revenue and promotions routes for their payloads", async () => {
     "http://127.0.0.1:8000/promotions",
   ]);
 });
+
+test("asks the simulation routes for the open runs and one run, encoding its id", async () => {
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL) => jsonResponse({}));
+  const client = createClient("http://127.0.0.1:8000/", fetchImpl);
+  await client.simulations();
+  await client.simulation("sim 1");
+  expect(fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([
+    "http://127.0.0.1:8000/simulations?status=open",
+    "http://127.0.0.1:8000/simulations/sim%201",
+  ]);
+});

@@ -14,7 +14,8 @@ import {
   type InstancedMesh,
 } from "three";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
-import { useAnomalyStore, worstSeverities } from "@/state/anomaly.store";
+import { worstSeverities } from "@/state/anomaly.store";
+import { useShownAnomalies } from "@/hooks/activeTwin.hook";
 import { ANOMALY_SEVERITIES, type AnomalySeverity } from "@/enums/anomaly.enum";
 import { prefersReducedMotion } from "@/core/utils/motion";
 import { ANOMALY_HALO_GLOW, ANOMALY_HALO_OPACITY, ANOMALY_PULSE_DEPTH, ANOMALY_PULSE_HZ, SELECTION_ITEM_GLOW } from "@/constants/scene.constant";
@@ -398,11 +399,12 @@ function pick(batches: Batches, keep: (productId: string) => boolean) {
  * All products in the store as one instanced mesh per primitive shape. Click an item to
  * select its product. The selected product glows, and a product with an open anomaly
  * gets a halo; only products in the twin state are drawn, so a stale anomaly shows nothing.
+ * The Simulation view shows no halos (`useShownAnomalies`).
  */
 export function Stock({ store }: { store: StoreFixture }) {
   const batches = useMemo(() => buildStock(store), [store]);
   const productId = useUiStore(selectedProductId);
-  const anomalies = useAnomalyStore((state) => state.anomalies);
+  const anomalies = useShownAnomalies();
   const selected = useMemo(
     () => pick(batches, (id) => id === productId),
     [batches, productId],

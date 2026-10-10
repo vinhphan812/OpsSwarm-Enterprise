@@ -7,7 +7,7 @@ import { DEMO_NAMES, demoPromotions, demoRevenue } from "@/fixtures/demo/commerc
 import { demoStoreState } from "@/fixtures/demo/store";
 import { usePromotions, useRevenue } from "@/hooks/commerce.hook";
 
-vi.mock("@/core/notify", () => ({ notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() } }));
+vi.mock("@/core/notify", () => ({ notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 

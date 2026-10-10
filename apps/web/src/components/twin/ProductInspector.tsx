@@ -4,8 +4,8 @@ import { issueReason } from "@/core/api/validate";
 import { inspectProduct } from "@/core/twin/twinIssues";
 import { INSPECTION_KIND } from "@/enums/twin.enum";
 import { useTwinIssues } from "@/hooks/twinIssues.hook";
-import { anomaliesOf, useAnomalyStore } from "@/state/anomaly.store";
-import { useTwinStore } from "@/state/twin.store";
+import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
+import { anomaliesOf } from "@/state/anomaly.store";
 import { useUiStore } from "@/state/ui.store";
 import { AnomalyList } from "./AnomalyList";
 import { Figures, InspectorCard } from "./InspectorCard";
@@ -16,10 +16,10 @@ import { Figures, InspectorCard } from "./InspectorCard";
  */
 export function ProductInspector({ productId }: { productId: string }) {
   const { t } = useTranslation();
-  const live = useTwinStore((state) => state.live);
+  const live = useActiveState();
   const issues = useTwinIssues();
   const inspection = inspectProduct(productId, live, issues);
-  const anomalies = anomaliesOf(useAnomalyStore((state) => state.anomalies), productId);
+  const anomalies = anomaliesOf(useShownAnomalies(), productId);
   const showDetails = useUiStore((state) => state.showDetails);
 
   return (

@@ -1,0 +1,27 @@
+import { useAnomalyStore } from "@/state/anomaly.store";
+import { activeState, shownSimulation, useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
+import type { Anomaly } from "@/types/anomaly.type";
+
+const NO_ANOMALIES: Anomaly[] = [];
+
+/** The twin state on screen: Live, or the simulation's proposal in the Simulation view. */
+export function useActiveState() {
+  const viewMode = useUiStore((state) => state.viewMode);
+  return useTwinStore((twin) => activeState(twin, viewMode));
+}
+
+/** The simulation on screen, or null while the scene shows Live. */
+export function useShownSimulation() {
+  const viewMode = useUiStore((state) => state.viewMode);
+  return useTwinStore((twin) => shownSimulation(twin, viewMode));
+}
+
+/**
+ * Open anomalies to show. They describe the Live Twin, so the Simulation view shows none:
+ * a halo on a proposed state would claim a problem the proposal may already fix.
+ */
+export function useShownAnomalies(): Anomaly[] {
+  const anomalies = useAnomalyStore((state) => state.anomalies);
+  return useShownSimulation() ? NO_ANOMALIES : anomalies;
+}

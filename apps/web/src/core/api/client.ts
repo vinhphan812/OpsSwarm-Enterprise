@@ -3,6 +3,7 @@ import type { HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { PromotionsSummary } from "@/types/promotion.type";
 import type { RevenueSummary } from "@/types/revenue.type";
+import type { Simulation, SimulationsResponse } from "@/types/simulation.type";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -46,6 +47,8 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
     inventory: (sku: string) => request<ProductInventory>(`/inventory/${encodeURIComponent(sku)}`),
     revenue: (period) => request<RevenueSummary>(`/revenue?period=${encodeURIComponent(period)}`),
     promotions: () => request<PromotionsSummary>("/promotions"),
+    simulations: () => request<SimulationsResponse>("/simulations?status=open"),
+    simulation: (simulationId: string) => request<Simulation>(`/simulations/${encodeURIComponent(simulationId)}`),
   };
 }
 

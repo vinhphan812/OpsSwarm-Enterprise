@@ -12,5 +12,7 @@ export const notify = {
   error: (title: string, error?: unknown) =>
     addToast({ title, description: error === undefined ? undefined : errorMessage(error), color: "danger" }),
   warning: (title: string, description?: string) => addToast({ title, description, color: "warning" }),
+  /** Something new worth a look, in the simulation accent. */
+  info: (title: string, description?: string) => addToast({ title, description, color: "secondary" }),
   success: (title: string, description?: string) => addToast({ title, description, color: "success" }),
 };

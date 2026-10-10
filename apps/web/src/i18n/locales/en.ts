@@ -171,6 +171,7 @@ export const en = {
     notObject: "not an object",
     missingField: "missing {{field}}",
     productsNotArray: "products is not an array",
+    invalidField: "invalid {{field}}",
   },
   errors: {
     unknown: "Unknown error",
@@ -197,6 +198,29 @@ export const en = {
   panel: {
     close: "Close the {{title}} panel",
     open: "Open the {{title}} panel",
+  },
+  viewMode: {
+    label: "Twin view",
+    live: "Live",
+    simulation: "Simulation",
+    noSimulation: "Simulation (none open)",
+    newSimulation: "new proposal",
+  },
+  simulation: {
+    label: "Simulation view",
+    title: "SIMULATION",
+    notExecuted: "Proposed store, not executed",
+    run: "{{id}} ({{status}})",
+    basedOn: "from Live {{version}}",
+    liveMoved: "Live is now {{version}}",
+    opened: "New proposal: {{id}}",
+    openedHint: "Switch to Simulation to review it. Nothing in the store has changed.",
+    status: {
+      pending: "pending",
+      evaluated: "evaluated",
+      committed: "committed",
+      rejected: "rejected",
+    },
   },
   lens: {
     label: "View",
