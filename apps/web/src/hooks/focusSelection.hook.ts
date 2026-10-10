@@ -8,7 +8,7 @@ import { fixtureFocus, productFocus, type FocusView } from "@/scene/camera/focus
 import { sceneOf, storeLayout } from "@/scene/layout";
 import { usePanelStore } from "@/state/panel.store";
 import { prefersReducedMotion } from "@/core/utils/motion";
-import { useTwinStore } from "@/state/twin.store";
+import { useActiveState } from "@/hooks/activeTwin.hook";
 import { useUiStore } from "@/state/ui.store";
 
 /** The open Agent Activity panel covers this many pixels on the right of the canvas, gap included. */
@@ -60,7 +60,7 @@ export function useFocusSelection() {
   const camera = useThree((state) => state.camera);
   const id = useUiStore((state) => state.selectedEntityId);
   const type = useUiStore((state) => state.selectedEntityType);
-  const live = useTwinStore((state) => state.live);
+  const live = useActiveState();
   const panelOpen = usePanelStore((state) => state.open);
   const size = useThree((state) => state.size);
   const focused = useRef<string | null>(null);

@@ -27,6 +27,8 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
 - **3D view** (`StoreScene`): the store room, its fixtures, and the stock that twin state puts on them.
 - **Overlays on the 3D view**:
   - `LensSwitcher` (top left): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it. Revenue and Promotions read routes `apps/api` does not serve yet (`TODO(BE)`), so they show their empty report until it does.
+  - `ViewModeSwitch` (top left, next to the lenses): **Live** or **Simulation**. Simulation can be picked only while a simulation is open (`twin.store.simulation`), and the view goes back to Live when it closes. A newly opened run raises a toast once ("New proposal: <id>", none if the Simulation view is already on), and a pulsing violet dot stays on Simulation until that run has been looked at. See *Live and Simulation views* below.
+  - `SimulationBanner`: in the Simulation view, a violet frame around the 3D view (`--color-simulation`) and a label under the switches: SIMULATION, "Proposed store, not executed", the run id and status, the Live version it started from, and a warning once Live has moved on since.
   - `CameraHelp` (bottom left): lists the camera gestures.
   - `TwinStatusOverlay`: a spinner while the first state loads, then a small banner for problems (load failed, connection lost), with a retry button. The store always stays on screen: with empty shelves until a state arrives, then the last state. Errors also show as a toast.
   - `EntityInspector`: the details card of the selected entity, bottom left:
@@ -89,6 +91,15 @@ TwinSource ──connectTwin──▶ parseStoreState ──▶ twin.store.live 
 
 A product's entity id is its `sku`.
 
+### Live and Simulation views
+
+`twin.store` keeps `live` and `simulation` apart, and nothing copies one into the other. `simulation` is a `Simulation` (`types/simulation.type.ts`): the run id, the Live `base_context_version` it started from, its status, its actions (`move_product`, `change_facings`, `replenish_shelf`), and the proposed `state`. That shape is the FE's proposal for `GET /simulations/{simulation_id}`, which `apps/api` does not serve yet (`TODO(BE)`, #26).
+
+- `activeState(twin, viewMode)` (`useActiveState`) is the state on screen: the proposal in the Simulation view, Live otherwise, and Live whenever no simulation is open. The scene (`TwinStoreContents`), the camera focus, the product and fixture cards, the details dialog, and `TwinIssuesNotice` read it. Store status, Revenue, and Promotions keep reading Live.
+- Anomalies describe Live, so the Simulation view shows no halos and no anomaly lists (`useShownAnomalies`).
+- A commit never touches `live` from the UI. Live changes only when the live feed brings a newer `context_version`. The simulation is then closed, and the view goes back to Live.
+- With apps/api, `simulationSource` (`core/api/sources/simulationSource.ts`, through `useSimulationSource`) fills `simulation`: it reads `GET /simulations?status=open`, then `GET /simulations/{simulation_id}` for the first pending or evaluated run, checks it with `parseSimulation`, and polls like `apiSource` (every 5 s, backing off to 60 s while reads fail). A read of the same run that is not newer is dropped, a failed read keeps the last run without a toast, and once no run is open `simulation` goes back to null. `apps/api` serves neither route yet (`TODO(BE)`), so until it does no simulation opens and the Simulation switch stays off. Under a `?twin=` dev twin there is no simulation source; the console and the demo fixture fill it instead.
+
 ### Revenue and promotions
 
 | Lens | Route | Response type | Client |
@@ -109,8 +120,10 @@ A product's entity id is its `sku`.
 | (none) | `apiSource`: `GET /store`, polled every 5 s, backing off to 60 s while it fails |
 | `fixture` | `fixtureSource`: empty shelves, no live updates |
 | `memory` | empty shelves in memory, editable from the browser console: `twin.add()` adds the API fixture's P001, then `twin.patch("P001", { facings: 5 })`, `twin.patch("P001", null)`, `twin.state()` |
-| `demo` | the same editable twin, stocked with the demo store, plus demo data where `apps/api` serves none yet: checkout figures, payments and receipts, Revenue and Promotions reports, and anomalies (`twin.anomalies()`; `twin.raise("P001")` raises an anomaly event on a product, `twin.resolve("P001")` closes it). All of it lives in `fixtures/demo/` and is marked **Demo data** where it shows; see *Demo data* below |
+| `demo` | the same editable twin, stocked with the demo store, plus demo data where `apps/api` serves none yet: checkout figures, payments and receipts, Revenue and Promotions reports, anomalies (`twin.anomalies()`; `twin.raise("P001")` raises an anomaly event on a product, `twin.resolve("P001")` closes it), and an open simulation. All of it lives in `fixtures/demo/` and is marked **Demo data** where it shows; see *Demo data* below |
 | `slow` | the snapshot takes 4 s |
+
+Under `memory` and `demo`, the console also drives simulations (`core/twin/memorySimulation.ts`), standing in for the simulation API and the guarded commit: `twin.simulate()` opens a simulation of the demo actions on the current state (or of the actions passed in, such as `twin.simulate({ type: "change_facings", sku: "P001", facings: 5 })`), `twin.commit()` writes the proposal to the twin, which pushes it to the live feed, or refuses with `REFRESH_REQUIRED` once Live has moved on, and `twin.discard()` drops it.
 | `offline` | the snapshot fails after 1.2 s |
 | `flaky` | the live feed drops 3 s after loading |
 
@@ -124,6 +137,7 @@ A product's entity id is its `sku`.
 | `store.ts` | a product on every kind of fixture that holds stock, some out of stock or low | the twin source |
 | `checkouts.ts` | three lanes (open, paused, closed) and today's sales with receipt lines, from a fixed price list | `useCheckoutSummary`, `useCheckoutTransactions` |
 | `commerce.ts` | Revenue for every window (today adds up the checkout sales) and Promotions in every status | `useRevenue`, `usePromotions` through `demoClient` |
+| `simulation.ts` | `sim-demo-001`: restock P003, one more facing for P004, and P007 moved from B02-S20 to B02-S22 | `twin.store.simulation` on load; `twin.simulate()` in the console |
 | `anomalies.ts` | open anomalies that agree with the demo store's stock: stockouts and low stock where the shelf says so, and sales drops on full shelves, so a halo shows at every severity | `anomaly.store` on load; `twin.anomalies()`, `twin.raise()` in the console |
 
 The figures agree with each other: a lane's card adds up its sales, each sale its receipt lines, and today's revenue the lanes. Everything else still reads `apps/api`. Without `?twin=demo`, and in tests, none of it is used. The whole demo is one commit, so it can be reverted on its own.
@@ -158,12 +172,13 @@ src/
       twinConnection.ts     connectTwin: snapshot + updates, validated and in version order
       twinIssues.ts         all products left out of the scene; inspectProduct
       devSources.ts         pickSource: apiSource, or a ?twin= source while developing
+      memorySimulation.ts   console simulations on the in-memory twin: open, guarded commit, discard
     notify.ts               toast helpers and errorMessage
     utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
   hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
                             commerce, hover, fitCamera, orbitPoint
   state/                    Zustand stores, read-side copies only
-    twin.store.ts           live state, issues, status, stale flag, retry
+    twin.store.ts           live state, open simulation, issues, status, stale flag, retry; activeState
     run.store.ts            agent activity (deduplicated by id) and the current loop stage
     ui.store.ts             selected entity, lens, live/simulation view mode
     panel.store.ts          side panel open state, saved in localStorage
@@ -182,7 +197,7 @@ src/
     commerceFixture.ts      empty revenue and promotions reports, shown until a read lands
   constants/                <area>.constant.ts: camera, dimensions, scene, twin, app, i18n, commerce
   enums/                    <area>.enum.ts: as-const value sets and their types
-  types/                    <domain>.type.ts: twin, api, agent, anomaly, revenue, promotion, scene
+  types/                    <domain>.type.ts: twin, simulation, api, agent, anomaly, revenue, promotion, scene
   i18n/                     i18next setup, English only; locales/en.ts (also the source of the key types)
   test/                     Vitest suites, mirroring the src/ folders
 ```
@@ -232,7 +247,11 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `scene/entities/stock/Stock.test.ts` | stock is deterministic, follows facings and quantity, and fills the front row first |
 | `scene/camera/focus.test.ts` | the camera faces a product's slot from its stock's side (far side, equipment too), sees wall equipment from inside the room and a gondola from the camera's side, and never ends up behind a wall |
 | `scene/camera/cameraFrame.test.ts` | every shelf corner stays in frame on desktop and on a 390px canvas |
-| `state/*.test.ts` | twin store and run store (the anomaly store is in `scene/anomaly.test.tsx`) |
+| `state/*.test.ts` | twin store and run store (the anomaly store is in `scene/anomaly.test.tsx`); issue #26: a simulation never changes Live, and the state on screen follows the view mode |
+| `simulationBinding.test.tsx` | issue #26: the scene draws Live, then the proposal in the Simulation view (without halos), then Live again; the demo simulation places every product |
+| `components/layout/ViewModeSwitch.test.tsx` | issue #26: Simulation cannot be picked with no simulation open; a new run raises one toast and a dot until it is looked at; the banner names the run and its base, warns once Live moves on, and the view goes back to Live when the simulation closes |
+| `core/api/sources/simulationSource.test.ts` | issue #26: `parseSimulation` checks the run like `GET /store`; the source reads the open run, drops stale reads, keeps the last run on a failure and backs off, and goes to null once the run closes |
+| `core/twin/memorySimulation.test.ts` | issue #26: opening and discarding leave Live alone; a commit reaches Live only through the live feed, and is refused once Live has moved on |
 | `components/twin/ProductDetails.test.tsx` | the details dialog opens from the product card and a shelf's list, shows the product's twin figures, its anomalies, and only the promotions it is in; **Show in the store** selects it, and a promotion opens the Promotions lens on it; the lens shows every status again, flashes that card, and clears the request |
 | `components/commerce/productLinks.test.tsx` | Revenue SKU rows and promotion products select their product; a promotion SKU the twin lacks cannot be selected |
 | `components/**`, `app/App.test.tsx` | StoreStatus (a lookup selects the product it finds), AgentActivityPanel (a timeline SKU selects its product), LensSwitcher (revenue and promotions reads), routing |

@@ -1,6 +1,7 @@
 import type { RevenuePeriod } from "@/enums/commerce.enum";
 import type { PromotionsSummary } from "./promotion.type";
 import type { RevenueSummary } from "./revenue.type";
+import type { Simulation, SimulationsResponse } from "./simulation.type";
 import type { ProductInventory, StoreResponse } from "./twin.type";
 
 export type HealthResponse = {
@@ -19,4 +20,8 @@ export type RetailTwinClient = {
   revenue: (period: RevenuePeriod) => Promise<RevenueSummary>;
   /** `GET /promotions`. TODO(BE): not served by apps/api yet. */
   promotions: () => Promise<PromotionsSummary>;
+  /** `GET /simulations?status=open`. TODO(BE): not served by apps/api yet (#26). */
+  simulations: () => Promise<SimulationsResponse>;
+  /** `GET /simulations/{simulation_id}`. TODO(BE): not served by apps/api yet (#26). */
+  simulation: (simulationId: string) => Promise<Simulation>;
 };

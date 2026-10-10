@@ -6,7 +6,7 @@ import { App } from "@/app/App";
 
 vi.mock("@/core/notify", () => ({
   errorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
-  notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+  notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
 vi.mock("@/scene/StoreScene", () => ({

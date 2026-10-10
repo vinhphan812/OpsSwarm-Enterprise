@@ -13,7 +13,7 @@ import { STORE_STATUS_ROWS } from "@/constants/app.constant";
 import { stockedStoreState } from "@/test/stockedState";
 
 vi.mock("@/core/notify", () => ({
-  notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+  notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
 const product: ProductInventory = {
@@ -47,6 +47,8 @@ function client(overrides: Partial<RetailTwinClient> = {}): RetailTwinClient {
     inventory: vi.fn(async () => product),
     revenue: vi.fn(),
     promotions: vi.fn(),
+    simulations: vi.fn(),
+    simulation: vi.fn(),
     ...overrides,
   };
 }

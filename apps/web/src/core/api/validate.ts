@@ -1,6 +1,8 @@
 import i18n from "@/i18n";
 import type { Messages } from "@/i18n/locales/en";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
+import type { Simulation, SimulationAction } from "@/types/simulation.type";
+import { ACTION_TYPE, SIMULATION_STATUS } from "@/enums/simulation.enum";
 
 /** Why a product is not drawn: a key under `issue` in the locale files. */
 export type IssueCode = keyof Messages["issue"];
@@ -105,5 +107,35 @@ export function parseStoreState(raw: unknown): { state: StoreResponse; issues: P
       products,
     },
     issues,
+  };
+}
+
+const STATUSES: readonly unknown[] = Object.values(SIMULATION_STATUS);
+const ACTION_TYPES: readonly unknown[] = Object.values(ACTION_TYPE);
+
+/**
+ * Checks a `GET /simulations/{id}` payload against the FE's proposed contract (#26).
+ * The proposed state is checked like `GET /store`, so a broken product is left out of
+ * it; anything else that breaks the contract throws.
+ */
+export function parseSimulation(raw: unknown): Simulation {
+  if (!isObject(raw)) throw new InvalidTwinStateError("notObject");
+  for (const field of ["simulation_id", "store_id", "base_context_version"] as const) {
+    if (!isText(raw[field])) throw new InvalidTwinStateError("missingField", { field });
+  }
+  if (!STATUSES.includes(raw.status)) throw new InvalidTwinStateError("invalidField", { field: "status" });
+  const actions = raw.actions;
+  if (!Array.isArray(actions) || !actions.every((action) => isObject(action) && ACTION_TYPES.includes(action.type) && isText(action.sku))) {
+    throw new InvalidTwinStateError("invalidField", { field: "actions" });
+  }
+  const { state } = parseStoreState(raw.state);
+  if (state.store_id !== raw.store_id) throw new InvalidTwinStateError("invalidField", { field: "state.store_id" });
+  return {
+    simulation_id: raw.simulation_id as string,
+    store_id: raw.store_id as string,
+    base_context_version: raw.base_context_version as string,
+    status: raw.status as Simulation["status"],
+    actions: actions as SimulationAction[],
+    state,
   };
 }

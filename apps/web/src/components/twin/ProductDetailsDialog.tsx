@@ -8,9 +8,9 @@ import { format } from "@/core/utils/format";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { STOCK_STATE, type StockState } from "@/enums/stock.enum";
 import { usePromotions } from "@/hooks/commerce.hook";
-import { anomaliesOf, useAnomalyStore } from "@/state/anomaly.store";
+import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
+import { anomaliesOf } from "@/state/anomaly.store";
 import { usePanelStore } from "@/state/panel.store";
-import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { Anomaly } from "@/types/anomaly.type";
 import type { ProductInventory } from "@/types/twin.type";
@@ -147,7 +147,7 @@ function ProductPromotions({ sku, onView }: { sku: string; onView: (promotionId:
 /**
  * Everything about one product in a centered dialog: its stock in the twin, its open
  * anomalies, and the promotions it is in. Opened by **Details** on the product card or
- * on a shelf's product list (`showDetails`). Every figure comes from the live state, the
+ * on a shelf's product list (`showDetails`). Every figure comes from the state on screen, the
  * anomaly store, and `GET /promotions`. A promotion opens the Promotions lens on it.
  */
 export function ProductDetailsDialog() {
@@ -157,8 +157,8 @@ export function ProductDetailsDialog() {
   const select = useUiStore((state) => state.select);
   const focusPromotion = useUiStore((state) => state.focusPromotion);
   const openPanel = usePanelStore((state) => state.setOpen);
-  const live = useTwinStore((state) => state.live);
-  const allAnomalies = useAnomalyStore((state) => state.anomalies);
+  const live = useActiveState();
+  const allAnomalies = useShownAnomalies();
 
   const product = sku ? live?.products.find((candidate) => candidate.sku === sku) : undefined;
   const anomalies = sku ? anomaliesOf(allAnomalies, sku) : [];

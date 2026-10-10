@@ -1,4 +1,5 @@
 import { createApiSource } from "@/core/api/sources/apiSource";
+import { createSimulationSource, type SimulationSource } from "@/core/api/sources/simulationSource";
 import { fixtureSource, fixtureStoreState } from "@/core/api/sources/fixtureSource";
 import { createMemoryTwin, patchProduct } from "@/core/api/sources/memorySource";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
@@ -9,6 +10,10 @@ import { demoAnomalies } from "@/fixtures/demo/anomalies";
 import { resolveAnomalies, simulateAnomaly } from "./simulateAnomaly";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { demoSimulation } from "@/fixtures/demo/simulation";
+import { useTwinStore } from "@/state/twin.store";
+import type { SimulationAction } from "@/types/simulation.type";
+import { commitSimulation, discardSimulation, openSimulation } from "./memorySimulation";
 
 /** A twin that cannot be reached: loads for a while, then fails. */
 const unreachableSource: TwinSource = {
@@ -49,6 +54,9 @@ const DEV_SOURCES: Record<string, TwinSource> = {
  * removes it, and `twin.anomalies()` lists the demo anomalies of the current state.
  * `twin.raise("P001")` raises an anomaly event on a product (a stockout unless told
  * otherwise), and `twin.resolve("P001")` closes its anomalies again.
+ * `twin.simulate()` opens a simulation of the demo actions on the current state (or of the
+ * actions passed in), `twin.commit()` commits it to Live as a guarded commit would, and
+ * `twin.discard()` drops it.
  */
 function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSource {
   const twin = createMemoryTwin(initial);
@@ -71,25 +79,41 @@ function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSou
         return simulateAnomaly(product, kind, severity, state.context_version);
       },
       resolve: resolveAnomalies,
+      simulate: (...actions: SimulationAction[]) => openSimulation(twin, actions.length ? actions : undefined),
+      commit: () => commitSimulation(twin),
+      discard: discardSimulation,
     },
   });
   return twin.source;
 }
 
+/** The `?twin=` dev twin picked in the URL, or "" for apps/api. Always "" in a production build. */
+function devTwinMode(): string {
+  if (!import.meta.env.DEV) return "";
+  const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
+  return mode === "memory" || mode === "demo" || mode in DEV_SOURCES ? mode : "";
+}
+
+/**
+ * The open simulation from apps/api, read alongside the apps/api Live Twin. A `?twin=`
+ * dev twin has none: there `twin.simulate()` and the demo fixture fill it instead.
+ */
+export function pickSimulationSource(): SimulationSource | null {
+  return devTwinMode() ? null : createSimulationSource();
+}
+
 /**
  * The Live Twin from apps/api. While developing, `?twin=fixture|memory|demo|offline|slow|flaky`
- * swaps in a local twin instead. `demo` is the stocked demo store (fixtures/demo), and
- * turns on the other demo data too (`isDemoMode`). A production build always reads apps/api.
+ * swaps in a local twin instead. `demo` is the stocked demo store (fixtures/demo) with an
+ * open demo simulation, and turns on the other demo data too (`isDemoMode`). A production build always reads apps/api.
  */
 export function pickSource(): TwinSource {
-  if (import.meta.env.DEV) {
-    const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
-    if (mode === "memory") return memoryTwinSource();
-    if (mode === "demo") {
-      useAnomalyStore.getState().setAll(demoAnomalies());
-      return memoryTwinSource(demoStoreState());
-    }
-    if (mode in DEV_SOURCES) return DEV_SOURCES[mode];
+  const mode = devTwinMode();
+  if (mode === "memory") return memoryTwinSource();
+  if (mode === "demo") {
+    useAnomalyStore.getState().setAll(demoAnomalies());
+    useTwinStore.getState().setSimulation(demoSimulation());
+    return memoryTwinSource(demoStoreState());
   }
-  return createApiSource();
+  return mode ? DEV_SOURCES[mode] : createApiSource();
 }

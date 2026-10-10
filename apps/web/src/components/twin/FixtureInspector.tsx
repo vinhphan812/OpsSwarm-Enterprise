@@ -5,7 +5,7 @@ import { fixtureStock } from "@/core/twin/fixtureStock";
 import { format } from "@/core/utils/format";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { STOCK_STATE, type StockState } from "@/enums/stock.enum";
-import { useTwinStore } from "@/state/twin.store";
+import { useActiveState } from "@/hooks/activeTwin.hook";
 import { useUiStore } from "@/state/ui.store";
 import { Figures, InspectorCard } from "./InspectorCard";
 
@@ -23,12 +23,13 @@ type FixtureInspectorProps = {
 
 /**
  * What the twin has on the selected shelf or display equipment: totals, then each
- * product with its stock state. Every figure comes from the live state. A product's
+ * product with its stock state. Every figure comes from the state on screen (Live, or
+ * the simulation's proposal). A product's
  * SKU selects it; its info button opens its details dialog.
  */
 export function FixtureInspector({ fixtureId, title }: FixtureInspectorProps) {
   const { t } = useTranslation();
-  const live = useTwinStore((state) => state.live);
+  const live = useActiveState();
   const select = useUiStore((state) => state.select);
   const showDetails = useUiStore((state) => state.showDetails);
   const stock = live ? fixtureStock(fixtureId, live) : null;

@@ -2,7 +2,7 @@ import { CameraControls, Environment, Lightformer } from "@react-three/drei";
 import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
 import { Box3, Vector3 } from "three";
-import { useTwinStore } from "@/state/twin.store";
+import { useActiveState } from "@/hooks/activeTwin.hook";
 import { useUiStore } from "@/state/ui.store";
 import { groupBy } from "@/core/utils/collections";
 import {
@@ -83,16 +83,17 @@ export function StoreContents({
 }
 
 /**
- * The live twin state on the static layout. Until the first state arrives, or when it
- * cannot be loaded, the layout is drawn with empty shelves.
+ * The twin state on screen (Live, or the simulation's proposal in the Simulation view) on
+ * the static layout. Until the first state arrives, or when it cannot be loaded, the
+ * layout is drawn with empty shelves.
  */
-export function LiveStoreContents({
+export function TwinStoreContents({
   interactive = true,
 }: {
   interactive?: boolean;
 }) {
-  const live = useTwinStore((state) => state.live);
-  const store = useMemo(() => (live ? sceneOf(live).store : storeLayout), [live]);
+  const twin = useActiveState();
+  const store = useMemo(() => (twin ? sceneOf(twin).store : storeLayout), [twin]);
 
   return <StoreContents store={store} interactive={interactive} />;
 }
@@ -105,7 +106,7 @@ const clearSelection = () => useUiStore.getState().select(null);
  */
 function StaticShadows() {
   const gl = useThree((state) => state.gl);
-  const live = useTwinStore((state) => state.live);
+  const twin = useActiveState();
 
   useEffect(() => {
     gl.shadowMap.autoUpdate = false;
@@ -117,7 +118,7 @@ function StaticShadows() {
   // Effects run after Stock's layout effect has written the new instance matrices.
   useEffect(() => {
     gl.shadowMap.needsUpdate = true;
-  }, [gl, live]);
+  }, [gl, twin]);
 
   return null;
 }
@@ -184,7 +185,7 @@ export function StoreScene() {
       <FrameCamera />
       <StaticShadows />
       <Exterior />
-      <LiveStoreContents />
+      <TwinStoreContents />
       {/* Left drag orbits around the point under the cursor, right drag (or two fingers) pans, the wheel zooms toward the cursor. */}
       <CameraControls
         makeDefault

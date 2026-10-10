@@ -5,14 +5,14 @@ import { createClient } from "@/core/api/client";
 import { createApiSource } from "@/core/api/sources/apiSource";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
 import { useTwinSource } from "@/hooks/twinSource.hook";
-import { LiveStoreContents } from "@/scene/StoreScene";
+import { TwinStoreContents } from "@/scene/StoreScene";
 import { useTwinStore } from "@/state/twin.store";
 import type { StoreResponse } from "@/types/twin.type";
 
 // Toasts need the HeroUI provider and a DOM; this test only follows the data.
 vi.mock("@/core/notify", () => ({
   errorMessage: String,
-  notify: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
+  notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
 type Seed = typeof seed;
@@ -52,7 +52,7 @@ function fakeApi() {
 
 function LiveScene({ source }: { source: TwinSource }) {
   useTwinSource(source);
-  return <LiveStoreContents interactive={false} />;
+  return <TwinStoreContents interactive={false} />;
 }
 
 type Renderer = Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>;
