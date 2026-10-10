@@ -45,7 +45,14 @@ Issue #4 is in progress on branch `feat/issue-4-store-ui`. It is not on `main` y
 
 Issue #58 remains open. The web lockfile is on `main`. An executable GitHub Actions build/test gate is not. #58 stays open until that gate exists and is green.
 
-Issue #60 remains open. Behavior tests exist. There is no coverage instrumentation or threshold, so a passing test count is not a coverage percentage. #60 owns that baseline and the CI coverage gate.
+Issue #60 is closed (PR #68). Coverage instrumentation is in place and running in CI.
+Behavior tests exist. There is no hard coverage gate yet, so a passing test count is not
+a coverage percentage. Coverage is measured; threshold enforcement is phase 2 before
+Foundation Gate #10.
+
+Baseline (PR #68):
+- API: 89% line, 85% branch (pytest-cov, 269 stmts, 44 branches)
+- Web: 91% stmt/line, 91% branch (Vitest v8, 12 tests)
 
 ## Not implemented yet
 
