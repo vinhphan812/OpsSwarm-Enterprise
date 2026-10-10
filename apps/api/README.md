@@ -38,4 +38,27 @@ Endpoints such as action submission/guard validation are target contracts and mu
 
 **No general-purpose API endpoint may bypass Simulation-before-Live, DCG, authorization, or Executor for a live mutation.**
 
-See `docs/CURRENT_STATUS.md` for current repository maturity and `docs/ARCHITECTURE.md` for target architecture.
+```bash
+cd apps/api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+pytest
+python -m retailtwin_api
+```
+
+The server listens on `127.0.0.1:8000`. No GCP credentials are required.
+
+Copy the repository `.env.example` to `.env` only when you need to override a setting. Do not commit `.env`.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `APP_ENV` | `development` | Reported by `/health` |
+| `API_HOST` | `127.0.0.1` | Bind address |
+| `API_PORT` | `8000` | Bind port |
+| `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Browser origins allowed to call the API |
+| `STORE_ID` | `store-001` | Store this process serves |
+| `STORE_FIXTURE_PATH` | `data/schemas/store-state.example.json` | Day-0 read model |
+| `LOG_LEVEL` | `INFO` | Log level |
+
+Accepted events log `event_id`, `correlation_id`, and `store_id`. The log is process memory only. This route does not publish. The store-events backbone is a separate command, documented in [infrastructure/gcp/store-events.md](../../infrastructure/gcp/store-events.md). That command claims the event id in Firestore and writes the derived BigQuery row. It does not make this process the Live Twin.

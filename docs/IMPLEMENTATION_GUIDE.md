@@ -112,7 +112,11 @@ Build:
 
 This role owns integration quality, not only presentation.
 
-## 7. Build phases
+## 7. Current implementation note
+
+The phases below are delivery targets, not claims that those components already exist. `docs/CURRENT_STATUS.md` is authoritative for repository maturity. As of 2026-10-08, `main` has the view-only 3D scaffold from issue #3, the fixture-backed FastAPI plus frontend integration from issue #8, and the store-events backbone from issue #7. `POST /events` stays in memory and does not publish. `sale.completed` is claimed once in Firestore `store_event_claims`. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation. A replay is a duplicate. The API is not Firestore Live Twin, and a store event does not yet start the Observer. Issue #58 is closed. Firestore (#6), the Gemini read tool (#2), Cloud Run (#9), and Foundation Gate #10 through G06 remain open.
+
+## 8. Build phases
 
 ### Phase 0 — Foundation
 Target: web + API + Firestore + Pub/Sub + Gemini real tool + Cloud Run.
@@ -126,7 +130,7 @@ Add complete verification/replan, 2–3 candidates, polished Agent Activity/DCG 
 ### Phase 3 — COMPETITION-100
 Only after stability: multi-agent ADK, advanced optimizer, customer heatmap, richer assets, rollback, vision or other enhancements.
 
-## 8. Release-gate evidence
+## 9. Release-gate evidence
 
 ```mermaid
 flowchart LR
@@ -165,7 +169,7 @@ Gate definitions: Foundation integrates web/API/Firestore/Gemini/Pub/Sub/Cloud R
 
 Do not consider the project demo ready merely because individual services work.
 
-## 9. Development conventions
+## 10. Development conventions
 
 - One issue should have one clear outcome.
 - Reference issue number in PR/commit.
@@ -177,7 +181,7 @@ Do not consider the project demo ready merely because individual services work.
 - Keep demo data resettable.
 - A PR touching a public schema, state transition, tool or action contract, or security invariant must update the relevant docs and the ADR log in the same change.
 
-## 10. Automatic scope reduction
+## 11. Automatic scope reduction
 
 If time is short:
 1. Cut photorealistic assets.
