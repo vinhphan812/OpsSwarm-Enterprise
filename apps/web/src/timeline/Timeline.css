@@ -1,0 +1,47 @@
+.agent-timeline {
+  padding: 16px;
+  color: #e8edf2;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.agent-event {
+  background: #1a222e;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.event-header {
+  font-weight: bold;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  border-left: 2px solid #334155;
+  margin-left: 8px;
+  padding-left: 12px;
+}
+
+.stage-status {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.status-pending { background: #64748b; }
+.status-active { background: #3b82f6; box-shadow: 0 0 5px #3b82f6; }
+.status-completed { background: #22c55e; }
+.status-failed { background: #ef4444; }
+
+.failure-reason {
+  color: #ef4444;
+  font-size: 0.85rem;
+  margin-top: 4px;
+}
