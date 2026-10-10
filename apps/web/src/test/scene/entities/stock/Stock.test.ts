@@ -1,10 +1,14 @@
-import { Vector3 } from "three";
+import { Matrix4, Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import { toSceneStore } from "@/scene/layout";
 import { buildStock } from "@/scene/entities/stock/Stock";
 import { productLook, stockItemFor } from "@/scene/entities/stock/catalog";
-import { STOCK_KIND } from "@/enums/scene.enum";
+import { surfaceMatrix, surfacesOf } from "@/scene/entities/stock/surfaces";
+import { entityMatrix } from "@/scene/utils/transform";
+import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
+import { stockedStoreState } from "@/test/stockedState";
+import type { StoreFixture } from "@/types/scene.type";
 
 function positions(batches: ReturnType<typeof buildStock>) {
   return Object.values(batches)
@@ -78,6 +82,62 @@ describe("buildStock", () => {
       expect(product.slotId.startsWith(`${product.shelfId}-S`)).toBe(true);
     }
     expect(new Set(storeFixture.products.map((p) => p.slotId)).size).toBe(storeFixture.products.length);
+  });
+});
+
+describe("items stay inside their slot", () => {
+  /** Each drawn item's x extent and top, in its surface's own frame, next to its slot's edges and clear height. */
+  function extents(store: StoreFixture) {
+    const fixtures = [
+      ...store.shelves.map((shelf) => ({ id: shelf.shelfId, kind: ENTITY_TYPE.Shelf, ...shelf })),
+      ...store.equipment.map((item) => ({ id: item.equipmentId, ...item })),
+    ];
+    const items = Object.values(buildStock(store)).flat();
+    return store.products.flatMap((product) => {
+      const fixture = fixtures.find((item) => item.id === product.shelfId)!;
+      const slot = fixture.slots.find((item) => item.slotId === product.slotId)!;
+      const surface = surfacesOf(fixture.kind)[slot.surface];
+      const toSurface = new Matrix4()
+        .multiplyMatrices(entityMatrix(fixture.position, fixture.rotationY), surfaceMatrix(surface))
+        .invert();
+      return items
+        .filter((item) => item.productId === product.productId)
+        .map((item) => {
+          const pos = new Vector3();
+          const scale = new Vector3();
+          new Matrix4().multiplyMatrices(toSurface, item.matrix).decompose(pos, new Quaternion(), scale);
+          return {
+            sku: product.productId,
+            left: pos.x - scale.x / 2,
+            right: pos.x + scale.x / 2,
+            top: pos.y + scale.y / 2,
+            slotLeft: slot.offset - slot.width / 2,
+            slotRight: slot.offset + slot.width / 2,
+            maxHeight: surface.maxHeight,
+            fruit: surface.kind === STOCK_KIND.Fruit,
+          };
+        });
+    });
+  }
+
+  const EPS = 1e-6;
+
+  it("for every product of the stocked store, at any number of facings", () => {
+    const stocked = toSceneStore(stockedStoreState()).store;
+    for (const facings of [1, 2, 3, 5, 8]) {
+      const store = {
+        ...stocked,
+        products: stocked.products.map((product) => ({ ...product, facings, shelfQuantity: 10_000 })),
+      };
+      const drawn = extents(store);
+      expect(drawn.length).toBeGreaterThan(0);
+      for (const item of drawn) {
+        expect(item.left, `${item.sku} x${facings}`).toBeGreaterThanOrEqual(item.slotLeft - EPS);
+        expect(item.right, `${item.sku} x${facings}`).toBeLessThanOrEqual(item.slotRight + EPS);
+        // A fruit heap's top layer sits in the hollows of the one below, so only boxes are held to the clear height.
+        if (!item.fruit) expect(item.top, `${item.sku} x${facings}`).toBeLessThanOrEqual(item.maxHeight + EPS);
+      }
+    }
   });
 });
 

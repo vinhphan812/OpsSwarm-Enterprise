@@ -18,7 +18,7 @@ vi.mock("@/core/notify", () => ({
 /** The page's data path without the canvas: source → twin store → scene graph. */
 function LiveScene({ source }: { source: TwinSource }) {
   useTwinSource(source);
-  return <LiveStoreContents showLabels={false} />;
+  return <LiveStoreContents interactive={false} />;
 }
 
 type Renderer = Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>;

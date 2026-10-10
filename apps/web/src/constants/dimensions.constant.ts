@@ -97,6 +97,30 @@ export const CHECKOUT = {
   height: 0.9,
 } as const;
 
+/** Lane light on a pole at the belt end of a checkout: lit while the lane is staffed. */
+export const LANE_LIGHT = {
+  /** Pole height above the counter top, up to the lamp's bottom collar. */
+  poleHeight: 0.72,
+  poleRadius: 0.011,
+  /** Flange that bolts the pole to the counter. */
+  baseRadius: 0.035,
+  baseHeight: 0.008,
+  /** Dark collar under and cap over the diffuser. */
+  collarRadius: 0.05,
+  collarHeight: 0.018,
+  /** Frosted shade the light shows through. */
+  diffuserRadius: 0.044,
+  diffuserHeight: 0.11,
+  /** Bright core inside the shade. */
+  coreRadius: 0.026,
+  /** Pole center in from the counter's belt end and cashier-side edge. */
+  inset: 0.07,
+} as const;
+
+/** Height of a lane light above the counter top, cap included. */
+export const LANE_LIGHT_HEIGHT =
+  LANE_LIGHT.poleHeight + 2 * LANE_LIGHT.collarHeight + LANE_LIGHT.diffuserHeight;
+
 export const CRATE = {
   plastic: { width: 0.6, depth: 0.4, height: 0.3 },
   wood: { width: 0.55, depth: 0.38, height: 0.28 },
@@ -113,7 +137,7 @@ export const EQUIPMENT_SIZE = {
   "produce-rack": [PRODUCE_RACK.bays * PRODUCE_RACK.bayWidth, PRODUCE_RACK.backHeight, PRODUCE_RACK.depth],
   "glass-door-cooler": [GLASS_DOOR_COOLER.width, GLASS_DOOR_COOLER.height, GLASS_DOOR_COOLER.depth],
   "open-chiller": [OPEN_CHILLER.width, OPEN_CHILLER.height, OPEN_CHILLER.depth],
-  checkout: [CHECKOUT.length, CHECKOUT.height + 0.55, CHECKOUT.depth],
+  checkout: [CHECKOUT.length, CHECKOUT.height + LANE_LIGHT_HEIGHT, CHECKOUT.depth],
   "crate-plastic": [CRATE.plastic.width, CRATE.plastic.height, CRATE.plastic.depth],
   "crate-wood": [CRATE.wood.width, CRATE.wood.height, CRATE.wood.depth],
   barrier: [BARRIER.length, BARRIER.height, 0.1],

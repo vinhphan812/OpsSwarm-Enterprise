@@ -1,11 +1,13 @@
-import { useTranslation } from "react-i18next";
-import { MeshStandardMaterial } from "three";
-import { LABEL_LIFT, stockLabelKey } from "@/constants/scene.constant";
+import { useRef } from "react";
+import { MeshStandardMaterial, type Group } from "three";
 import { SHELF, SHELF_SIDE_Z } from "@/constants/dimensions.constant";
 import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
 import { entityProps } from "./entity";
 import { useHover } from "@/hooks/hover.hook";
-import { HoverHitBox, HoverLabel } from "./HoverLabel";
+import { useSelectOnClick } from "@/hooks/selectEntity.hook";
+import { useSelectionGlow } from "@/hooks/selectionGlow.hook";
+import { isSelected, useUiStore } from "@/state/ui.store";
+import { HitBox } from "./HitBox";
 import { Boxes, Parts, partBuilder, type BoxSpec } from "./equipment/parts";
 import { SlotProducts } from "./SlotProducts";
 import type { ProductFixture, ShelfFixture, StockSurface } from "@/types/scene.type";
@@ -76,7 +78,8 @@ function stripMaterial(color: string): MeshStandardMaterial {
 type ShelfProps = {
   shelf: ShelfFixture;
   products: ProductFixture[];
-  showLabels?: boolean;
+  /** Takes the pointer: hover and click-to-select. Off in tests, which have no pointer. */
+  interactive?: boolean;
 };
 
 /** Both sides, back to back. The far side is the same run turned around. */
@@ -117,14 +120,17 @@ export const SHELF_SURFACES: StockSurface[] = SIDES.flatMap((side) =>
   }),
 );
 
-/** One double-sided gondola entity. Labels appear only while the pointer is over it. */
-export function Shelf({ shelf, products, showLabels = true }: ShelfProps) {
-  const [hovered, hoverHandlers] = useHover();
-  const labelled = showLabels && hovered;
-  const { t } = useTranslation();
+/** One double-sided gondola entity. A click selects it and lights it up. */
+export function Shelf({ shelf, products, interactive = true }: ShelfProps) {
+  const [, hoverHandlers] = useHover();
+  const ref = useRef<Group>(null);
+  const selected = useUiStore((state) => isSelected(state, shelf.shelfId, ENTITY_TYPE.Shelf));
+  useSelectionGlow(ref, selected);
+  const onClick = useSelectOnClick(shelf.shelfId, ENTITY_TYPE.Shelf);
 
   return (
     <group
+      ref={ref}
       position={toTuple(shelf.position)}
       rotation={[0, shelf.rotationY, 0]}
       {...entityProps(shelf.shelfId, ENTITY_TYPE.Shelf)}
@@ -135,11 +141,8 @@ export function Shelf({ shelf, products, showLabels = true }: ShelfProps) {
           <Boxes boxes={PRICE_STRIPS} material={stripMaterial(shelf.color)} castShadow={false} />
         </group>
       ))}
-      {showLabels ? <HoverHitBox size={[W, H, SHELF.depth]} handlers={hoverHandlers} /> : null}
+      {interactive ? <HitBox size={[W, H, SHELF.depth]} handlers={hoverHandlers} onClick={onClick} /> : null}
       <SlotProducts slots={shelf.slots} products={products} />
-      {labelled ? (
-        <HoverLabel title={t(stockLabelKey(shelf.category))} entityId={shelf.shelfId} position={[0, SHELF.height + LABEL_LIFT, 0]} />
-      ) : null}
     </group>
   );
 }

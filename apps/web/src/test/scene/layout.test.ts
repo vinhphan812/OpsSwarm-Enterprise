@@ -69,3 +69,14 @@ describe("toSceneStore", () => {
     expect(sceneOf(state)).toBe(sceneOf(state));
   });
 });
+
+describe("crates", () => {
+  it("are decor, not shelves: no slots, and a product put on one is left out", () => {
+    const crates = toSceneStore(sampleStoreState()).store.equipment.filter((item) => item.kind.startsWith("crate-"));
+    expect(crates.length).toBeGreaterThan(0);
+    for (const crate of crates) expect(crate.slots, crate.equipmentId).toEqual([]);
+
+    const onCrate = patchProduct(sampleStoreState(), "P001", { shelf_id: "CW01", slot_id: "CW01-S01" });
+    expect(toSceneStore(onCrate).issues).toEqual([{ sku: "P001", code: "unknownShelf", values: { shelfId: "CW01" } }]);
+  });
+});

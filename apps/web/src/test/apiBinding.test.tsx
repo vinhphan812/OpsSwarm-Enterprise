@@ -52,7 +52,7 @@ function fakeApi() {
 
 function LiveScene({ source }: { source: TwinSource }) {
   useTwinSource(source);
-  return <LiveStoreContents showLabels={false} />;
+  return <LiveStoreContents interactive={false} />;
 }
 
 type Renderer = Awaited<ReturnType<typeof ReactThreeTestRenderer.create>>;

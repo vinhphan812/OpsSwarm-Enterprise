@@ -64,7 +64,7 @@ function place(
  * - Gondolas: 3 x 3 double-sided gondolas with 1.3-1.4 m aisles.
  * - Chilled wall: glass-door coolers then open chillers along the right wall.
  * - Fresh produce: leaning racks along the glass wall for daylight, closed
- *   off by a tiered crate display.
+ *   off by a tiered display of empty wooden crates (decor, no stock).
  * - Backstock: plastic crates in the corner beside the door.
  */
 const equipment: EquipmentFixture[] = [

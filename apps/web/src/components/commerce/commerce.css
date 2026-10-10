@@ -117,9 +117,8 @@
 .lens-switcher {
   position: absolute;
   top: 16px;
-  left: 50%;
+  left: 16px;
   z-index: 10;
-  transform: translateX(-50%);
 }
 
 @media (max-width: 640px) {
@@ -403,11 +402,25 @@
   grid-template-columns: 18px 1fr auto;
   gap: 8px;
   align-items: center;
+  width: 100%;
   padding: 8px 10px 10px;
+  font: inherit;
   font-size: 13px;
+  color: inherit;
+  text-align: left;
   background: var(--color-card);
   border: 1px solid var(--color-line);
   border-radius: 8px;
+  cursor: pointer;
+}
+
+.sku-row:hover,
+.sku-row[aria-pressed="true"] {
+  border-color: var(--color-line-strong);
+}
+
+.sku-row[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-card));
 }
 
 .sku-rank {
@@ -460,6 +473,18 @@
   border: 1px solid var(--color-line);
   border-left: 3px solid var(--status);
   border-radius: 8px;
+}
+
+/* Opened from a product's details: a ring that pulses, then fades. */
+.promotion-card[data-focused] {
+  animation: promotion-focus 0.8s ease-in-out 3;
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+@keyframes promotion-focus {
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
 }
 
 .promotion-card[data-status="active"] {
@@ -543,6 +568,60 @@
   background: var(--status);
 }
 
+.promotion-products {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.promotion-product {
+  display: grid;
+  grid-template-columns: 8px auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+
+button.promotion-product {
+  cursor: pointer;
+}
+
+button.promotion-product:hover,
+button.promotion-product[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.promotion-product[data-missing] {
+  color: var(--color-ink-faint);
+}
+
+.promotion-product[data-missing] .store-status-dot {
+  background: var(--color-ink-faint);
+}
+
+.promotion-product-sku {
+  font-weight: 600;
+}
+
+.promotion-product-place {
+  color: var(--color-ink-muted);
+}
+
+.promotion-product-stock {
+  font-variant-numeric: tabular-nums;
+}
+
 .promotion-figures {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -563,6 +642,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .promotion-card[data-focused] {
+    animation: none;
+  }
+
   .promotion-card[data-status="active"] .promotion-status-dot {
     animation: none;
   }

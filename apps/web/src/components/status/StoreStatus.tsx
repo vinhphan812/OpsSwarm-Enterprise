@@ -1,28 +1,37 @@
 import { Button } from "@heroui/react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { STORE_STATUS_ROWS } from "@/constants/app.constant";
 import { defaultClient } from "@/core/api/client";
+import { isDemoMode } from "@/core/twin/demoMode";
+import { productRows } from "@/core/twin/productRows";
+import { format } from "@/core/utils/format";
+import { ENTITY_TYPE } from "@/enums/scene.enum";
+import { STOCK_STATE, type StockState } from "@/enums/stock.enum";
 import type { RetailTwinClient } from "@/types/api.type";
-import type { ProductInventory } from "@/types/twin.type";
 import { useStoreStatus } from "@/hooks/storeStatus.hook";
+import { selectedProductId, useUiStore } from "@/state/ui.store";
+import { ProductsDialog } from "./ProductsDialog";
 import "./StoreStatus.css";
 
-/** Columns of the product table, in order. */
-const COLUMNS = [
-  { label: "storeStatus.sku", value: (item: ProductInventory) => item.sku },
-  { label: "storeStatus.shelf", value: (item: ProductInventory) => item.shelf_id },
-  { label: "storeStatus.slot", value: (item: ProductInventory) => item.slot_id },
-  { label: "storeStatus.facings", value: (item: ProductInventory) => item.facings },
-  { label: "storeStatus.onShelf", value: (item: ProductInventory) => item.shelf_quantity },
-  { label: "storeStatus.backroom", value: (item: ProductInventory) => item.backroom_quantity },
-] as const;
-
 type StoreStatusProps = {
+  /**
+   * Reads health and SKU lookups; apps/api by default. Under `?twin=demo` there is none:
+   * no health line, and a SKU is looked up in the demo store the scene already has.
+   */
   client?: RetailTwinClient;
 };
 
-export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
+export function StoreStatus({ client = isDemoMode() ? undefined : defaultClient }: StoreStatusProps) {
   const { t } = useTranslation();
   const { health, store, loading, sku, setSku, inventory, lookupPending, onLookup } = useStoreStatus(client);
+  const select = useUiStore((state) => state.select);
+  const selected = useUiStore(selectedProductId);
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const rows = useMemo(() => productRows(store?.products ?? []), [store]);
+  const shown = rows.slice(0, STORE_STATUS_ROWS);
+  const count = (state: StockState) => rows.filter((row) => row.state === state).length;
 
   return (
     <section className="store-status">
@@ -40,31 +49,21 @@ export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
         <>
           <h2 className="store-status-store">{store.store_id}</h2>
           <p className="store-status-muted">{t("storeStatus.context", { contextVersion: store.context_version, version: store.version })}</p>
-          <div className="store-status-table">
-            <table>
-              <thead>
-                <tr>
-                  {COLUMNS.map((column) => (
-                    <th key={column.label} scope="col">
-                      {t(column.label)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {store.products.map((item) => (
-                  <tr key={item.sku}>
-                    {COLUMNS.map((column) => (
-                      <td key={column.label}>
-                        <span className="store-status-label">{t(column.label)}</span>
-                        {column.value(item)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+          <dl className="store-status-stats">
+            <div>
+              <dt>{t("storeStatus.products")}</dt>
+              <dd>{format.count(rows.length)}</dd>
+            </div>
+            <div data-state={STOCK_STATE.Low}>
+              <dt>{t("storeStatus.lowStock")}</dt>
+              <dd>{format.count(count(STOCK_STATE.Low))}</dd>
+            </div>
+            <div data-state={STOCK_STATE.Out}>
+              <dt>{t("storeStatus.outOfStock")}</dt>
+              <dd>{format.count(count(STOCK_STATE.Out))}</dd>
+            </div>
+          </dl>
         </>
       ) : null}
 
@@ -72,6 +71,7 @@ export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
         <label htmlFor="sku">{t("storeStatus.sku")}</label>
         <div className="store-status-lookup-row">
           <input
+            className="text-field flex-1"
             id="sku"
             name="sku"
             value={sku}
@@ -100,6 +100,59 @@ export function StoreStatus({ client = defaultClient }: StoreStatusProps) {
             backroom: inventory.backroom_quantity,
           })}
         </p>
+      ) : null}
+
+      {store ? (
+        rows.length === 0 ? (
+          <p className="store-status-muted">{t("storeStatus.listEmpty")}</p>
+        ) : (
+          <div className="store-status-list">
+            <div className="store-status-row store-status-head" aria-hidden="true">
+              <span />
+              <span>{t("storeStatus.sku")}</span>
+              <span>{t("storeStatus.location")}</span>
+              <span>{t("storeStatus.onShelf")}</span>
+              <span>{t("storeStatus.back")}</span>
+            </div>
+            <ul>
+              {shown.map((row) => (
+                <li key={row.sku}>
+                  <button
+                    type="button"
+                    className="store-status-row"
+                    aria-label={t("storeStatus.selectProduct", { sku: row.sku })}
+                    aria-pressed={selected === row.sku}
+                    title={t(`storeStatus.state.${row.state}`)}
+                    onClick={() => select(row.sku, ENTITY_TYPE.Product)}
+                  >
+                    <span className="store-status-dot" data-state={row.state} />
+                    <span className="store-status-sku">{row.sku}</span>
+                    <span className="store-status-muted">{row.slot_id}</span>
+                    <span>
+                      {row.shelf_quantity}
+                      <span className="store-status-faint">/{row.facings}</span>
+                    </span>
+                    <span>{row.backroom_quantity}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {rows.length > STORE_STATUS_ROWS ? (
+              <button type="button" className="store-status-more" onClick={() => setDialogOpen(true)}>
+                {t("storeStatus.showAll", { count: rows.length })}
+              </button>
+            ) : null}
+          </div>
+        )
+      ) : null}
+      {store ? (
+        <ProductsDialog
+          isOpen={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          storeId={store.store_id}
+          contextVersion={store.context_version}
+          rows={rows}
+        />
       ) : null}
     </section>
   );

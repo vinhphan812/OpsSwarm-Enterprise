@@ -10,11 +10,14 @@ export const FACING = {
   West: -Math.PI / 2,
 } as const;
 
-/** Translation key of the merchandise group shown in hover labels for a kind of stock. */
+/** Translation key of the merchandise group a kind of stock belongs to; the shelf card's title. */
 export const stockLabelKey = (kind: StockKind) => `scene.stock.${kind}` as const;
 
-/** Translation key of the hover label per equipment kind. Kinds without one (crates, barriers) show none. */
-export const EQUIPMENT_LABEL: Partial<Record<EquipmentKind, `scene.stock.${StockKind}` | "scene.checkout">> = {
+/**
+ * Translation key of the card title per equipment kind. Only these kinds can be selected;
+ * crates and barriers have none.
+ */
+export const EQUIPMENT_TITLE: Partial<Record<EquipmentKind, `scene.stock.${StockKind}` | "scene.checkout">> = {
   [EQUIPMENT_KIND.ProduceRack]: stockLabelKey(STOCK_KIND.Fruit),
   [EQUIPMENT_KIND.GlassDoorCooler]: stockLabelKey(STOCK_KIND.Fresh),
   [EQUIPMENT_KIND.OpenChiller]: stockLabelKey(STOCK_KIND.Frozen),
@@ -24,11 +27,20 @@ export const EQUIPMENT_LABEL: Partial<Record<EquipmentKind, `scene.stock.${Stock
 /** Sky color behind the store, also the fog color so the lawn fades into it. */
 export const SKY_COLOR = "#dfe7ec";
 
-/** Gap between the top of an entity and its hover label, in meters. */
-export const LABEL_LIFT = 0.25;
-
-/** Height of the selected product's tag above its slot, in meters. */
-export const TAG_LIFT = 0.32;
+/** Emissive strength of a selected fixture's parts. */
+export const SELECTION_GLOW = 0.55;
+/** How much brighter a status light (a checkout's lane light) burns while its fixture is selected. */
+export const SELECTION_STATUS_BOOST = 2.2;
+/** Emissive strength of a selected product's items, which are small and need more. */
+export const SELECTION_ITEM_GLOW = 0.8;
+/** Emissive strength and opacity of the halo around a product with an open anomaly, at rest. */
+export const ANOMALY_HALO_GLOW = 1.4;
+export const ANOMALY_HALO_OPACITY = 0.68;
+/** The halo pulses this many times a second, by this share of its rest value. */
+export const ANOMALY_PULSE_HZ = 1.1;
+export const ANOMALY_PULSE_DEPTH = 0.45;
+/** A press that moves the pointer more than this many pixels is a camera drag, not a click. */
+export const CLICK_SLOP_PX = 4;
 
 /** Size of the lawn plane around the store, in meters. */
 export const GROUND_SIZE = 80;

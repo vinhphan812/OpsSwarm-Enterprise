@@ -1,8 +1,11 @@
-import { AgentActivityOpenButton, AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
+import {
+  AgentActivityOpenButton,
+  AgentActivityPanel,
+} from "@/components/layout/AgentActivityPanel";
 import { CameraHelp } from "@/components/layout/CameraHelp";
-// TODO(BE): restore with the lens switch below.
-// import { LensSwitcher } from "@/components/layout/LensSwitcher";
-import { ProductInspector } from "@/components/twin/ProductInspector";
+import { LensSwitcher } from "@/components/layout/LensSwitcher";
+import { EntityInspector } from "@/components/twin/EntityInspector";
+import { ProductDetailsDialog } from "@/components/twin/ProductDetailsDialog";
 import { TwinIssuesNotice } from "@/components/twin/TwinIssuesNotice";
 import { TwinStatusOverlay } from "@/components/twin/TwinStatusOverlay";
 import { pickSource } from "@/core/twin/devSources";
@@ -23,18 +26,17 @@ export function TwinPage() {
       <main className="viewport relative">
         <StoreScene />
         <TwinStatusOverlay />
-        {/*
-          TODO(BE): the Revenue and Promotions lenses read GET /revenue and GET /promotions, which apps/api
-          does not serve yet. The switch is their only way in, so it stays hidden until both routes exist.
-          <div className="lens-switcher">
-            <LensSwitcher />
-          </div>
-        */}
+        {/* TODO(BE): apps/api does not serve GET /revenue and GET /promotions yet; until it does the
+          Revenue and Promotions lenses show their empty report and a toast, or the demo data under ?twin=demo. */}
+        <div className="lens-switcher">
+          <LensSwitcher />
+        </div>
         <div className="absolute bottom-4 left-4 z-10">
           <CameraHelp />
         </div>
         <AgentActivityOpenButton />
-        <ProductInspector />
+        <EntityInspector />
+        <ProductDetailsDialog />
         <TwinIssuesNotice />
       </main>
       <AgentActivityPanel />

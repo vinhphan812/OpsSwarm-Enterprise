@@ -1,6 +1,4 @@
 import { CRATE } from "@/constants/dimensions.constant";
-import { STOCK_KIND } from "@/enums/scene.enum";
-import type { StockSurface } from "@/types/scene.type";
 import { Parts, partBuilder } from "./parts";
 
 const WALL = 0.015;
@@ -49,18 +47,6 @@ const WOOD = (() => {
   for (const z of [-0.12, 0, 0.12]) add("woodDark", [0, 0.008, z], [W - 0.02, 0.012, 0.1]);
   return parts;
 })();
-
-/** Fruit heaped inside the wooden crate, kept below the rim so stacked crates clear it. */
-export const WOOD_CRATE_SURFACES: StockSurface[] = [
-  {
-    kind: STOCK_KIND.Fruit,
-    center: [0, 0.014, 0],
-    width: CRATE.wood.width - 0.04,
-    depth: CRATE.wood.depth - 0.04,
-    maxHeight: CRATE.wood.height - 0.03,
-    slots: 1,
-  },
-];
 
 export function Crate({ variant }: { variant: "plastic" | "wood" }) {
   return <Parts parts={variant === "plastic" ? PLASTIC : WOOD} />;

@@ -54,3 +54,29 @@ export function PanelToggleIcon({ className, expand }: IconProps & { expand: boo
     </svg>
   );
 }
+
+export function RetryIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" />
+    </svg>
+  );
+}
+
+/** Cloud with a slash: the live feed is down. */
+export function OfflineIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M7 18h10a4 4 0 0 0 .8-7.9A6 6 0 0 0 7.1 8.4 5 5 0 0 0 7 18zM3 3l18 18" />
+    </svg>
+  );
+}
+
+export function InfoIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 11v5M12 8h.01" />
+    </svg>
+  );
+}

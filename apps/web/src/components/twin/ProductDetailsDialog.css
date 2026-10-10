@@ -1,0 +1,204 @@
+/* Product details dialog: stock tiles, anomaly rows, promotions. */
+.details-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.details-section .activity-section-title {
+  margin: 0;
+}
+
+.details-tiles {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+
+.details-tile {
+  position: relative;
+  padding: 10px 12px;
+  overflow: hidden;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.details-tile dt {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.details-tile dd {
+  margin: 2px 0 0;
+  font-size: 22px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.details-tile dd small {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-ink-muted);
+}
+
+.details-tile[data-state="low"] dd {
+  color: var(--color-warning);
+}
+
+.details-tile[data-state="out"] dd {
+  color: var(--color-serious);
+}
+
+/* How full the slot's front is: units on the shelf against facings. */
+.details-fill {
+  display: block;
+  height: 4px;
+  margin-top: 8px;
+  background: var(--color-line);
+  border-radius: 999px;
+}
+
+.details-fill span {
+  display: block;
+  height: 100%;
+  background: var(--color-good);
+  border-radius: inherit;
+}
+
+.details-tile[data-state="low"] .details-fill span {
+  background: var(--color-warning);
+}
+
+.details-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--color-ink-muted);
+  background: var(--color-card);
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+}
+
+.details-anomalies,
+.details-promotions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.details-anomaly {
+  --severity: var(--color-ink-muted);
+  display: grid;
+  grid-template-columns: 16px auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--severity) 8%, var(--color-card));
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--severity);
+  border-radius: 8px;
+}
+
+.details-anomaly[data-severity="medium"] {
+  --severity: var(--color-warning);
+}
+
+.details-anomaly[data-severity="high"] {
+  --severity: var(--color-serious);
+}
+
+.details-anomaly-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--severity);
+}
+
+.details-anomaly-kind {
+  font-weight: 600;
+}
+
+.details-anomaly-severity {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--severity);
+  background: color-mix(in srgb, var(--severity) 14%, transparent);
+  border-radius: 4px;
+}
+
+.details-anomaly-meta {
+  justify-self: end;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+/* A promotion the product is in: the whole card opens it in the Promotions lens. */
+.details-promotion {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.details-promotion:hover,
+.details-promotion:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 6%, var(--color-card));
+  border-color: var(--color-line-strong);
+  outline: none;
+}
+
+.details-promotion .promotion-name {
+  display: block;
+}
+
+.details-promotion-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.details-promotion-go {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+  white-space: nowrap;
+}
+
+.details-promotion:hover .details-promotion-go,
+.details-promotion:focus-visible .details-promotion-go {
+  color: var(--color-accent);
+}
+
+@media (max-width: 560px) {
+  .details-tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .details-tile-wide {
+    grid-column: 1 / -1;
+  }
+
+  .details-anomaly {
+    grid-template-columns: 16px auto 1fr;
+  }
+
+  .details-anomaly-meta {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}
