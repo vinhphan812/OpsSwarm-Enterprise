@@ -1,7 +1,7 @@
 import { createApiSource } from "@/core/api/sources/apiSource";
 import { createSimulationSource, type SimulationSource } from "@/core/api/sources/simulationSource";
 import { fixtureSource, fixtureStoreState } from "@/core/api/sources/fixtureSource";
-import { createMemoryTwin, patchProduct } from "@/core/api/sources/memorySource";
+import { createMemoryTwin, patchProduct, type MemoryTwin } from "@/core/api/sources/memorySource";
 import type { TwinSource } from "@/core/api/sources/TwinSource";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { FIXTURE_P001 } from "@/constants/twin.constant";
@@ -13,7 +13,11 @@ import { demoStoreState } from "@/fixtures/demo/store";
 import { demoSimulation } from "@/fixtures/demo/simulation";
 import { useTwinStore } from "@/state/twin.store";
 import type { SimulationAction } from "@/types/simulation.type";
-import { commitSimulation, discardSimulation, openSimulation } from "./memorySimulation";
+import { commitSimulation, createMemoryReviewer, discardSimulation, openSimulation } from "./memorySimulation";
+import { createApiReviewer, type SimulationReviewer } from "./simulationReview";
+
+/** The editable twin behind `?twin=memory|demo`, once `pickSource` has made it. */
+let memoryTwin: MemoryTwin | null = null;
 
 /** A twin that cannot be reached: loads for a while, then fails. */
 const unreachableSource: TwinSource = {
@@ -60,6 +64,7 @@ const DEV_SOURCES: Record<string, TwinSource> = {
  */
 function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSource {
   const twin = createMemoryTwin(initial);
+  memoryTwin = twin;
   Object.assign(window, {
     twin: {
       add: (product: ProductInventory = FIXTURE_P001) =>
@@ -100,6 +105,17 @@ function devTwinMode(): string {
  */
 export function pickSimulationSource(): SimulationSource | null {
   return devTwinMode() ? null : createSimulationSource();
+}
+
+/**
+ * Where the banner's Accept and Reject go: the review routes of apps/api, or the memory
+ * twin's guarded commit under `?twin=memory|demo`. Other dev twins open no simulation, so
+ * they have none. Call after `pickSource`.
+ */
+export function pickSimulationReviewer(): SimulationReviewer | null {
+  const mode = devTwinMode();
+  if (!mode) return createApiReviewer();
+  return memoryTwin && (mode === "memory" || mode === "demo") ? createMemoryReviewer(memoryTwin) : null;
 }
 
 /**

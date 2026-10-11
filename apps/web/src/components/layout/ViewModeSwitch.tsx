@@ -53,7 +53,8 @@ export function ViewModeSwitch() {
         { value: VIEW_MODE.Live, label: t("viewMode.live"), icon: <LiveIcon className="h-3.5 w-3.5 shrink-0" /> },
         {
           value: VIEW_MODE.Simulation,
-          label: open ? t("viewMode.simulation") : t("viewMode.noSimulation"),
+          label: t("viewMode.simulation"),
+          hint: open ? undefined : t("viewMode.noSimulation"),
           icon: <SimulationIcon className="h-3.5 w-3.5 shrink-0" />,
           disabled: !open,
           dot: unseen ? t("viewMode.newSimulation") : undefined,

@@ -100,6 +100,40 @@ A product's entity id is its `sku`.
 - A commit never touches `live` from the UI. Live changes only when the live feed brings a newer `context_version`. The simulation is then closed, and the view goes back to Live.
 - With apps/api, `simulationSource` (`core/api/sources/simulationSource.ts`, through `useSimulationSource`) fills `simulation`: it reads `GET /simulations?status=open`, then `GET /simulations/{simulation_id}` for the first pending or evaluated run, checks it with `parseSimulation`, and polls like `apiSource` (every 5 s, backing off to 60 s while reads fail). A read of the same run that is not newer is dropped, a failed read keeps the last run without a toast, and once no run is open `simulation` goes back to null. `apps/api` serves neither route yet (`TODO(BE)`), so until it does no simulation opens and the Simulation switch stays off. Under a `?twin=` dev twin there is no simulation source; the console and the demo fixture fill it instead.
 
+### Accepting or rejecting a proposal
+
+While the Simulation view shows an **evaluated** run, the banner offers **Accept** and **Reject**. They are the only writes the web app makes, and they only *ask*: the browser never writes Live state (docs/DOMAIN_AND_DATA_MODEL.md §186). Accept hands the proposal to the Decision Context Guard, and only on `ALLOW` does the Executor apply it.
+
+```text
+Accept ─▶ POST /simulations/{simulation_id}/approve ─▶ DCG ─┬─ ALLOW ─▶ Executor ─▶ Live ─▶ GET /store ─▶ scene
+                                                            ├─ REFRESH_REQUIRED ─▶ toast: needs a new simulation
+                                                            ├─ DENY ─▶ toast with reason_code
+                                                            └─ HUMAN_REVIEW ─▶ toast: needs another review
+Reject ─▶ POST /simulations/{simulation_id}/reject ─▶ run closed, Live unchanged
+```
+
+**Domain** (FE proposal, `TODO(BE)`; apps/api serves neither route yet):
+
+| Name | Where | What |
+| --- | --- | --- |
+| `REVIEW_DECISION` | `enums/simulation.enum.ts` | `approve` / `reject`; also the last path segment of the route |
+| `GUARD_VERDICT` | `enums/simulation.enum.ts` | `ALLOW`, `DENY`, `REFRESH_REQUIRED`, `HUMAN_REVIEW` (`DCGVerdict`, contracts/TECHNICAL_SPEC.md §7) |
+| `ReviewRequest` | `types/simulation.type.ts` | request body: `base_context_version` (the Live version the proposal was built on) and `proposal_context_version` (`simulation.state.context_version`), so the backend can refuse a review of something that has changed since |
+| `ReviewResult` | `types/simulation.type.ts` | `simulation_id`, `decision`, `status` after the review (`committed` for an approval, `rejected` for a rejection, or still `evaluated` when the review was refused), `verdict` (a `DCGVerdict` on an approval, null on a rejection), `reason_code`, `live_context_version` (after an executed commit). `parseReviewResult` refuses any other combination |
+| `REVIEW_REASON` | `enums/simulation.enum.ts` | `reason_code` of a refused review: `live_moved` (Live is no longer at `base_context_version`; approvals only) and `proposal_changed` (the run's proposal was replaced since it was reviewed; both decisions) |
+| `client.reviewSimulation(id, decision, request)` | `core/api/client.ts` | `POST /simulations/{simulation_id}/approve\|reject`, answer checked by `parseReviewResult` |
+| `SimulationReviewer` | `core/twin/simulationReview.ts` | `(simulation, decision) => Promise<ReviewResult>`: `createApiReviewer` for apps/api, `createMemoryReviewer` (`core/twin/memorySimulation.ts`) for `?twin=memory\|demo` |
+
+**Behaviour** (`useSimulationReview`, `hooks/simulationReview.hook.ts`):
+
+- `pickSimulationReviewer` (`core/twin/devSources.ts`) picks apps/api by default, the memory twin under `?twin=memory|demo`, and none under the other dev twins, which open no simulation.
+- The buttons show only for an `evaluated` run and only when there is a reviewer. Both are disabled while a review is on its way, so a run is never reviewed twice at once.
+- The answer is shown as a toast. Committed and rejected runs leave the buttons hidden with *Reviewed, waiting for Live*, until the simulation feed closes the run and the view goes back to Live. A refused approval or rejection keeps the buttons, so the run can be reviewed again later; a rejection refused with `proposal_changed` says *was not rejected*. A review is of one proposal (`simulation_id` and `state.context_version`), so a proposal replaced under the same run id offers the buttons again. A failed request (apps/api does not serve the route yet) shows *Could not send the review*.
+- Nothing on screen changes from the answer itself. Live changes only when `GET /store` brings a newer `context_version`, and the run closes only when `GET /simulations?status=open` stops listing it.
+- Under `?twin=memory|demo`, `createMemoryReviewer` stands in for the backend. Both decisions are refused with `proposal_changed` once the open run's proposal has been replaced (Reject with `verdict: null`, Accept with `REFRESH_REQUIRED`), and the run stays open. Otherwise Reject drops the run, even if Live has moved on, and Accept runs a minimal guard (`REFRESH_REQUIRED` with `reason_code: "live_moved"` once Live has moved on since `base_context_version`, `ALLOW` otherwise) and writes the proposal to the twin, which pushes it to the live feed. `twin.commit()` in the console goes through the same path.
+
+**What apps/api has to serve** for this to work without `?twin=`: the two routes above with the `ReviewRequest` body and the `ReviewResult` answer. An approval needs both versions to be current, and a rejection only `proposal_context_version` (it never writes Live); a refused review answers `evaluated` with a `REVIEW_REASON`; an approval returns the guard's verdict; and a committed or rejected run drops out of `GET /simulations?status=open`.
+
 ### State diff
 
 `diffStates(prev, next)` (`core/twin/stateDiff.ts`) says what changed between two twin states, per SKU and sorted by SKU: `moved` (from and to `shelf_id`/`slot_id`), `facings` (before and after), `quantity` (signed `shelfDelta` and `backroomDelta`), and `added` / `removed` SKUs. A product can be in several lists at once, such as a move that also changes its facings. States of different stores give `EMPTY_DIFF`. The diff is always read from **state**: simulation actions only label a change (#92), so a cue can never show something the state does not.
@@ -134,7 +168,7 @@ For `CHANGE_CUE_MS` (4 s) the hook returns `{ diff, at, before }`, where `before
 | `demo` | the same editable twin, stocked with the demo store, plus demo data where `apps/api` serves none yet: checkout figures, payments and receipts, Revenue and Promotions reports, anomalies (`twin.anomalies()`; `twin.raise("P001")` raises an anomaly event on a product, `twin.resolve("P001")` closes it), and an open simulation. All of it lives in `fixtures/demo/` and is marked **Demo data** where it shows; see *Demo data* below |
 | `slow` | the snapshot takes 4 s |
 
-Under `memory` and `demo`, the console also drives simulations (`core/twin/memorySimulation.ts`), standing in for the simulation API and the guarded commit: `twin.simulate()` opens a simulation of the demo actions on the current state (or of the actions passed in, such as `twin.simulate({ type: "change_facings", sku: "P001", facings: 5 })`), `twin.commit()` writes the proposal to the twin, which pushes it to the live feed, or refuses with `REFRESH_REQUIRED` once Live has moved on, and `twin.discard()` drops it.
+Under `memory` and `demo`, the console also drives simulations (`core/twin/memorySimulation.ts`), standing in for the simulation API and the guarded commit: `twin.simulate()` opens a simulation of the demo actions on the current state (or of the actions passed in, such as `twin.simulate({ type: "change_facings", sku: "P001", facings: 5 })`), `twin.commit()` writes the proposal to the twin, which pushes it to the live feed, or refuses with `REFRESH_REQUIRED` once Live has moved on, and `twin.discard()` drops it. The banner's **Accept** and **Reject** do the same through `createMemoryReviewer`.
 | `offline` | the snapshot fails after 1.2 s |
 | `flaky` | the live feed drops 3 s after loading |
 
@@ -175,20 +209,22 @@ src/
     icons.tsx               line icons
   core/
     api/
-      client.ts             REST client for /health, /store, /inventory/{sku}, /revenue, /promotions
-      validate.ts           parseStoreState: the GET /store contract check
+      client.ts             REST client for /health, /store, /inventory/{sku}, /revenue, /promotions,
+                            /simulations (read, and the approve / reject review)
+      validate.ts           parseStoreState, parseSimulation, parseReviewResult: contract checks
       version.ts            context_version parsing and ordering
       sources/              TwinSource interface; apiSource (GET /store), fixture and in-memory sources
     twin/
       twinConnection.ts     connectTwin: snapshot + updates, validated and in version order
       twinIssues.ts         all products left out of the scene; inspectProduct
       devSources.ts         pickSource: apiSource, or a ?twin= source while developing
-      memorySimulation.ts   console simulations on the in-memory twin: open, guarded commit, discard
+      memorySimulation.ts   simulations on the in-memory twin: open, review (guarded commit or reject), discard
+      simulationReview.ts   SimulationReviewer: Accept / Reject through POST /simulations/{id}/approve|reject
       stateDiff.ts          diffStates: what changed between two twin states, per SKU
     notify.ts               toast helpers and errorMessage
     utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
   hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
-                            commerce, hover, fitCamera, orbitPoint, recentChanges
+                            commerce, hover, fitCamera, orbitPoint, simulationReview, recentChanges
   state/                    Zustand stores, read-side copies only
     twin.store.ts           live state, last live change, open simulation, issues, status, stale flag,
                             retry; activeState
@@ -217,7 +253,7 @@ src/
 
 ## Rules
 
-- **Read only.** A `TwinSource` never writes. The Zustand stores are copies of backend state, not the source of truth.
+- **Read only.** A `TwinSource` never writes. The Zustand stores are copies of backend state, not the source of truth. The one request that writes is a proposal review (Accept / Reject), and it only asks the backend; see *Accepting or rejecting a proposal*.
 - **Made-up data is labeled.** What the 3D view and the panels show must come from the twin and `apps/api`, never from state the UI made up (issue #22). The one exception is the demo data in `fixtures/demo/`, shown only under `?twin=demo` where `apps/api` serves none yet (checkout figures, payments, Revenue and Promotions reports): it carries a **Demo data** label (`DemoBadge`), and new made-up figures take it too. The UI has no controls that make up state; anomalies to try the highlight on come from the demo data, or from `twin.raise()` in the console.
 - **Layout is static** until the twin serves geometry (docs/adr/0007). Positions live in `fixtures/storeFixture.ts`. Sizes in meters live in `constants/dimensions.constant.ts`, not inline in meshes.
 - **Naming**:
@@ -247,9 +283,9 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `twinBinding.test.tsx` | P001 follows a live twin change, and a broken record is dropped and reported |
 | `core/api/sources/apiSource.test.ts` | snapshot and polling of `GET /store`, backoff after failed reads, unsubscribe |
 | `core/api/sources/fixtureSource.test.ts` | the fixture state is valid; `PRODUCT_FIELDS` matches the pydantic models in `apps/api` |
-| `core/api/validate.test.ts` | contract check: bad envelopes throw, bad products are left out with a reason |
+| `core/api/validate.test.ts` | contract check: bad envelopes throw, bad products are left out with a reason; a review answer needs a known decision, status and (for an approval) guard verdict |
 | `core/api/version.test.ts` | context version parsing and ordering |
-| `core/api/client.test.ts` | REST client paths, including revenue and promotions, and error envelopes |
+| `core/api/client.test.ts` | REST client paths, including revenue, promotions, simulations and the approve / reject POST with its body, and error envelopes |
 | `core/twin/twinConnection.test.ts` | load states, out-of-order snapshot and updates, feed drop and recovery, unreadable payloads |
 | `core/twin/stateDiff.test.ts` | issue #91: moves (across and within a shelf), facings, signed quantity deltas, added and removed SKUs, several changes at once; equal states, product order, and other stores give no diff |
 | `hooks/recentChanges.test.tsx` | issue #91: a Live change is cued and fades after `CHANGE_CUE_MS`; the Simulation view cues the proposal against Live and leaves Live alone |
@@ -266,7 +302,8 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `simulationBinding.test.tsx` | issue #26: the scene draws Live, then the proposal in the Simulation view (without halos), then Live again; the demo simulation places every product |
 | `components/layout/ViewModeSwitch.test.tsx` | issue #26: Simulation cannot be picked with no simulation open; a new run raises one toast and a dot until it is looked at; the banner names the run and its base, warns once Live moves on, and the view goes back to Live when the simulation closes |
 | `core/api/sources/simulationSource.test.ts` | issue #26: `parseSimulation` checks the run like `GET /store`; the source reads the open run, drops stale reads, keeps the last run on a failure and backs off, and goes to null once the run closes |
-| `core/twin/memorySimulation.test.ts` | issue #26: opening and discarding leave Live alone; a commit reaches Live only through the live feed, and is refused once Live has moved on |
+| `core/twin/memorySimulation.test.ts` | issue #26: opening and discarding leave Live alone; a commit reaches Live only through the live feed, and is refused once Live has moved on; the memory reviewer answers ALLOW / REFRESH_REQUIRED / rejected and refuses a run that is no longer open |
+| `components/twin/SimulationReview.test.tsx` | Accept and Reject show only for an evaluated run with a reviewer, send the run and leave the twin state to the feeds, are disabled while a review is on its way, toast every guard verdict and a failed request; on the memory twin, Accept commits through the live feed or is refused once Live has moved on |
 | `components/twin/ProductDetails.test.tsx` | the details dialog opens from the product card and a shelf's list, shows the product's twin figures, its anomalies, and only the promotions it is in; **Show in the store** selects it, and a promotion opens the Promotions lens on it; the lens shows every status again, flashes that card, and clears the request |
 | `components/commerce/productLinks.test.tsx` | Revenue SKU rows and promotion products select their product; a promotion SKU the twin lacks cannot be selected |
 | `components/**`, `app/App.test.tsx` | StoreStatus (a lookup selects the product it finds), AgentActivityPanel (a timeline SKU selects its product), LensSwitcher (revenue and promotions reads), routing |

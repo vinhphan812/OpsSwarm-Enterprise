@@ -116,3 +116,19 @@ test("asks the simulation routes for the open runs and one run, encoding its id"
     "http://127.0.0.1:8000/simulations/sim%201",
   ]);
 });
+
+test("posts a review to the run's approve or reject route with what the reviewer saw", async () => {
+  const fetchImpl = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => jsonResponse({}));
+  const client = createClient("http://127.0.0.1:8000", fetchImpl);
+  const request = { base_context_version: "store-001:v1", proposal_context_version: "store-001:v1-sim" };
+  await client.reviewSimulation("sim 1", "approve", request);
+  await client.reviewSimulation("sim 1", "reject", request);
+
+  expect(fetchImpl.mock.calls.map(([url]) => String(url))).toEqual([
+    "http://127.0.0.1:8000/simulations/sim%201/approve",
+    "http://127.0.0.1:8000/simulations/sim%201/reject",
+  ]);
+  const init = fetchImpl.mock.calls[0][1]!;
+  expect(init.method).toBe("POST");
+  expect(JSON.parse(String(init.body))).toEqual(request);
+});

@@ -30,6 +30,7 @@ function fakeClient(simulations: RetailTwinClient["simulations"], simulation: Re
     promotions: vi.fn(),
     simulations,
     simulation,
+    reviewSimulation: vi.fn(),
   };
 }
 

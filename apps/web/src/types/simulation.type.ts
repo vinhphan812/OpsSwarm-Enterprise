@@ -1,4 +1,4 @@
-import type { ACTION_TYPE, SimulationStatus } from "@/enums/simulation.enum";
+import type { ACTION_TYPE, GuardVerdict, ReviewDecision, SimulationStatus } from "@/enums/simulation.enum";
 import type { StoreResponse } from "./twin.type";
 
 export type MoveProductAction = {
@@ -43,3 +43,33 @@ export type SimulationSummary = Pick<Simulation, "simulation_id" | "store_id" | 
 
 /** `GET /simulations?status=open`. TODO(BE): FE proposal (#26). */
 export type SimulationsResponse = { simulations: SimulationSummary[] };
+
+/**
+ * Body of `POST /simulations/{simulation_id}/approve` and `/reject`: what the reviewer
+ * looked at, so the backend can refuse a review of something that has changed since.
+ * TODO(BE): apps/api serves neither route yet; this shape is the FE's proposal.
+ */
+export type ReviewRequest = {
+  /** The Live version the proposal was built on, as the reviewer saw it. */
+  base_context_version: string;
+  /** The proposed state the reviewer saw, as `Simulation.state.context_version`. */
+  proposal_context_version: string;
+};
+
+/**
+ * The answer to a review. An approval is not a commit: the guard decides, and only on
+ * ALLOW does the Executor apply the actions. Live then changes through `GET /store`.
+ * TODO(BE): FE proposal, see `ReviewRequest`.
+ */
+export type ReviewResult = {
+  simulation_id: string;
+  decision: ReviewDecision;
+  /** The run's status after the review: committed, rejected, or still evaluated when the guard refused. */
+  status: SimulationStatus;
+  /** The guard's verdict on an approval; null for a rejection. */
+  verdict: GuardVerdict | null;
+  /** Why the guard answered as it did (`DCGVerdictResult.reason_code`), or null. */
+  reason_code: string | null;
+  /** Live version after an executed commit, else null. */
+  live_context_version: string | null;
+};

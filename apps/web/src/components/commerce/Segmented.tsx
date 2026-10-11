@@ -10,6 +10,8 @@ export type SegmentOption<T extends string> = {
   badge?: number;
   /** A small dot that asks for attention; the text says why, after the label in its name and tooltip. */
   dot?: string;
+  /** Why the option is as it is, such as why it is disabled: in its name and tooltip, never on show. */
+  hint?: string;
   /** Shown but not pickable, by click or by arrow key. */
   disabled?: boolean;
 };
@@ -48,7 +50,8 @@ export function Segmented<T extends string>({ label, options, value, onChange, l
     <div role="radiogroup" aria-label={label} className={`segmented segmented-${variant}`} onKeyDown={onKeyDown}>
       {options.map((option, i) => {
         const selected = option.value === value;
-        const name = option.dot ? `${option.label} (${option.dot})` : option.label;
+        const note = option.dot ?? option.hint;
+        const name = note ? `${option.label} (${note})` : option.label;
         return (
           <button
             key={option.value}
@@ -60,7 +63,7 @@ export function Segmented<T extends string>({ label, options, value, onChange, l
             aria-checked={selected}
             aria-label={name}
             // The glass switch hides its labels on small screens; elsewhere the label is on show.
-            title={variant === "glass" || option.dot ? name : undefined}
+            title={variant === "glass" || note ? name : undefined}
             tabIndex={selected ? 0 : -1}
             disabled={option.disabled}
             className="segmented-option"
