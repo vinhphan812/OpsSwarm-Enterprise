@@ -4,7 +4,7 @@ import { sampleStoreState } from "@/test/sampleState";
 import type { RetailTwinClient } from "@/types/api.type";
 
 function fakeClient(store: RetailTwinClient["store"]): RetailTwinClient {
-  return { health: vi.fn(), inventory: vi.fn(), revenue: vi.fn(), promotions: vi.fn(), simulations: vi.fn(), simulation: vi.fn(), store };
+  return { health: vi.fn(), inventory: vi.fn(), revenue: vi.fn(), promotions: vi.fn(), simulations: vi.fn(), simulation: vi.fn(), reviewSimulation: vi.fn(), store };
 }
 
 describe("apiSource", () => {

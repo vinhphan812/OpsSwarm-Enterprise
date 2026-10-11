@@ -473,7 +473,8 @@ tr[data-open="true"] .receipt-caret {
   box-shadow: inset 0 0 40px color-mix(in srgb, var(--color-simulation) 30%, transparent);
 }
 
-/* Under the switches at the top left, where the side panel never covers it. */
+/* Under the switches at the top left, where the side panel never covers it.
+   Run details on the left, Accept and Reject on the right; they drop below on a narrow screen. */
 .simulation-banner {
   position: absolute;
   top: 60px;
@@ -482,14 +483,49 @@ tr[data-open="true"] .receipt-caret {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 12px;
-  max-width: min(560px, calc(100% - 32px));
-  padding: 8px 14px;
+  gap: 10px 20px;
+  max-width: min(600px, calc(100% - 32px));
+  padding: 10px 12px 10px 14px;
   font-size: 12px;
   color: var(--color-ink);
   background: color-mix(in srgb, var(--color-panel) 92%, transparent);
   border: 1px solid var(--color-simulation);
   border-radius: 12px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.simulation-banner-body {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.simulation-banner-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+}
+
+/* The proposed actions, as small tags in the simulation accent. */
+.simulation-banner-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.simulation-banner-changes li {
+  padding: 1px 8px;
+  font-size: 11px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-simulation) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 35%, transparent);
+  border-radius: 999px;
 }
 
 .simulation-banner-title {
@@ -508,4 +544,11 @@ tr[data-open="true"] .receipt-caret {
 .simulation-banner-stale {
   font-weight: 600;
   color: var(--color-warning);
+}
+
+.simulation-banner-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
 }

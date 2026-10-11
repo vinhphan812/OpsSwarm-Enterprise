@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import { patchProduct } from "@/core/api/sources/memorySource";
-import { InvalidTwinStateError, parseStoreState } from "@/core/api/validate";
+import { InvalidTwinStateError, parseReviewResult, parseStoreState } from "@/core/api/validate";
 
 const issueFor = (patch: Parameters<typeof patchProduct>[2]) => {
   const { state, issues } = parseStoreState(patchProduct(sampleStoreState(), "P001", patch));
@@ -53,5 +53,53 @@ describe("parseStoreState", () => {
     const base = sampleStoreState();
     const { issues } = parseStoreState({ ...base, products: [{ ...base.products[0], sku: "" }] });
     expect(issues).toEqual([{ sku: "#0", code: "missingSku" }]);
+  });
+});
+
+describe("parseReviewResult", () => {
+  const approved = {
+    simulation_id: "sim-1",
+    decision: "approve",
+    status: "committed",
+    verdict: "ALLOW",
+    reason_code: null,
+    live_context_version: "store-001:v2",
+  };
+
+  it("accepts an approval and a rejection, filling in missing optional fields", () => {
+    expect(parseReviewResult(approved)).toEqual(approved);
+    expect(parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "rejected" })).toEqual({
+      simulation_id: "sim-1",
+      decision: "reject",
+      status: "rejected",
+      verdict: null,
+      reason_code: null,
+      live_context_version: null,
+    });
+  });
+
+  it("rejects an approval without a guard verdict, or an unknown verdict, decision or status", () => {
+    expect(() => parseReviewResult({ ...approved, verdict: null })).toThrow(InvalidTwinStateError);
+    expect(() => parseReviewResult({ ...approved, verdict: "MAYBE" })).toThrow(InvalidTwinStateError);
+    expect(() => parseReviewResult({ ...approved, decision: "commit" })).toThrow(InvalidTwinStateError);
+    expect(() => parseReviewResult({ ...approved, status: "done" })).toThrow(InvalidTwinStateError);
+    expect(() => parseReviewResult({ ...approved, simulation_id: "" })).toThrow(InvalidTwinStateError);
+    expect(() => parseReviewResult("ok")).toThrow(InvalidTwinStateError);
+  });
+
+  it("rejects a rejection that carries a guard verdict", () => {
+    const rejected = { simulation_id: "sim-1", decision: "reject", status: "rejected", verdict: null };
+    expect(() => parseReviewResult({ ...rejected, verdict: "ALLOW" })).toThrow(/verdict/);
+    expect(() => parseReviewResult({ ...rejected, verdict: "DENY" })).toThrow(/verdict/);
+    expect(() => parseReviewResult({ ...rejected, verdict: "REFRESH_REQUIRED" })).toThrow(/verdict/);
+  });
+
+  it("rejects a status that does not fit the decision", () => {
+    expect(() => parseReviewResult({ ...approved, status: "rejected" })).toThrow(/status/);
+    expect(() => parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "committed" })).toThrow(/status/);
+    expect(parseReviewResult({ ...approved, status: "evaluated", verdict: "DENY" }).status).toBe("evaluated");
+    expect(
+      parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "evaluated", reason_code: "proposal_changed" }),
+    ).toMatchObject({ status: "evaluated", verdict: null, reason_code: "proposal_changed" });
   });
 });

@@ -1,7 +1,8 @@
 import type { RevenuePeriod } from "@/enums/commerce.enum";
 import type { PromotionsSummary } from "./promotion.type";
 import type { RevenueSummary } from "./revenue.type";
-import type { Simulation, SimulationsResponse } from "./simulation.type";
+import type { ReviewDecision } from "@/enums/simulation.enum";
+import type { ReviewRequest, ReviewResult, Simulation, SimulationsResponse } from "./simulation.type";
 import type { ProductInventory, StoreResponse } from "./twin.type";
 
 export type HealthResponse = {
@@ -24,4 +25,9 @@ export type RetailTwinClient = {
   simulations: () => Promise<SimulationsResponse>;
   /** `GET /simulations/{simulation_id}`. TODO(BE): not served by apps/api yet (#26). */
   simulation: (simulationId: string) => Promise<Simulation>;
+  /**
+   * `POST /simulations/{simulation_id}/approve|reject`. The only write the web app makes:
+   * it asks, and the guard and the Executor decide. TODO(BE): not served by apps/api yet.
+   */
+  reviewSimulation: (simulationId: string, decision: ReviewDecision, request: ReviewRequest) => Promise<ReviewResult>;
 };
