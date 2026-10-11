@@ -8,3 +8,8 @@ export const FIXTURE_P001: ProductInventory = { ...apiFixture.products[0], store
 export const TWIN_POLL_MS = 5000;
 /** Longest wait between reads while the API keeps failing; each failure doubles the wait up to this. */
 export const TWIN_POLL_MAX_MS = 60_000;
+/**
+ * How long a change cue (move, facings, replenishment) stays on screen. Shorter than
+ * `TWIN_POLL_MS`, so the next poll never replaces a cue that is still showing.
+ */
+export const CHANGE_CUE_MS = 4000;

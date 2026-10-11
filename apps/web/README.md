@@ -100,6 +100,17 @@ A product's entity id is its `sku`.
 - A commit never touches `live` from the UI. Live changes only when the live feed brings a newer `context_version`. The simulation is then closed, and the view goes back to Live.
 - With apps/api, `simulationSource` (`core/api/sources/simulationSource.ts`, through `useSimulationSource`) fills `simulation`: it reads `GET /simulations?status=open`, then `GET /simulations/{simulation_id}` for the first pending or evaluated run, checks it with `parseSimulation`, and polls like `apiSource` (every 5 s, backing off to 60 s while reads fail). A read of the same run that is not newer is dropped, a failed read keeps the last run without a toast, and once no run is open `simulation` goes back to null. `apps/api` serves neither route yet (`TODO(BE)`), so until it does no simulation opens and the Simulation switch stays off. Under a `?twin=` dev twin there is no simulation source; the console and the demo fixture fill it instead.
 
+### State diff
+
+`diffStates(prev, next)` (`core/twin/stateDiff.ts`) says what changed between two twin states, per SKU and sorted by SKU: `moved` (from and to `shelf_id`/`slot_id`), `facings` (before and after), `quantity` (signed `shelfDelta` and `backroomDelta`), and `added` / `removed` SKUs. A product can be in several lists at once, such as a move that also changes its facings. States of different stores give `EMPTY_DIFF`. The diff is always read from **state**: simulation actions only label a change (#92), so a cue can never show something the state does not.
+
+The diff has two uses, both read through `useRecentChanges()` (`hooks/recentChanges.hook.ts`) for the view on screen:
+
+- **Live → Live.** `setLive` diffs each new live state against the one before and keeps the result, its time, and the Live state before it (`before`) as `twin.store.liveChange`. The first state is a load, not a change. A state that changes nothing (a poll with no move, facings, or quantity change) leaves the last change as it was.
+- **Live → Simulation.** In the Simulation view, the hook diffs the current Live state against the proposal, timed from when the view was opened (`ui.store.viewChangedAt`) or the proposal last changed (`twin.store.simulationChangedAt`). It is computed when needed and never stored. Because it is against the current Live state and not the simulation's `base_context_version`, Live changes made since the simulation opened show up in it too.
+
+For `CHANGE_CUE_MS` (4 s) the hook returns `{ diff, at, before }`, where `before` is the state the diff was taken from (the previous Live state, or Live for a proposal), so a cue can still draw what was there, such as a moved product's old facings at its source slot. After that it returns null, so the cues of #23, #24, #25 and #27 fade by themselves. `CHANGE_CUE_MS` is shorter than `TWIN_POLL_MS`, so the next poll never replaces a cue that is still showing.
+
 ### Revenue and promotions
 
 | Lens | Route | Response type | Client |
@@ -173,12 +184,14 @@ src/
       twinIssues.ts         all products left out of the scene; inspectProduct
       devSources.ts         pickSource: apiSource, or a ?twin= source while developing
       memorySimulation.ts   console simulations on the in-memory twin: open, guarded commit, discard
+      stateDiff.ts          diffStates: what changed between two twin states, per SKU
     notify.ts               toast helpers and errorMessage
     utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
   hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
-                            commerce, hover, fitCamera, orbitPoint
+                            commerce, hover, fitCamera, orbitPoint, recentChanges
   state/                    Zustand stores, read-side copies only
-    twin.store.ts           live state, open simulation, issues, status, stale flag, retry; activeState
+    twin.store.ts           live state, last live change, open simulation, issues, status, stale flag,
+                            retry; activeState
     run.store.ts            agent activity (deduplicated by id) and the current loop stage
     ui.store.ts             selected entity, lens, live/simulation view mode
     panel.store.ts          side panel open state, saved in localStorage
@@ -238,6 +251,8 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `core/api/version.test.ts` | context version parsing and ordering |
 | `core/api/client.test.ts` | REST client paths, including revenue and promotions, and error envelopes |
 | `core/twin/twinConnection.test.ts` | load states, out-of-order snapshot and updates, feed drop and recovery, unreadable payloads |
+| `core/twin/stateDiff.test.ts` | issue #91: moves (across and within a shelf), facings, signed quantity deltas, added and removed SKUs, several changes at once; equal states, product order, and other stores give no diff |
+| `hooks/recentChanges.test.tsx` | issue #91: a Live change is cued and fades after `CHANGE_CUE_MS`; the Simulation view cues the proposal against Live and leaves Live alone |
 | `scene/layout.test.ts` | placement from state; unknown shelf, wrong slot, and taken slot are reported |
 | `scene/StoreScene.test.tsx` | scene objects are named with their entity ids |
 | `core/twin/fixtureStock.test.ts` | a fixture's stock totals and states follow the twin |
@@ -247,7 +262,7 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 | `scene/entities/stock/Stock.test.ts` | stock is deterministic, follows facings and quantity, and fills the front row first |
 | `scene/camera/focus.test.ts` | the camera faces a product's slot from its stock's side (far side, equipment too), sees wall equipment from inside the room and a gondola from the camera's side, and never ends up behind a wall |
 | `scene/camera/cameraFrame.test.ts` | every shelf corner stays in frame on desktop and on a 390px canvas |
-| `state/*.test.ts` | twin store and run store (the anomaly store is in `scene/anomaly.test.tsx`); issue #26: a simulation never changes Live, and the state on screen follows the view mode |
+| `state/*.test.ts` | twin store (issue #91: the first state records no change, a change is kept with its time, an unchanged state keeps it) and run store (the anomaly store is in `scene/anomaly.test.tsx`); issue #26: a simulation never changes Live, and the state on screen follows the view mode |
 | `simulationBinding.test.tsx` | issue #26: the scene draws Live, then the proposal in the Simulation view (without halos), then Live again; the demo simulation places every product |
 | `components/layout/ViewModeSwitch.test.tsx` | issue #26: Simulation cannot be picked with no simulation open; a new run raises one toast and a dot until it is looked at; the banner names the run and its base, warns once Live moves on, and the view goes back to Live when the simulation closes |
 | `core/api/sources/simulationSource.test.ts` | issue #26: `parseSimulation` checks the run like `GET /store`; the source reads the open run, drops stale reads, keeps the last run on a failure and backs off, and goes to null once the run closes |

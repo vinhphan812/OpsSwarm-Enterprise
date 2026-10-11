@@ -1,0 +1,40 @@
+import { useEffect, useMemo, useReducer } from "react";
+import { CHANGE_CUE_MS } from "@/constants/twin.constant";
+import { diffStates, isEmptyDiff } from "@/core/twin/stateDiff";
+import { shownSimulation, useTwinStore, type RecentChange } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
+
+/**
+ * The change the scene should cue, or null once it is older than `CHANGE_CUE_MS`.
+ * Live view: the last Live → Live change. Simulation view: the proposal against Live,
+ * from when the view was opened or the proposal last changed. The diff is against the
+ * current Live state, so Live changes since the simulation's base show up too.
+ */
+export function useRecentChanges(): RecentChange | null {
+  const viewMode = useUiStore((ui) => ui.viewMode);
+  const viewChangedAt = useUiStore((ui) => ui.viewChangedAt);
+  const live = useTwinStore((twin) => twin.live);
+  const liveChange = useTwinStore((twin) => twin.liveChange);
+  const simulation = useTwinStore((twin) => shownSimulation(twin, viewMode));
+  const simulationChangedAt = useTwinStore((twin) => twin.simulationChangedAt);
+
+  const change = useMemo(() => {
+    if (!simulation) return liveChange;
+    if (!live) return null;
+    const diff = diffStates(live, simulation.state);
+    return isEmptyDiff(diff) ? null : { diff, at: Math.max(viewChangedAt, simulationChangedAt), before: live };
+  }, [simulation, live, liveChange, viewChangedAt, simulationChangedAt]);
+
+  const [, expire] = useReducer((count: number) => count + 1, 0);
+  const remaining = change ? change.at + CHANGE_CUE_MS - Date.now() : 0;
+  const recent = remaining > 0;
+
+  useEffect(() => {
+    if (!recent) return;
+    const timer = setTimeout(expire, remaining);
+    return () => clearTimeout(timer);
+    // Re-arm only for a new change; `remaining` shrinks on every render.
+  }, [change, recent]);
+
+  return recent ? change : null;
+}
