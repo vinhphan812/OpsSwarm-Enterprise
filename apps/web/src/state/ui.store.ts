@@ -7,6 +7,8 @@ type UiStore = {
   /** What the selected id names: a product (SKU), a shelf, or a piece of equipment. */
   selectedEntityType: EntityType | null;
   viewMode: ViewMode;
+  /** When the view mode last changed, in ms since the epoch; 0 before any change. */
+  viewChangedAt: number;
   /** Operations, revenue, or promotions: picks the panel's content. */
   lens: Lens;
   /** The product whose details dialog is open, or null. */
@@ -27,12 +29,14 @@ export const useUiStore = create<UiStore>()((set) => ({
   selectedEntityId: null,
   selectedEntityType: null,
   viewMode: VIEW_MODE.Live,
+  viewChangedAt: 0,
   lens: LENS.Operations,
   detailsSku: null,
   focusedPromotionId: null,
   select: (selectedEntityId, entityType = ENTITY_TYPE.Product) =>
     set({ selectedEntityId, selectedEntityType: selectedEntityId ? entityType : null }),
-  setViewMode: (viewMode) => set({ viewMode }),
+  setViewMode: (viewMode) =>
+    set((ui) => (ui.viewMode === viewMode ? {} : { viewMode, viewChangedAt: Date.now() })),
   setLens: (lens) => set({ lens }),
   showDetails: (detailsSku) => set({ detailsSku }),
   focusPromotion: (focusedPromotionId) =>
