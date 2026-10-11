@@ -19,11 +19,21 @@ BUDGET_NAME="retailtwin-dev-guard"
 
 API_SA="${API_SA_ID}@${PROJECT}.iam.gserviceaccount.com"
 AGENT_SA="${AGENT_SA_ID}@${PROJECT}.iam.gserviceaccount.com"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REQUIRED_APIS_FILE="${SCRIPT_DIR}/required-apis.txt"
 
 die() {
   echo "error: $*" >&2
   exit 1
 }
+
+if [[ ! -r "$REQUIRED_APIS_FILE" ]]; then
+  die "Required API manifest is unreadable: ${REQUIRED_APIS_FILE}."
+fi
+mapfile -t REQUIRED_APIS < <(grep -Ev '^[[:space:]]*(#|$)' "$REQUIRED_APIS_FILE")
+if [[ "${#REQUIRED_APIS[@]}" -eq 0 ]]; then
+  die "Required API manifest is empty: ${REQUIRED_APIS_FILE}."
+fi
 
 if [[ "${CONFIRM_GCP_BOOTSTRAP:-}" != "yes" ]]; then
   die "Set CONFIRM_GCP_BOOTSTRAP=yes to apply the foundation to ${PROJECT}."
@@ -43,7 +53,7 @@ export CLOUDSDK_BILLING_QUOTA_PROJECT="$PROJECT"
 
 echo "Project:  ${PROJECT}"
 echo "Region:   ${REGION}"
-echo "Account:  $(gcloud config get-value account 2>/dev/null)"
+echo "Account:  $(gcloud config get-value account 2>/dev/null || true)"
 echo
 echo "This will not create service-account keys, Firestore documents, Pub/Sub"
 echo "subscriptions, Secret Manager versions, Cloud Run services, or Vertex calls."
@@ -55,23 +65,8 @@ if [[ "$billing_enabled" != "True" ]]; then
   die "Billing is disabled on ${PROJECT}. Free tier still requires a linked billing account. retailtwin-ai is the project without billing."
 fi
 
-echo "Enabling required APIs"
-gcloud services enable \
-  --project="$PROJECT" \
-  aiplatform.googleapis.com \
-  run.googleapis.com \
-  cloudbuild.googleapis.com \
-  artifactregistry.googleapis.com \
-  firestore.googleapis.com \
-  bigquery.googleapis.com \
-  pubsub.googleapis.com \
-  storage.googleapis.com \
-  secretmanager.googleapis.com \
-  logging.googleapis.com \
-  cloudbilling.googleapis.com \
-  billingbudgets.googleapis.com \
-  cloudresourcemanager.googleapis.com \
-  iam.googleapis.com
+echo "Enabling ${#REQUIRED_APIS[@]} required APIs"
+gcloud services enable --project="$PROJECT" "${REQUIRED_APIS[@]}"
 
 # IAM changes below name retailtwin-api and retailtwin-agent only.
 # Do not remove roles from other service accounts in this project.

@@ -28,6 +28,8 @@ Non-secret variables are in the repository root [`.env.example`](../../.env.exam
 | Cloud Run, Cloud Build, Secret Manager, Logging | APIs only | Cloud Run: 2 million requests, 360,000 GB-seconds, 180,000 vCPU-seconds, 1 GB North America egress. Cloud Build: 2,500 e2-standard-2 minutes. Secret Manager: 6 active versions and 10,000 accesses. Logging: 50 GiB ingested per project. |
 | Vertex AI | API only. No model call. | Not on the always-free list |
 
+[`required-apis.txt`](required-apis.txt) is the source of truth for the required APIs. Both bootstrap implementations enable all 14 APIs, and `verify.py` checks that the same 14 APIs are enabled.
+
 These APIs stay off: Compute Engine, GKE, Cloud SQL, Memorystore, and Spanner. A VM is not part of this local setup, including the free `e2-micro`.
 
 ## Identities
@@ -45,20 +47,26 @@ Issue #9 runs Cloud Run as `retailtwin-api`, in `us-central1`, with request-base
 
 Expected net spend is 0 USD while usage stays inside the table above. Free-tier credits are included, so normal free usage does not count as spend.
 
-The alert is a monthly budget named `retailtwin-dev-guard` for 25,000 VND on this project only, at 50%, 90%, and 100% of actual spend. The billing account currency is VND, so the amount is about 1 USD. The alert does not disable billing.
+The intended alert is a monthly budget named `retailtwin-dev-guard` for 25,000 VND on this project only, at 50%, 90%, and 100% of actual spend. The billing account currency determines whether that amount is accepted. The alert does not disable billing.
 
-A billing administrator created this budget. An operator account can use the project without permission to view billing budgets.
+Budget presence and an operator's permission to view it are runtime states. `verify.sh` / `verify.py` report exit code 2 when the foundation checks pass but the alert is absent or cannot be confirmed; a billing administrator can create it using [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ## Apply and check
 
 ```bash
+# Unix / macOS: requires the Unix `gcloud` and `bq` executables on PATH.
 CONFIRM_GCP_BOOTSTRAP=yes infrastructure/gcp/bootstrap.sh
 infrastructure/gcp/verify.sh
+
+# Windows: use the Python scripts, which invoke gcloud.cmd and bq.cmd.
+set CONFIRM_GCP_BOOTSTRAP=yes
+python infrastructure/gcp/bootstrap.py
+python infrastructure/gcp/verify.py
 ```
 
-`bootstrap.sh` is idempotent. It accepts only `retailtwin-ai-511002` and refuses every other project id before it calls `gcloud`. It also refuses a project with billing disabled and a region other than `us-central1`. It binds roles only on `retailtwin-api` and `retailtwin-agent`. It does not create keys, documents, subscriptions, secrets, Cloud Run services, or Vertex calls.
+`bootstrap.sh` is the Unix/macOS implementation; `bootstrap.py` is the Windows implementation. Both are idempotent and accept only `retailtwin-ai-511002`. They refuse every other project id before calling `gcloud`, reject a project with billing disabled, and reject regions other than `us-central1`. They bind roles only on `retailtwin-api` and `retailtwin-agent`, and do not create keys, documents, subscriptions, secrets, Cloud Run services, or Vertex calls.
 
-`verify.sh` exits 0 when the foundation and the budget both match. It exits 2 when only the budget is missing. It exits 1 for any other mismatch.
+`verify.sh` / `verify.py` exit 0 when the foundation and budget both match, 2 when only the budget is not confirmed, and 1 for another mismatch. Windows users should run `verify.py`; it invokes `gcloud.cmd` directly.
 
 ## Later issues
 

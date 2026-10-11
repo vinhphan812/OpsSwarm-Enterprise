@@ -1,0 +1,16 @@
+# APIs provisioned by bootstrap.sh/bootstrap.py and verified by verify.py.
+# Keep this list aligned with the foundation's declared resource scope.
+aiplatform.googleapis.com
+run.googleapis.com
+cloudbuild.googleapis.com
+artifactregistry.googleapis.com
+firestore.googleapis.com
+bigquery.googleapis.com
+pubsub.googleapis.com
+storage.googleapis.com
+secretmanager.googleapis.com
+logging.googleapis.com
+cloudbilling.googleapis.com
+billingbudgets.googleapis.com
+cloudresourcemanager.googleapis.com
+iam.googleapis.com
