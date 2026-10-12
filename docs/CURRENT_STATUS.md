@@ -24,6 +24,7 @@ Implemented on `main`:
 - in-memory event intake: one `event_id` names one immutable normalized payload, an identical payload returns HTTP 200, and a different payload returns HTTP 409 `event_id_conflict`;
 - `POST /events` does not change inventory, does not write Live Twin state, and does not publish;
 - store-events backbone: pull subscription `store-events-analytics` on topic `store-events`, and BigQuery tables `retailtwin.sales_events`, `retailtwin.inventory_events`, and `retailtwin.agent_actions`;
+- Weekend Demand Surge fixture for P017 (issue #30). Seed 1 rebuilds thirteen `sale.completed` events, Friday 50 units and Saturday 73 units in matching four-hour windows, increase 0.46. `python -m retailtwin_api.demand_surge publish` sends them on `store-events`. A replay keeps one row per event id. This does not start the Observer and does not change the Live Twin;
 - deterministic `sale.completed` publisher. The lander claims each `event_id` in Firestore `store_event_claims`. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation, so a takeover joins the same job. A replay of the same payload is a duplicate. A different payload is a conflict and does not replace the claim or the row. `correlation_id` is kept on the message and the row. A rejected message is quarantined before it is acknowledged;
 - ADR 0001, 0002, 0003, 0004, 0005, 0006, and 0007;
 - tracked `apps/web/package-lock.json`.

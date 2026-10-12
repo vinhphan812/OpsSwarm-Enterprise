@@ -29,6 +29,8 @@ The publisher emits `sale.completed` only. Inserts are BigQuery query jobs, not 
 
 The committed fixture is [data/synthetic/sale-completed.json](../../data/synthetic/sale-completed.json): event `evt-sale-0001`, correlation `run-20261007-001`, store `store-001`, SKU `P001`, quantity 3.
 
+The Weekend Demand Surge fixture is [data/synthetic/weekend-demand-surge.json](../../data/synthetic/weekend-demand-surge.json). Seed 1 is thirteen `sale.completed` events for SKU `P017`. Friday sells 50 units in four hours and Saturday sells 73, an increase of 0.46. `python -m retailtwin_api.demand_surge publish` sends that series on `store-events`. The same claim rules apply. The command does not start the Observer and does not change the Live Twin.
+
 ## Apply and check
 
 The topic and the empty dataset come from the cloud foundation. This script adds the subscription and the three tables. It refuses every project except `retailtwin-ai-511002` and every region except `us-central1`. It does not create keys or change IAM.
