@@ -24,6 +24,7 @@ ASSUMPTIONS: tuple[str, ...] = (
     "The latest window ends at the latest sale. The prior window is the same interval one day earlier.",
     "Direction is up, down, or flat from those windows, or unavailable when the prior window has no sales.",
     "A repeated event_id counts once. One forecast uses one store, one SKU, and one correlation_id.",
+    "A sale after generated_at is rejected. The model only sees sales that are already observable.",
     "A supplied model may replace the unit total. ForecastModelError keeps the window rate.",
 )
 
@@ -131,9 +132,11 @@ def forecast_demand(inputs: ForecastInputs) -> ForecastDemand:
     sku = _text_id("sku", inputs.sku)
     correlation_id = _text_id("correlation_id", inputs.correlation_id)
     horizon = _horizon(inputs.horizon_hours)
-    generated_at = _timestamp("generated_at", inputs.generated_at)
+    generated = _aware("generated_at", inputs.generated_at)
+    generated_at = _timestamp("generated_at", generated)
     use_ml = _flag(inputs.use_ml)
     sales = _sales(inputs.sales, store_id, sku, correlation_id)
+    _no_lookahead(sales, generated)
     latest_end = max(sale.occurred_at for sale in sales)
     latest_start = latest_end - _hours(horizon)
     prior_end = latest_end - _DAY
@@ -180,6 +183,12 @@ def forecast_demand(inputs: ForecastInputs) -> ForecastDemand:
         event_ids=evidence,
         assumptions=ASSUMPTIONS,
     )
+
+
+def _no_lookahead(sales: tuple[SaleObservation, ...], generated_at: datetime) -> None:
+    for sale in sales:
+        if sale.occurred_at > generated_at:
+            raise ForecastError(f"{sale.event_id} is after generated_at.")
 
 
 def _predict(

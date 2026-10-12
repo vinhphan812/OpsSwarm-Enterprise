@@ -2,7 +2,7 @@
 
 Issue #31. Formula id `forecast-demand-v1`. The schema is [forecast-demand.schema.json](forecast-demand.schema.json).
 
-`forecast_demand(sku, horizon)` returns the forecast units, the horizon, the method, `generated_at`, and the sales evidence. This package does not call BigQuery ML and does not read or change the Live Twin.
+`forecast_demand(inputs)` takes one `ForecastInputs` value: store, SKU, correlation id, horizon, `generated_at`, and the sales. It returns the forecast units, the horizon, the method, `generated_at`, and the sales evidence. A sale with `occurred_at` after `generated_at` is rejected. This package does not call BigQuery ML and does not read or change the Live Twin.
 
 ## Fallback
 
@@ -14,7 +14,7 @@ The prior window is the same interval one day earlier. Direction is `up`, `down`
 
 ## Model
 
-A caller may pass a model whose `predict` returns units over the horizon. `ForecastModelError` leaves the window rate in place and sets `ml_status` to `unavailable`. This package does not open a BigQuery client. A later adapter can implement that model.
+A caller may pass a model whose `predict` returns units over the horizon. The model receives only the sales that were observable at `generated_at`. `ForecastModelError` leaves the window rate in place and sets `ml_status` to `unavailable`. This package does not open a BigQuery client. A later adapter can implement that model.
 
 ## P017 weekend series
 

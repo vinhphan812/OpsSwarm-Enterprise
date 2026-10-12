@@ -160,6 +160,51 @@ def test_a_duplicate_event_counts_once() -> None:
     assert result.event_ids.count(sales[-1].event_id) == 1
 
 
+def test_a_sale_after_generated_at_is_rejected() -> None:
+    sales = weekend_sales()
+    early = datetime(2026, 10, 10, 9, 0, tzinfo=timezone.utc)
+    model = CountingModel()
+
+    with pytest.raises(ForecastError, match="after generated_at"):
+        forecast_demand(request(sales, generated_at=early, model=model, use_ml=True))
+
+    assert model.calls == 0
+
+
+def test_generated_at_may_equal_the_latest_sale() -> None:
+    sales = weekend_sales()
+    latest = max(sale.occurred_at for sale in sales)
+    result = forecast_demand(request(sales, generated_at=latest))
+
+    assert result.forecast_units == "73"
+    assert result.generated_at == "2026-10-10T11:30:00Z"
+    assert result.direction == "up"
+
+
+def test_the_model_receives_only_sales_known_at_generated_at() -> None:
+    sales = weekend_sales()
+    latest = max(sale.occurred_at for sale in sales)
+    seen: list[tuple[SaleObservation, ...]] = []
+
+    class RecordingModel(CountingModel):
+        def predict(
+            self,
+            sku: str,
+            horizon_hours: Decimal,
+            observed: tuple[SaleObservation, ...],
+        ) -> Decimal:
+            seen.append(observed)
+            return super().predict(sku, horizon_hours, observed)
+
+    model = RecordingModel(Decimal("80"))
+    result = forecast_demand(request(sales, generated_at=latest, model=model, use_ml=True))
+
+    assert result.ml_status == "used"
+    assert len(seen) == 1
+    assert seen[0]
+    assert all(sale.occurred_at <= latest for sale in seen[0])
+
+
 def test_invalid_inputs_fail() -> None:
     sales = weekend_sales()
     with pytest.raises(ForecastError, match="generated_at"):
