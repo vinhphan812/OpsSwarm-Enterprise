@@ -2,12 +2,18 @@
 
 import json
 import logging
+from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 
 from retailtwin_api.errors import ApiError
 from retailtwin_api.events import EventConflict, EventLog
 from retailtwin_api.schemas import EventReceipt, HealthResponse, ProductInventory, StoreEvent, StoreResponse
+from retailtwin_api.simulation_repository import SimulationReadRepository
+from retailtwin_api.simulation_schemas import (
+    AgentEventListResponse, CandidateListResponse, CursorParameters, PageParameters,
+    SimulationDetail, SimulationFilters, SimulationListResponse, SimulationStatus,
+)
 from retailtwin_api.store import StoreRepository
 
 logger = logging.getLogger(__name__)
@@ -20,6 +26,15 @@ def get_store(request: Request) -> StoreRepository:
 
 def get_events(request: Request) -> EventLog:
     return request.app.state.events
+
+
+def get_simulations(request: Request) -> SimulationReadRepository:
+    return request.app.state.simulations
+
+
+def require_simulations(repository: SimulationReadRepository) -> None:
+    if not repository.available:
+        raise ApiError(503, "simulations_unavailable", "Simulation read model is not available.")
 
 
 def require_loaded(store: StoreRepository) -> None:
@@ -102,3 +117,60 @@ def _log_event(event: StoreEvent, duplicate: bool) -> None:
             }
         )
     )
+
+
+
+@router.get("/simulations", response_model=SimulationListResponse)
+def list_simulations(
+    status: str | None = Query(default=None, pattern="^(pending|evaluated|committed|rejected|open)$"),
+    store_id: str | None = Query(default=None, min_length=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    repository: SimulationReadRepository = Depends(get_simulations),
+) -> SimulationListResponse:
+    require_simulations(repository)
+    return repository.list_simulations(
+        SimulationFilters(
+            status=cast(SimulationStatus | Literal["open"] | None, status),
+            store_id=store_id,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
+@router.get("/simulations/{simulation_id}", response_model=SimulationDetail)
+def read_simulation(simulation_id: str, repository: SimulationReadRepository = Depends(get_simulations)) -> SimulationDetail:
+    require_simulations(repository)
+    item = repository.get_simulation(simulation_id)
+    if item is None:
+        raise ApiError(404, "simulation_not_found", f"Simulation {simulation_id!r} was not found.")
+    return item
+
+
+@router.get("/simulations/{simulation_id}/candidates", response_model=CandidateListResponse)
+def list_candidates(
+    simulation_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    repository: SimulationReadRepository = Depends(get_simulations),
+) -> CandidateListResponse:
+    require_simulations(repository)
+    result = repository.list_candidates(simulation_id, PageParameters(page=page, page_size=page_size))
+    if result is None:
+        raise ApiError(404, "simulation_not_found", f"Simulation {simulation_id!r} was not found.")
+    return result
+
+
+@router.get("/agent/events", response_model=AgentEventListResponse)
+def list_agent_events(
+    since: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=50, ge=1, le=100),
+    repository: SimulationReadRepository = Depends(get_simulations),
+) -> AgentEventListResponse:
+    require_simulations(repository)
+    try:
+        events, cursor = repository.list_agent_events(CursorParameters(since=since, limit=limit))
+    except ValueError as exc:
+        raise ApiError(422, "invalid_cursor", str(exc)) from exc
+    return AgentEventListResponse(events=events, cursor=cursor)

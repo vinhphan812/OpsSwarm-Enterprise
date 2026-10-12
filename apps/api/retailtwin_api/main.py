@@ -12,6 +12,7 @@ from retailtwin_api.errors import ApiError, api_error_handler, http_error_handle
 from retailtwin_api.events import EventLog
 from retailtwin_api.routes import router
 from retailtwin_api.settings import Settings, get_settings
+from retailtwin_api.simulation_repository import unavailable_simulation_repository
 from retailtwin_api.store import open_store
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = open_store(resolved.store_fixture_path, resolved.store_id)
     app.state.store = store
     app.state.events = EventLog()
+    # Production has no implicit demo fixture. An integration injects a real adapter.
+    app.state.simulations = unavailable_simulation_repository()
     if not store.loaded:
         logger.error(json.dumps({"message": "fixture.unavailable", "reason": store.error}))
 
