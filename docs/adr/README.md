@@ -28,7 +28,7 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 - One decision per file.
 - Status is `Proposed`, `Accepted`, `Superseded`, or `Deprecated`.
 
-| ## Index
+## Index
 
 | ADR | Title | Status |
 | --- | --- | --- |
