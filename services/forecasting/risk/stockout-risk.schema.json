@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vinhphan812/retailtwin-ai/services/forecasting/risk/stockout-risk.schema.json",
+  "title": "Stockout risk evidence",
+  "description": "Deterministic stockout evidence for one SKU. Rates are decimal strings. formula_id stockout-risk-v1 is the rule in services/forecasting/risk/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formula_id",
+    "store_id",
+    "sku",
+    "correlation_id",
+    "context_version",
+    "observed_at",
+    "horizon_hours",
+    "shelf_quantity",
+    "backroom_quantity",
+    "sales_velocity_units_per_hour",
+    "forecast_units_per_hour",
+    "demand_units_per_hour",
+    "units_needed",
+    "shelf_hours_of_cover",
+    "shortfall_units",
+    "replenishment_units",
+    "uncovered_units",
+    "level",
+    "backroom_covers_horizon",
+    "high_demand",
+    "assumptions"
+  ],
+  "properties": {
+    "formula_id": {"const": "stockout-risk-v1"},
+    "store_id": {"type": "string", "minLength": 1},
+    "sku": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "context_version": {"type": "string", "minLength": 1},
+    "observed_at": {"type": "string", "minLength": 1},
+    "horizon_hours": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "shelf_quantity": {"type": "integer", "minimum": 0},
+    "backroom_quantity": {"type": "integer", "minimum": 0},
+    "sales_velocity_units_per_hour": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "forecast_units_per_hour": {
+      "anyOf": [
+        {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+        {"type": "null"}
+      ]
+    },
+    "demand_units_per_hour": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "units_needed": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "shelf_hours_of_cover": {
+      "anyOf": [
+        {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+        {"type": "null"}
+      ]
+    },
+    "shortfall_units": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "replenishment_units": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "uncovered_units": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "level": {"enum": ["normal", "near_stockout", "stockout"]},
+    "backroom_covers_horizon": {"type": "boolean"},
+    "high_demand": {"type": "boolean"},
+    "assumptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
