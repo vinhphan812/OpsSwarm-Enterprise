@@ -5,12 +5,14 @@ on:
     branches: [main]
     paths:
       - 'apps/api/**'
+      - 'services/forecasting/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
   pull_request:
     paths:
       - 'apps/api/**'
+      - 'services/forecasting/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
@@ -46,6 +48,10 @@ jobs:
 
       - name: Type-check
         run: pip install mypy && mypy retailtwin_api --ignore-missing-imports
+
+      - name: Stockout risk tests
+        working-directory: services/forecasting
+        run: python -m mypy risk --ignore-missing-imports && python -m pytest
 
       - name: Run tests with coverage
         run: pytest --cov=retailtwin_api --cov-report=term --cov-report=xml --cov-branch
