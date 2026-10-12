@@ -901,6 +901,571 @@ def test_acquire_keeps_one_insert_generation_across_a_takeover() -> None:
     assert stored["insert_generation"]["integerValue"] == "2"
 
 
+def test_bigquery_count_returns_nonzero_when_row_exists() -> None:
+    """BigQuerySink.count() – one matching row returns the count."""
+    sale = event()
+    runner = _ScriptedRunner([json.dumps([{"row_count": "3"}])])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    count = sink.count("sales_events", sale.event_id)
+
+    assert count == 3
+    assert "SELECT COUNT(*)" in runner.commands[0][-1]
+
+
+def test_bigquery_count_raises_on_multiple_rows() -> None:
+    """BigQuerySink.count() – more than one row raises BackboneError."""
+    runner = _ScriptedRunner([json.dumps([{"row_count": "1"}, {"row_count": "2"}])])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    with pytest.raises(BackboneError, match="Could not count"):
+        sink.count("sales_events", "evt-duplicate")
+
+
+def test_bigquery_get_returns_none_when_no_row() -> None:
+    """BigQuerySink.get() – empty result returns None (count() raises on empty)."""
+    runner = _ScriptedRunner([json.dumps([])])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    result = sink.get("sales_events", "evt-nonexistent")
+
+    assert result is None
+
+
+def test_gcloud_pull_returns_decoded_messages() -> None:
+    """GcloudPipe.pull() – decodes pub/sub pull output into PulledMessages."""
+    sale = event()
+    payload = [
+        {
+            "ackId": "ack-x",
+            "message": {
+                "data": base64.b64encode(canonical_body(sale).encode()).decode(),
+                "attributes": message_attributes(sale),
+                "publishTime": "2026-10-09T12:00:00Z",
+            },
+        }
+    ]
+    runner = _ScriptedRunner([json.dumps(payload)])
+    pipe = GcloudPipe(config_from_env({}), runner)
+
+    messages = pipe.pull(limit=5)
+
+    assert len(messages) == 1
+    assert messages[0].ack_id == "ack-x"
+    assert "--limit=5" in runner.commands[0]
+
+
+def test_gcloud_pull_clamps_limit_to_10() -> None:
+    """GcloudPipe.pull() – requested limit is capped at 10."""
+    runner = _ScriptedRunner([json.dumps([])])
+    pipe = GcloudPipe(config_from_env({}), runner)
+
+    pipe.pull(limit=100)
+
+    assert "--limit=10" in runner.commands[0]
+
+
+def test_gcloud_ack_sends_subscription_ack() -> None:
+    """GcloudPipe.ack() – sends the ack command for the given ack_id."""
+    runner = _ScriptedRunner([""])
+    pipe = GcloudPipe(config_from_env({}), runner)
+
+    pipe.ack("ack-abc123")
+
+    cmd = runner.commands[0]
+    assert "ack" in cmd
+    assert "--ack-ids=ack-abc123" in cmd
+
+
+def test_gcloud_ack_rejects_newlines_in_ack_id() -> None:
+    """GcloudPipe.ack() – rejects ack ids containing newline characters."""
+    runner = _ScriptedRunner([""])
+    pipe = GcloudPipe(config_from_env({}), runner)
+
+    with pytest.raises(BackboneError, match="empty ack id"):
+        pipe.ack("ack\nbad")
+
+    with pytest.raises(BackboneError, match="empty ack id"):
+        pipe.ack("ack\rbad")
+
+
+def test_bigquery_insert_retries_job_until_done() -> None:
+    """BigQuerySink.insert() – 'Already Exists' loops until bq job is DONE."""
+    sale = event()
+    job_id = insert_job_id(sale.event_id, 1)
+    # Returns DONE immediately so the loop exits after one iteration.
+    runner = _ScriptedRunner([
+        BackboneError(f"Already Exists: Job retailtwin-ai-511002:us-central1.{job_id}"),
+        "",       # bq wait
+        json.dumps({"status": {"state": "DONE"}}),
+        "",       # insert query
+    ])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    sink.insert("sales_events", sale, job_id)
+
+    # Already Exists → wait → show(DONE); no insert needed when row exists.
+    assert len(runner.commands) == 3
+    assert "show" in runner.commands[2]
+
+
+def test_bigquery_insert_raises_on_non_exists_error() -> None:
+    """BigQuerySink.insert() – non-'Already Exists' BackboneError propagates."""
+    sale = event()
+    runner = _ScriptedRunner([BackboneError("Connection refused")])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    with pytest.raises(BackboneError, match="Connection refused"):
+        sink.insert("sales_events", sale, insert_job_id(sale.event_id, 1))
+
+
+def test_firestore_classify_returns_conflict_when_event_is_landed() -> None:
+    """FirestoreRest._classify_existing – 'landed' state returns conflict outcome."""
+    sale = event()
+    client, store = _firestore()
+def test_firestore_landed_claim_has_landed_state() -> None:
+    """After mark_landed the claim document has state='landed'."""
+    sale = event()
+    client, store = _firestore()
+    client.claim(sale, "sales_events")
+    lease = client.acquire_landing(sale.event_id)
+    assert lease is not None
+    client.mark_landed(sale.event_id, lease.fence)
+
+    # Verify the claim document state is 'landed' (not 'claimed').
+    snapshot = client._read_snapshot(sale.event_id)
+    assert snapshot.state == "landed"
+
+
+def test_firestore_transition_raises_on_non_precondition_http_error() -> None:
+    """FirestoreRest._transition – non-409/400 HTTP errors raise BackboneError."""
+    from retailtwin_api.backbone_gcp import HttpResponse
+
+    class FiveHundred:
+        def request(self, method: str, url: str, payload: bytes | None, headers: dict[str, str]) -> HttpResponse:
+            return HttpResponse(500, json.dumps({"error": {"status": "INTERNAL"}}))
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), FiveHundred())
+
+    with pytest.raises(BackboneError, match="HTTP 500"):
+        client.mark_landed("evt-sale-0001", "t1")
+
+
+def test_firestore_fail_insert_returns_none_for_stale_fence() -> None:
+    """FirestoreRest.fail_insert – stale fence returns None (already advanced)."""
+    sale = event()
+    client, store = _firestore()
+    client.claim(sale, "sales_events")
+    lease = client.acquire_landing(sale.event_id)
+    assert lease is not None
+    # Advance to generation 2.
+    client.fail_insert(sale.event_id, lease.fence, lease.generation)
+    # Stale fence (generation 1 vs current generation 2).
+    nxt = client.fail_insert(sale.event_id, lease.fence, lease.generation)
+
+    assert nxt is None
+
+
+def test_http_error_extracts_error_message_from_firestore_body() -> None:
+    """_http_error – extracts structured error message from JSON response body."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    exc = _http_error("Reading snapshot", 403, json.dumps({"error": {"message": "Permission denied on collection"}}))
+
+    assert "HTTP 403" in str(exc)
+    assert "Permission denied" in str(exc)
+
+
+def test_http_error_truncates_long_error_message() -> None:
+    """_http_error – error messages longer than 300 chars are truncated."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    long_body = json.dumps({"error": {"message": "x" * 500}})
+
+    exc = _http_error("Reading snapshot", 500, long_body)
+
+    assert len(str(exc)) <= 350
+
+
+def test_precondition_failed_returns_true_for_409() -> None:
+    """_precondition_failed – 409 is always a precondition failure."""
+    from retailtwin_api.backbone_gcp import _precondition_failed
+
+    assert _precondition_failed(409, "{}") is True
+
+
+def test_precondition_failed_parses_failed_status() -> None:
+    """_precondition_failed – 400 with FAILED_PRECONDITION in body returns True."""
+    from retailtwin_api.backbone_gcp import _precondition_failed
+
+    body = json.dumps({"error": {"status": "FAILED_PRECONDITION"}})
+    assert _precondition_failed(400, body) is True
+
+
+def test_precondition_failed_ignores_other_400_errors() -> None:
+    """_precondition_failed – 400 with non-FAILED errors returns False."""
+    from retailtwin_api.backbone_gcp import _precondition_failed
+
+    assert _precondition_failed(400, '{"error":{"status":"INVALID_ARGUMENT"}}') is False
+    assert _precondition_failed(400, "not json body") is False
+
+
+def test_http_error_uses_raw_body_when_no_json() -> None:
+    """_http_error – falls back to raw body text when JSON parsing fails."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    exc = _http_error("Writing document", 500, "internal server error")
+
+    assert "HTTP 500" in str(exc)
+    assert "internal server error" in str(exc)
+
+
+def test_http_error_uses_status_when_no_error_field() -> None:
+    """_http_error – uses raw body when JSON has no 'error' key."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    exc = _http_error("Writing document", 400, json.dumps({"something": "else"}))
+
+    assert "HTTP 400" in str(exc)
+    assert "something" in str(exc)
+
+
+def test_http_error_handles_error_without_message() -> None:
+    """_http_error – handles error dict with no 'message' field."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    exc = _http_error("Writing document", 403, json.dumps({"error": {"code": 403}}))
+
+    assert "HTTP 403" in str(exc)
+
+
+def test_http_error_handles_error_message_not_string() -> None:
+    """_http_error – handles error.message when it is not a string."""
+    from retailtwin_api.backbone_gcp import _http_error
+
+    exc = _http_error("Writing document", 403, json.dumps({"error": {"message": 403}}))
+
+    assert "HTTP 403" in str(exc)
+
+
+def test_precondition_failed_false_when_error_not_dict() -> None:
+    """_precondition_failed – JSON body with non-dict 'error' field returns False."""
+    from retailtwin_api.backbone_gcp import _precondition_failed
+
+    assert _precondition_failed(400, '{"error": "not a dict"}') is False
+
+
+def test_string_field_raises_on_missing() -> None:
+    """_string_field – raises BackboneError when field is absent."""
+    from retailtwin_api.backbone_gcp import _string_field
+
+    with pytest.raises(BackboneError, match="missing"):
+        _string_field({}, "event_id")
+
+
+def test_optional_string_returns_none_for_non_dict() -> None:
+    """_optional_string – returns None when field value is not a dict."""
+    from retailtwin_api.backbone_gcp import _optional_string
+
+    assert _optional_string({"event_id": "not-a-dict"}, "event_id") is None
+
+
+def test_timestamp_field_returns_none_for_non_dict() -> None:
+    """_timestamp_field – returns None when field is absent or non-dict."""
+    from retailtwin_api.backbone_gcp import _timestamp_field
+
+    assert _timestamp_field({}, "claimed_at") is None
+    assert _timestamp_field({"claimed_at": "not-dict"}, "claimed_at") is None
+
+
+def test_timestamp_field_raises_on_invalid_format() -> None:
+    """_timestamp_field – raises BackboneError for unparseable timestamp."""
+    from retailtwin_api.backbone_gcp import _timestamp_field
+
+    with pytest.raises(BackboneError, match="unreadable"):
+        _timestamp_field({"claimed_at": {"timestampValue": "not-a-timestamp"}}, "claimed_at")
+
+
+def test_decode_body_returns_empty_for_non_string() -> None:
+    """_decode_body – returns empty string for non-string or empty input."""
+    from retailtwin_api.backbone_gcp import _decode_body
+
+    assert _decode_body(123) == ""
+    assert _decode_body("") == ""
+
+
+def test_decode_body_returns_empty_for_invalid_base64() -> None:
+    """_decode_body – returns empty string for invalid base64."""
+    from retailtwin_api.backbone_gcp import _decode_body
+
+    assert _decode_body("not-valid-base64!!!") == ""
+
+
+def test_bigquery_join_job_raises_on_non_json_response() -> None:
+    """BigQuerySink._join_existing_job – raises BackboneError when bq output is not JSON."""
+    sale = event()
+    runner = _ScriptedRunner([
+        BackboneError(f"Already Exists: Job retailtwin-ai-511002:us-central1.{insert_job_id(sale.event_id, 1)}"),
+        "",   # bq wait
+        "not json output",  # non-JSON bq show
+    ])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    with pytest.raises(BackboneError, match="not JSON"):
+        sink.insert("sales_events", sale, insert_job_id(sale.event_id, 1))
+
+
+def test_bigquery_join_job_raises_on_running_job() -> None:
+    """BigQuerySink._join_existing_job – raises when bq job is still RUNNING."""
+    sale = event()
+    runner = _ScriptedRunner([
+        BackboneError(f"Already Exists: Job retailtwin-ai-511002:us-central1.{insert_job_id(sale.event_id, 1)}"),
+        "",  # bq wait
+        json.dumps({"status": {"state": "RUNNING"}}),
+    ])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    with pytest.raises(BackboneError, match="still running"):
+        sink.insert("sales_events", sale, insert_job_id(sale.event_id, 1))
+
+
+def test_bigquery_join_job_raises_on_error_result() -> None:
+    """BigQuerySink._join_existing_job – raises InsertJobFailed when job has errorResult."""
+    sale = event()
+    runner = _ScriptedRunner([
+        BackboneError(f"Already Exists: Job retailtwin-ai-511002:us-central1.{insert_job_id(sale.event_id, 1)}"),
+        "",  # bq wait
+        json.dumps({"status": {"state": "DONE", "errorResult": {"reason": "invalidQuery"}}}),
+    ])
+    sink = BigQuerySink(config_from_env({}), runner)
+
+    with pytest.raises(InsertJobFailed):
+        sink.insert("sales_events", sale, insert_job_id(sale.event_id, 1))
+
+
+def test_urllib_transport_raises_on_connection_failure() -> None:
+    """UrllibTransport.request – raises BackboneError when the host is unreachable."""
+    from retailtwin_api.backbone_gcp import UrllibTransport
+
+    transport = UrllibTransport()
+
+    with pytest.raises(BackboneError, match="Firestore request failed"):
+        # Use a host that will definitely refuse the connection.
+        transport.request("POST", "http://127.0.0.1:1/", None, {})
+
+
+def test_api_error_handler_re_raises_non_api_error() -> None:
+    """api_error_handler – re-raises exceptions that are not ApiError."""
+    from retailtwin_api.errors import api_error_handler
+
+    with pytest.raises(RuntimeError, match="not an ApiError"):
+        api_error_handler(None, RuntimeError("not an ApiError"))
+
+
+def test_http_error_handler_re_raises_non_http_error() -> None:
+    """http_error_handler – re-raises exceptions that are not StarletteHTTPException."""
+    from retailtwin_api.errors import http_error_handler
+
+    with pytest.raises(ValueError, match="not HTTP"):
+        http_error_handler(None, ValueError("not HTTP"))
+
+
+def test_validation_error_handler_re_raises_non_validation_error() -> None:
+    """validation_error_handler – re-raises exceptions that are not RequestValidationError."""
+    from retailtwin_api.errors import validation_error_handler
+
+    with pytest.raises(TypeError, match="not validation"):
+        validation_error_handler(None, TypeError("not validation"))
+
+
+def test_http_error_handler_uses_default_message_for_non_string_detail() -> None:
+    """http_error_handler – uses 'Request failed.' when exc.detail is not a string."""
+    from starlette.exceptions import HTTPException
+    from retailtwin_api.errors import http_error_handler
+
+    response = http_error_handler(None, HTTPException(400, detail={"bad": "type"}))
+
+    assert response.status_code == 400
+
+
+def test_store_event_strip_text_returns_non_string_unchanged() -> None:
+    """StoreEvent.strip_text – returns non-string values unchanged."""
+    from retailtwin_api.schemas import StoreEvent
+
+    assert StoreEvent.strip_text(42) == 42
+    assert StoreEvent.strip_text(None) is None
+
+
+def test_firestore_read_snapshot_raises_on_non_json_response() -> None:
+    """FirestoreRest._read_snapshot – raises when Firestore returns non-JSON."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class NonJsonTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(200, "not json at all")
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), NonJsonTransport())
+
+    with pytest.raises(BackboneError, match="not JSON"):
+        client._read_snapshot("evt-sale-0001")
+
+
+def test_firestore_read_snapshot_raises_when_fields_missing() -> None:
+    """FirestoreRest._read_snapshot – raises when Firestore response has no fields."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class NoFieldsTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(200, json.dumps({"name": "doc", "updateTime": "t1"}))
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), NoFieldsTransport())
+
+    with pytest.raises(BackboneError, match="no fields"):
+        client._read_snapshot("evt-sale-0001")
+
+
+def test_firestore_read_snapshot_raises_when_update_time_missing() -> None:
+    """FirestoreRest._read_snapshot – raises when updateTime is absent."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class NoUpdateTimeTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(
+                200, json.dumps({"name": "doc", "fields": {"state": {"stringValue": "claimed"}}})
+            )
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), NoUpdateTimeTransport())
+
+    with pytest.raises(BackboneError, match="missing an update time"):
+        client._read_snapshot("evt-sale-0001")
+
+
+def test_firestore_transition_raises_on_404_without_not_found_string() -> None:
+    """FirestoreRest._transition – 404 response raises BackboneError."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class FourOhFourTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(404, json.dumps({"error": {"status": "NOT_FOUND"}}))
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), FourOhFourTransport())
+
+    with pytest.raises(BackboneError, match="HTTP 404"):
+        client.mark_landed("evt-sale-0001", "t1")
+
+
+def test_firestore_transition_raises_on_400_non_precondition() -> None:
+    """FirestoreRest._transition – 400 without FAILED_PRECONDITION raises BackboneError."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class BadRequestTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(400, json.dumps({"error": {"status": "INVALID_ARGUMENT"}}))
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), BadRequestTransport())
+
+    with pytest.raises(BackboneError, match="HTTP 400"):
+        client.mark_landed("evt-sale-0001", "t1")
+
+
+def test_firestore_transition_to_recorded_raises_on_400_non_precondition() -> None:
+    """FirestoreRest._transition_to_recorded – 400 without FAILED_PRECONDITION raises."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class BadRequestTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(400, json.dumps({"error": {"status": "INVALID_ARGUMENT"}}))
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), BadRequestTransport())
+
+    with pytest.raises(BackboneError, match="HTTP 400"):
+        client.release_landing("evt-sale-0001", "t1")
+
+
+def test_generation_field_raises_on_non_dict() -> None:
+    """_generation_field – raises when insert_generation is present but not a dict."""
+    from retailtwin_api.backbone_gcp import _generation_field
+
+    with pytest.raises(BackboneError, match="unreadable"):
+        _generation_field({"insert_generation": "not-a-dict"})
+
+
+def test_generation_field_defaults_to_1_when_absent() -> None:
+    """_generation_field – returns 1 when insert_generation field is absent."""
+    from retailtwin_api.backbone_gcp import _generation_field
+
+    assert _generation_field({}) == 1
+
+
+def test_timestamp_field_parses_timestamp_without_z_suffix() -> None:
+    """_timestamp_field – parses timestamp without Z as UTC."""
+    from retailtwin_api.backbone_gcp import _timestamp_field
+
+    result = _timestamp_field({"ts": {"timestampValue": "2026-10-07T08:01:00"}}, "ts")
+    assert result is not None
+    assert result.tzinfo is not None  # UTC tz added
+
+
+def test_firestore_acquire_landing_raises_on_unknown_state() -> None:
+    """FirestoreRest._acquire_landing – raises when claim state is unknown."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class BadStateTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            # Return a claim with an invalid state string.
+            return HttpResponse(
+                200,
+                json.dumps({
+                    "name": "doc",
+                    "updateTime": "t1",
+                    "fields": {
+                        "state": {"stringValue": "zombie"},
+                        "canonical": {"stringValue": "{}"},
+                    },
+                }),
+            )
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), BadStateTransport())
+
+    with pytest.raises(BackboneError, match="unknown state"):
+        client.acquire_landing("evt-sale-0001")
+
+
+def test_firestore_transition_raises_on_non_string_fence() -> None:
+    """FirestoreRest._transition – raises when fence is not a non-empty string."""
+    from retailtwin_api.backbone_gcp import FirestoreRest, HttpResponse
+
+    class FakeTransport:
+        def request(
+            self, method: str, url: str, payload: bytes | None, headers: dict[str, str]
+        ) -> HttpResponse:
+            return HttpResponse(200, "{}")
+
+    client = FirestoreRest(config_from_env({}), FakeRunner("test-token\n"), FakeTransport())
+
+    # Non-string fence.
+    with pytest.raises(BackboneError, match="Lost the landing lease"):
+        client.mark_landed("evt-sale-0001", 123)  # type: ignore[arg-type]
+
+    # Empty string fence.
+    with pytest.raises(BackboneError, match="Lost the landing lease"):
+        client.mark_landed("evt-sale-0001", "")
+
+
 class _ScriptedRunner:
     def __init__(self, steps: list[object]) -> None:
         self.steps = list(steps)

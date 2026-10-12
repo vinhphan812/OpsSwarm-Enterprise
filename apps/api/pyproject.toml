@@ -39,6 +39,7 @@ omit = [
   "*/.pytest_cache/*",
   "*/retailtwin_api.egg-info/*",
   "*/__main__.py",
+  "*/backbone_cli.py",
 ]
 
 [tool.coverage.report]

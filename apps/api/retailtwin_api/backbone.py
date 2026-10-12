@@ -499,17 +499,17 @@ def _write_derived(
         ledger.release_landing(event.event_id, lease.fence)
         return Landing("conflict", stored, existing_table)
     current = _insert_generation(sink, event, ledger, table, lease)
-    stored = sink.get(table, event.event_id)
-    if stored is None or stored != event:
+    stored_after_insert: StoreEvent | None = sink.get(table, event.event_id)
+    if stored_after_insert is None or stored_after_insert != event:
         ledger.release_landing(event.event_id, current.fence)
-        if stored is None:
+        if stored_after_insert is None:
             raise BackboneError(f"event_id {event.event_id} was not stored.")
-        return Landing("conflict", stored, table)
+        return Landing("conflict", stored_after_insert, table)
     if not _mark_or_duplicate(ledger, event.event_id, current.fence):
-        return Landing("duplicate", stored, table)
+        return Landing("duplicate", stored_after_insert, table)
     if claim.outcome == "inserted":
-        return Landing("inserted", stored, table)
-    return Landing("duplicate", stored, table)
+        return Landing("inserted", stored_after_insert, table)
+    return Landing("duplicate", stored_after_insert, table)
 
 
 def _insert_generation(
