@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vinhphan812/retailtwin-ai/services/forecasting/demand/forecast-demand.schema.json",
+  "title": "Demand forecast",
+  "description": "Deterministic forecast for one SKU. formula_id forecast-demand-v1 is the rule in services/forecasting/demand/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formula_id",
+    "store_id",
+    "sku",
+    "correlation_id",
+    "generated_at",
+    "horizon_hours",
+    "forecast_units",
+    "units_per_hour",
+    "method_id",
+    "ml_used",
+    "ml_status",
+    "direction",
+    "increase",
+    "observed_units",
+    "prior_units",
+    "latest_window_start",
+    "latest_window_end",
+    "prior_window_start",
+    "prior_window_end",
+    "event_ids",
+    "assumptions"
+  ],
+  "properties": {
+    "formula_id": {"const": "forecast-demand-v1"},
+    "store_id": {"type": "string", "minLength": 1},
+    "sku": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "minLength": 1},
+    "horizon_hours": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "forecast_units": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "units_per_hour": {"type": "string", "pattern": "^\\d+(\\.\\d+)?$"},
+    "method_id": {"type": "string", "minLength": 1},
+    "ml_used": {"type": "boolean"},
+    "ml_status": {"enum": ["disabled", "used", "unavailable"]},
+    "direction": {"enum": ["up", "down", "flat", "unavailable"]},
+    "increase": {"type": ["string", "null"], "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "observed_units": {"type": "string", "pattern": "^\\d+$"},
+    "prior_units": {"type": "string", "pattern": "^\\d+$"},
+    "latest_window_start": {"type": "string", "minLength": 1},
+    "latest_window_end": {"type": "string", "minLength": 1},
+    "prior_window_start": {"type": "string", "minLength": 1},
+    "prior_window_end": {"type": "string", "minLength": 1},
+    "event_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    },
+    "assumptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
