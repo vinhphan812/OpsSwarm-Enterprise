@@ -39,8 +39,6 @@ def pytest_collection_modifyitems(items):
     """Skip tests that require full DCG/Executor/Simulation implementations."""
     skip_patterns = [
         "test_dcg.py",
-        "test_demo_controller.py",
-        "test_demo_stale_replan.py",
         "test_executor.py",
     ]
     for item in items:

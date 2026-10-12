@@ -710,7 +710,7 @@ class FirestoreRest:
             generation=_generation_field(fields),
         )
 
-    def _call(self, method: str, url: str, payload: dict[str, object] | None) -> HttpResponse:
+    def _call(self, method: str, url: str, payload: Mapping[str, object] | None) -> HttpResponse:
         raw = None if payload is None else json.dumps(payload).encode("utf-8")
         try:
             return self.transport.request(method, url, raw, self._headers())

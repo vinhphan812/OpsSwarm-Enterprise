@@ -51,7 +51,7 @@ class EvidenceBundle(BaseModel):
     store_id: str
     correlation_id: str
     is_sufficient: bool
-    items: List[EvidenceItem] = [] 
+    items: List[EvidenceItem] = []
 
 # 5. Decision
 class ExpectedImpact(BaseModel):

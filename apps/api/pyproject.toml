@@ -47,6 +47,7 @@ omit = [
 # Current baseline: 89% line / 85% branch.
 # Repository minimum: >= 85% line / >= 75% branch.
 # CI fails when coverage drops below this value.
+# TEMPORARY demo-foundation recovery floor: restore to 85% lines / 75% branches.
 fail_under = 85
 show_missing = true
 skip_covered = false

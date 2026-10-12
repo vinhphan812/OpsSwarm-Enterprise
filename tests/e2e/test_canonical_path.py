@@ -163,24 +163,19 @@ class TestCanonicalStages:
         assert first["version"] == second["version"] == third["version"]
         assert first["shelf_quantity"] == second["shelf_quantity"] == third["shelf_quantity"]
 
-    def test_agent_stub_markers_are_present(
+    def test_agent_markers_respect_demo_runtime_isolation(
         self, run_id: str, env_info: dict
     ) -> None:
-        """Sanity-check that the stub directories for agents are discoverable.
-
-        These become live implementations in future milestones.
-        """
-        import os
+        """Demo-only agent implementations live exclusively under demo_runtime."""
         import pathlib
 
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        agents = ["observer", "investigator", "planner", "simulator",
-                  "executor", "verifier", "orchestrator"]
-        for agent in agents:
-            readme = repo_root / "agents" / agent / "README.md"
-            assert readme.exists(), f"Missing agents/{agent}/README.md"
-            content = readme.read_text(encoding="utf-8")
-            assert len(content) > 10, f"agents/{agent}/README.md is empty"
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        demo_agents = package_root / "demo_runtime" / "agents"
+        for module in ("executor.py", "verifier.py"):
+            assert (demo_agents / module).exists(), f"Missing demo_runtime agent {module}"
+        for legacy in ("executor", "verifier"):
+            assert not (package_root / "agents" / legacy).exists()
 
         # env_info documents the target canonical path (contract presence check)
         assert env_info["canonical_path"] == "EVENT -> AI -> INVESTIGATE -> SIMULATE -> GUARD -> LIVE -> VERIFY"
