@@ -1,0 +1,142 @@
+{
+  "seed": 1,
+  "store_id": "store-001",
+  "sku": "P017",
+  "baseline_start": "2026-10-09T08:00:00Z",
+  "baseline_hours": 4,
+  "surge_start": "2026-10-10T08:00:00Z",
+  "surge_hours": 4,
+  "increase_min": "0.46",
+  "events": [
+    {
+      "event_id": "evt-p017-base-0001",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-09T08:00:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-base-0002",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-09T08:48:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-base-0003",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-09T09:36:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-base-0004",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-09T10:24:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-base-0005",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-09T11:12:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0001",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T08:00:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0002",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T08:30:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0003",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T09:00:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0004",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T09:30:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0005",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T10:00:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0006",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T10:30:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0007",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 9,
+      "occurred_at": "2026-10-10T11:00:00Z",
+      "source": "synthetic-pos"
+    },
+    {
+      "event_id": "evt-p017-surge-0008",
+      "correlation_id": "run-weekend-demand-surge-1",
+      "event_type": "sale.completed",
+      "store_id": "store-001",
+      "sku": "P017",
+      "quantity": 10,
+      "occurred_at": "2026-10-10T11:30:00Z",
+      "source": "synthetic-pos"
+    }
+  ]
+}
