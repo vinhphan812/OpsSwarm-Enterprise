@@ -36,6 +36,8 @@ credentials*.json
 Thumbs.db
 
 # Coverage / logs
+.coverage
+coverage.xml
 coverage/
 htmlcov/
 *.log

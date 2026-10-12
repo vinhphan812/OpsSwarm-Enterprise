@@ -16,9 +16,9 @@ def test_contracts_e2e_state_machine():
         is_sufficient=True,
         items=[EvidenceItem(event_type="test", payload={"key": "value"})]
     )
-    
+
     action = MoveProduct(sku="s1", from_slot="a1", to_slot="b1")
-    
+
     decision = Decision(
         decision_id="d1",
         agent_id="a1",
@@ -28,7 +28,7 @@ def test_contracts_e2e_state_machine():
         proposed_actions=[action],
         expected_impact={"kpi_score": 100.0, "description": "test"}
     )
-    
+
     assert decision.decision_id == "d1"
     assert len(decision.evidence) == 1
     assert decision.evidence[0].bundle_id == "b1"

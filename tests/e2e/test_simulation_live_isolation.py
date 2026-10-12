@@ -63,31 +63,28 @@ class TestLiveStateImmutability:
 class TestSimulationServiceContract:
     """Simulation Twin must be a separate mutation path from Live Twin."""
 
-    def test_simulation_service_directory_exists(self) -> None:
-        """Simulation service directory is present (stub implementation next)."""
+    def test_simulation_service_is_sealed_under_demo_runtime(self) -> None:
+        """Simulation exists only in the isolated demo runtime."""
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        sim_readme = repo_root / "services" / "simulation" / "README.md"
-        assert sim_readme.exists()
-        content = sim_readme.read_text(encoding="utf-8")
-        assert "Simulation" in content
-        assert "clone" in content.lower() or "snapshot" in content.lower()
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        assert (package_root / "demo_runtime" / "services" / "simulation.py").exists()
+        assert not (package_root / "services" / "simulation").exists()
 
-    def test_twin_service_directory_exists(self) -> None:
-        """Twin service is the canonical Live Twin access layer."""
+    def test_twin_service_is_sealed_under_demo_runtime(self) -> None:
+        """Twin exists only in the isolated demo runtime."""
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        twin_readme = repo_root / "services" / "twin" / "README.md"
-        assert twin_readme.exists()
-        content = twin_readme.read_text(encoding="utf-8")
-        assert "Twin" in content
-        assert "Store" in content
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        assert (package_root / "demo_runtime" / "services" / "twin.py").exists()
+        assert not (package_root / "services" / "twin").exists()
 
     def test_dcg_directory_exists(self) -> None:
         """Decision Context Guard contract is defined."""
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        dcg_dir = repo_root / "guard" / "decision-context-guard"
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        dcg_dir = package_root / "guard" / "decision-context-guard"
         assert dcg_dir.exists()
         contract = dcg_dir / "contract.schema.json"
         assert contract.exists()
@@ -100,20 +97,20 @@ class TestSimulationServiceContract:
 class TestExecutorIsolation:
     """Executor is the sole live mutation path (stub at day-0)."""
 
-    def test_executor_readme_mentions_authorization(self) -> None:
-        """Executor README documents the authorization requirement."""
+    def test_executor_is_sealed_under_demo_runtime(self) -> None:
+        """Executor implementation is isolated from production namespaces."""
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        exec_readme = repo_root / "agents" / "executor" / "README.md"
-        assert exec_readme.exists()
-        content = exec_readme.read_text(encoding="utf-8")
-        assert "authorization" in content.lower() or "commit" in content.lower()
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        assert (package_root / "demo_runtime" / "agents" / "executor.py").exists()
+        assert not (package_root / "agents" / "executor").exists()
 
     def test_guard_readme_mentions_outcomes(self) -> None:
         """DCG README documents ALLOW / DENY / REFRESH_REQUIRED outcomes."""
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
-        guard_dir = repo_root / "guard" / "decision-context-guard"
+        package_root = repo_root / "apps" / "api" / "retailtwin_api"
+        guard_dir = package_root / "guard" / "decision-context-guard"
         readme = guard_dir / "README.md"
         assert readme.exists()
         content = readme.read_text(encoding="utf-8")

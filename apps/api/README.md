@@ -1,12 +1,12 @@
 # API
 
-Python FastAPI application/integration boundary.
+Python FastAPI boundary for the web client. This is a demo scaffold for Weekend Demand Surge and does not constitute a production-ready system. It uses an in-memory fixture for Day-0 reads and cannot write to Firestore or any external provider.
 
 ## Current status
 
 The API implementation is **not yet merged on `main`**. PR #57 is the current implementation work for issue #8. Until that PR is reconciled and merged, this directory on `main` is documentation/target scope only.
 
-The browser does not write Firestore. This app does not expose action submission or guard validation; those stay target contracts. No route bypasses Simulation-before-Live, the Decision Context Guard, authorization, or the Executor.
+The browser does not write to any external database in this demo mode. This app does not connect to production APIs, Firestore, or LLM providers. As a demo scaffold, it does not support action submission, complex guard validation, or production-bound event publishing.
 
 ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 
@@ -61,4 +61,4 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 | `STORE_FIXTURE_PATH` | `data/schemas/store-state.example.json` | Day-0 read model |
 | `LOG_LEVEL` | `INFO` | Log level |
 
-Accepted events log `event_id`, `correlation_id`, and `store_id`. The log is process memory only. This route does not publish. The store-events backbone is a separate command, documented in [infrastructure/gcp/store-events.md](../../infrastructure/gcp/store-events.md). That command claims the event id in Firestore and writes the derived BigQuery row. It does not make this process the Live Twin.
+Accepted events log `event_id`, `correlation_id`, and `store_id` in process memory only. This demo scaffold does not publish events, connect to Firestore, or interact with BigQuery. Canonical event backbone implementation is out-of-scope for this demo.
