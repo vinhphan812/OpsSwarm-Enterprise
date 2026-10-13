@@ -108,6 +108,18 @@ Gate posture (per `docs/CURRENT_STATUS.md`): all gates **pending** — no linked
 - Cloud Logging: technical logs
 - Firebase Authentication: role/user authentication when enabled
 
+### LLM Provider Architecture
+The inference layer uses a **provider-neutral contract** in `apps/api/retailtwin_api/llm/contracts.py`.
+All adapters implement `LlmProvider.complete(request: LlmRequest) -> LlmResponse`.
+
+| Provider | Config | Credentials | Notes |
+|---|---|---|---|
+| `fake` | `LLM_PROVIDER=fake` | None | Deterministic; for tests, local dev, CI |
+| `openai_compatible` | `LLM_PROVIDER=openai_compatible` | `LLM_BASE_URL`, `LLM_API_KEY` | Local proxies, OpenAI, Azure |
+| `vertex_gemini` | `LLM_PROVIDER=vertex_gemini` | GCP ADC | Production Gemini on Vertex AI |
+
+The fake provider is the default in `.env.example` and is the only provider used in CI.
+
 ## 3. Component responsibilities
 
 ### Observer

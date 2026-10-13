@@ -21,15 +21,15 @@ router = APIRouter()
 
 
 def get_store(request: Request) -> StoreRepository:
-    return request.app.state.store
+    return request.app.state.store  # type: ignore[no-any-return]
 
 
 def get_events(request: Request) -> EventLog:
-    return request.app.state.events
+    return request.app.state.events  # type: ignore[no-any-return]
 
 
 def get_simulations(request: Request) -> SimulationReadRepository:
-    return request.app.state.simulations
+    return request.app.state.simulations  # type: ignore[no-any-return]
 
 
 def require_simulations(repository: SimulationReadRepository) -> None:
