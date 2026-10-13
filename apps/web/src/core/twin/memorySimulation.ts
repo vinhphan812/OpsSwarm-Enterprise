@@ -9,7 +9,7 @@ import {
 } from "@/enums/simulation.enum";
 import { simulationOf, DEMO_ACTIONS } from "@/fixtures/demo/simulation";
 import { VIEW_MODE } from "@/enums/ui.enum";
-import { useTwinStore } from "@/state/twin.store";
+import { shownSimulation, useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
 import type { SimulationReviewer } from "./simulationReview";
@@ -33,8 +33,9 @@ export function openSimulation(twin: MemoryTwin, actions: SimulationAction[] = D
 
 /**
  * Reviews `simulation` the way the backend would. Both decisions are bound to the
- * proposal that was reviewed: once the open run's proposal has been replaced (same id,
- * newer `state.context_version`), either is refused with `proposal_changed` and the run
+ * proposal that was reviewed, the selected candidate's when one is selected: once the
+ * open run's proposal has been replaced or another candidate selected (same id, another
+ * `state.context_version`), either is refused with `proposal_changed` and the run
  * stays open. A rejection then closes the run; Live moving on does not stop it, since a
  * rejection never writes Live. An approval goes through a minimal guard that answers
  * REFRESH_REQUIRED (`live_moved`) once Live has moved on since the simulation started,
@@ -43,7 +44,8 @@ export function openSimulation(twin: MemoryTwin, actions: SimulationAction[] = D
  * `simulation` is not the open one.
  */
 export function reviewOnTwin(twin: MemoryTwin, simulation: Simulation, decision: ReviewDecision): ReviewResult {
-  const { simulation: open, setSimulation } = useTwinStore.getState();
+  const { setSimulation } = useTwinStore.getState();
+  const open = shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation);
   if (!open || open.simulation_id !== simulation.simulation_id) {
     throw new Error(`${simulation.simulation_id} is not open.`);
   }
@@ -76,9 +78,9 @@ export function createMemoryReviewer(twin: MemoryTwin): SimulationReviewer {
   return async (simulation, decision) => reviewOnTwin(twin, simulation, decision);
 }
 
-/** `twin.commit()`: approves the open simulation. Returns the new live context version, or throws when refused. */
+/** `twin.commit()`: approves the open simulation, as the Simulation view shows it. Returns the new live context version, or throws when refused. */
 export function commitSimulation(twin: MemoryTwin): string {
-  const { simulation } = useTwinStore.getState();
+  const simulation = shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation);
   if (!simulation) throw new Error("No simulation is open.");
   const result = reviewOnTwin(twin, simulation, REVIEW_DECISION.Approve);
   if (result.verdict !== GUARD_VERDICT.Allow) {
@@ -91,7 +93,8 @@ export function commitSimulation(twin: MemoryTwin): string {
 
 /** Drops the open simulation without touching Live. */
 export function discardSimulation() {
-  const { simulation, setSimulation, leaveProposal } = useTwinStore.getState();
+  const { setSimulation, leaveProposal } = useTwinStore.getState();
+  const simulation = shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation);
   if (simulation && useUiStore.getState().viewMode === VIEW_MODE.Simulation) leaveProposal(simulation.state);
   setSimulation(null);
 }

@@ -38,6 +38,19 @@ export type Simulation = {
   state: StoreResponse;
 };
 
+/**
+ * One alternative proposal of a simulation run, named as in `SimulationCandidateResponse`
+ * of `GET /simulations/{simulation_id}/candidates` (#83). The FE shows its state; KPI
+ * values and provenance come with the binding (#93) and are never computed here.
+ */
+export type Candidate = {
+  candidate_id: string;
+  simulation_id: string;
+  proposed_actions: SimulationAction[];
+  /** The proposed store with `proposed_actions` applied. Never Live truth. */
+  state: StoreResponse;
+};
+
 /** One row of `GET /simulations?status=open`. TODO(BE): FE proposal (#26). */
 export type SimulationSummary = Pick<Simulation, "simulation_id" | "store_id" | "base_context_version" | "status">;
 

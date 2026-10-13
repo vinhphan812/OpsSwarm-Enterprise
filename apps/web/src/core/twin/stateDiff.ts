@@ -79,3 +79,15 @@ export function isEmptyDiff(diff: StateDiff): boolean {
     diff.removed.length === 0
   );
 }
+
+/** SKUs still in the next state that `diff` changes (moved, re-faced, restocked or added), sorted. */
+export function changedSkus(diff: StateDiff): string[] {
+  return [
+    ...new Set([
+      ...diff.moved.map((item) => item.sku),
+      ...diff.facings.map((item) => item.sku),
+      ...diff.quantity.map((item) => item.sku),
+      ...diff.added,
+    ]),
+  ].sort();
+}

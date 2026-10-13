@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { CHANGE_CUE_MS } from "@/constants/twin.constant";
 import { diffStates, isEmptyDiff, type FacingsChange, type QuantityChange } from "@/core/twin/stateDiff";
+import { VIEW_MODE } from "@/enums/ui.enum";
 import { shownSimulation, useTwinStore, type RecentChange } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { StoreResponse } from "@/types/twin.type";
@@ -33,7 +34,8 @@ export function useRecentChanges(): RecentChange | null {
   const viewChangedAt = useUiStore((ui) => ui.viewChangedAt);
   const live = useTwinStore((twin) => twin.live);
   const liveChange = useTwinStore((twin) => twin.liveChange);
-  const open = useTwinStore((twin) => twin.simulation);
+  // The proposal the Simulation view shows, a selected candidate's included, whichever view is on.
+  const open = useTwinStore((twin) => shownSimulation(twin, VIEW_MODE.Simulation));
   const simulation = useTwinStore((twin) => shownSimulation(twin, viewMode));
   const simulationChangedAt = useTwinStore((twin) => twin.simulationChangedAt);
   const leftProposal = useTwinStore((twin) => twin.leftProposal);

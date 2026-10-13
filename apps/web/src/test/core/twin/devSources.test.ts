@@ -25,7 +25,7 @@ const at = (url: string) => window.history.replaceState(null, "", url);
 beforeEach(() => {
   vi.mocked(createApiSource).mockClear();
   useAnomalyStore.setState({ anomalies: [] });
-  useTwinStore.setState({ simulation: null });
+  useTwinStore.setState({ simulation: null, candidates: [], selectedCandidateId: null });
 });
 
 afterEach(() => {
@@ -52,6 +52,10 @@ describe("pickSource", () => {
       simulation_id: "sim-demo-001",
       base_context_version: demoStoreState().context_version,
     });
+    expect(useTwinStore.getState().candidates.map((item) => item.simulation_id)).toEqual(
+      expect.arrayContaining(["sim-demo-001"]),
+    );
+    expect(useTwinStore.getState().candidates.length).toBeGreaterThanOrEqual(2);
   });
 
   it("never turns on demo mode in a production build", () => {
@@ -63,6 +67,7 @@ describe("pickSource", () => {
     }
     expect(useAnomalyStore.getState().anomalies).toEqual([]);
     expect(useTwinStore.getState().simulation).toBeNull();
+    expect(useTwinStore.getState().candidates).toEqual([]);
   });
 
   it("keeps demo anomalies, simulations, checkouts and badges out of the apps/api path, even when it fails", async () => {
@@ -70,6 +75,7 @@ describe("pickSource", () => {
     await expect(pickSource().snapshot()).rejects.toThrow("The API is unreachable.");
     expect(useAnomalyStore.getState().anomalies).toEqual([]);
     expect(useTwinStore.getState().simulation).toBeNull();
+    expect(useTwinStore.getState().candidates).toEqual([]);
     expect(useCheckoutSummary("CK01")).toBeNull();
     expect(useCheckoutTransactions("CK01", true)).toEqual([]);
     expect(render(createElement(DemoBadge)).container.innerHTML).toBe("");

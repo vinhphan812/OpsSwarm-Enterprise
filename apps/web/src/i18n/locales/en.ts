@@ -236,6 +236,11 @@ export const en = {
       change_facings: "{{sku}} to {{facings}} facings",
       replenish_shelf: "Restock {{sku}} +{{quantity}}",
     },
+    changes: {
+      count_one: "{{count}} change",
+      count_other: "{{count}} changes",
+      focus: "Show {{sku}} in 3D",
+    },
     review: {
       label: "Review this proposal",
       accept: "Accept",

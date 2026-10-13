@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { diffStates, isEmptyDiff, type StateDiff } from "@/core/twin/stateDiff";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import { activeState, shownSimulation, useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
@@ -15,6 +17,20 @@ export function useActiveState() {
 export function useShownSimulation() {
   const viewMode = useUiStore((state) => state.viewMode);
   return useTwinStore((twin) => shownSimulation(twin, viewMode));
+}
+
+/**
+ * Everything the proposal on screen changes against Live, for as long as it is on screen
+ * (unlike `useRecentChanges`, which fades). Null in the Live view, or when it changes nothing.
+ */
+export function useProposalChanges(): StateDiff | null {
+  const simulation = useShownSimulation();
+  const live = useTwinStore((twin) => twin.live);
+  return useMemo(() => {
+    if (!simulation || !live) return null;
+    const diff = diffStates(live, simulation.state);
+    return isEmptyDiff(diff) ? null : diff;
+  }, [simulation, live]);
 }
 
 /**
