@@ -6,12 +6,14 @@ from typing import Literal, cast
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from retailtwin_api.errors import ApiError
-from retailtwin_api.events import EventConflict, EventLog
+from retailtwin_api.events import EventConflict, EventLog, ReviewAuditLog
 from retailtwin_api.schemas import EventReceipt, HealthResponse, ProductInventory, ReadyResponse, StoreEvent, StoreResponse
 from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
     AgentEventListResponse, CandidateListResponse, CursorParameters, PageParameters,
+    DecisionReviewReasonCode, DecisionReviewVerdict,
     SimulationDetail, SimulationFilters, SimulationListResponse, SimulationStatus,
+    SimulationReviewRequest, SimulationReviewResponse,
 )
 from retailtwin_api.store import StoreRepository
 
@@ -203,3 +205,152 @@ def list_agent_events(
     except ValueError as exc:
         raise ApiError(422, "invalid_cursor", str(exc)) from exc
     return AgentEventListResponse(events=events, cursor=cursor)
+
+
+# ─── Simulation review ──────────────────────────────────────────────────────────
+
+def get_review_audit(request: Request) -> ReviewAuditLog:
+    return request.app.state.review_audit
+
+
+def get_live_version(request: Request) -> str:
+    return request.app.state.live_context_version
+
+
+def _run_review(
+    simulation_id: str,
+    body: SimulationReviewRequest,
+    decision: Literal["approved", "rejected"],
+    simulations: SimulationReadRepository,
+    store: StoreRepository,
+    audit: ReviewAuditLog,
+    live_version: str,
+) -> SimulationReviewResponse:
+    """Shared logic for /approve and /reject: version check → simulation check → audit."""
+    # 1. Version validation: base_context_version must match live store version
+    if body.base_context_version != live_version:
+        logger.warning(
+            "simulation_review.version_mismatch",
+            extra={
+                "simulation_id": simulation_id,
+                "decision": decision,
+                "base_context_version": body.base_context_version,
+                "live_context_version": live_version,
+            },
+        )
+        return SimulationReviewResponse(
+            simulation_id=simulation_id,
+            decision=decision,
+            status="pending",
+            verdict=DecisionReviewVerdict.REFRESH_REQUIRED,
+            reason_code=DecisionReviewReasonCode.VERSION_MISMATCH,
+            live_context_version=live_version,
+        )
+
+    # 2. Simulation exists and is open (pending | evaluated)
+    item = simulations.get_simulation(simulation_id)
+    if item is None:
+        raise ApiError(
+            404,
+            "simulation_not_found",
+            f"Simulation {simulation_id!r} was not found.",
+        )
+    if item.status not in ("pending", "evaluated"):
+        logger.warning(
+            "simulation_review.not_open",
+            extra={
+                "simulation_id": simulation_id,
+                "decision": decision,
+                "current_status": item.status,
+            },
+        )
+        return SimulationReviewResponse(
+            simulation_id=simulation_id,
+            decision=decision,
+            status=item.status,
+            verdict=DecisionReviewVerdict.DENY,
+            reason_code=DecisionReviewReasonCode.SIMULATION_NOT_OPEN,
+            live_context_version=live_version,
+        )
+
+    # 3. Record audit
+    audit.record(
+        simulation_id=simulation_id,
+        decision=decision,
+        base_context_version=body.base_context_version,
+        proposal_context_version=body.proposal_context_version,
+        live_context_version=live_version,
+        verdict=DecisionReviewVerdict.ALLOW,
+        reason_code=DecisionReviewReasonCode.APPROVED,
+    )
+    logger.info(
+        f"simulation_review.{decision}",
+        extra={
+            "simulation_id": simulation_id,
+            "decision": decision,
+            "base_context_version": body.base_context_version,
+            "live_context_version": live_version,
+        },
+    )
+
+    new_status: SimulationStatus = "committed" if decision == "approved" else "rejected"
+    return SimulationReviewResponse(
+        simulation_id=simulation_id,
+        decision=decision,
+        status=new_status,
+        verdict=DecisionReviewVerdict.ALLOW,
+        reason_code=DecisionReviewReasonCode.APPROVED,
+        live_context_version=live_version,
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/approve",
+    response_model=SimulationReviewResponse,
+    status_code=200,
+)
+def approve_simulation(
+    simulation_id: str,
+    body: SimulationReviewRequest,
+    repository: SimulationReadRepository = Depends(get_simulations),
+    store: StoreRepository = Depends(get_store),
+    audit: ReviewAuditLog = Depends(get_review_audit),
+    live_version: str = Depends(get_live_version),
+) -> SimulationReviewResponse:
+    """Approve a simulation: validate versions, check DCG guard, record audit, commit."""
+    require_simulations(repository)
+    return _run_review(
+        simulation_id=simulation_id,
+        body=body,
+        decision="approved",
+        simulations=repository,
+        store=store,
+        audit=audit,
+        live_version=live_version,
+    )
+
+
+@router.post(
+    "/simulations/{simulation_id}/reject",
+    response_model=SimulationReviewResponse,
+    status_code=200,
+)
+def reject_simulation(
+    simulation_id: str,
+    body: SimulationReviewRequest,
+    repository: SimulationReadRepository = Depends(get_simulations),
+    store: StoreRepository = Depends(get_store),
+    audit: ReviewAuditLog = Depends(get_review_audit),
+    live_version: str = Depends(get_live_version),
+) -> SimulationReviewResponse:
+    """Reject a simulation: validate versions, check DCG guard, record audit."""
+    require_simulations(repository)
+    return _run_review(
+        simulation_id=simulation_id,
+        body=body,
+        decision="rejected",
+        simulations=repository,
+        store=store,
+        audit=audit,
+        live_version=live_version,
+    )

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
+from starlette.testclient import TestClient
 
 from retailtwin_api.contracts import ControlStage, MoveProduct
 from retailtwin_api.main import create_app
@@ -14,6 +15,7 @@ from retailtwin_api.simulation_schemas import (
     SimulationCandidateResponse,
     SimulationDetail,
     SimulationState,
+    SimulationStatus,
 )
 
 
@@ -256,3 +258,217 @@ def test_simulation_repository_default_and_filter_branches() -> None:
     assert repository.list_simulations(SimulationFilters(status="rejected")).total == 0
     assert repository.list_candidates("missing", PageParameters()) is None
     assert repository.list_agent_events(CursorParameters()) == ([], None)
+
+
+# ─── Simulation review (approve / reject) ──────────────────────────────────────
+
+
+def _simulation_pending() -> SimulationDetail:
+    """A pending simulation ready for review."""
+    store = _store()
+    return SimulationDetail(
+        simulation_id="sim-review-001",
+        store_id="store-001",
+        base_context_version="store-001:v1",
+        status="pending",
+        created_at=datetime(2026, 10, 13, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 10, 13, tzinfo=timezone.utc),
+        provenance="simulation-service",
+        actions=[MoveProduct(sku="P001", from_slot="A01-S01", to_slot="A02-S01")],
+        state=SimulationState(store=store, context_version="sim-review-001:v1"),
+    )
+
+
+def _simulation_evaluated() -> SimulationDetail:
+    """An evaluated simulation ready for review."""
+    sim = _simulation_pending()
+    sim.simulation_id = "sim-review-002"
+    sim.status = "evaluated"
+    sim.state = SimulationState(store=sim.state.store, context_version="sim-review-002:v1")
+    return sim
+
+
+@pytest.fixture
+def review_client(simulation_client, settings) -> TestClient:
+    """Test client with a simulation repo containing pending/evaluated sims."""
+    sim_pending = _simulation_pending()
+    sim_evaluated = _simulation_evaluated()
+    repo = InMemorySimulationRepository([sim_pending, sim_evaluated])
+    simulation_client.app.state.simulations = repo
+    # Set live_context_version to match the fixture
+    simulation_client.app.state.live_context_version = "store-001:v1"
+    return simulation_client
+
+
+class TestApproveSimulation:
+    def test_approve_returns_200_with_correct_response(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["simulation_id"] == "sim-review-001"
+        assert body["decision"] == "approved"
+        assert body["status"] == "committed"
+        assert body["verdict"] == "ALLOW"
+        assert body["reason_code"] == "APPROVED"
+        assert body["live_context_version"] == "store-001:v1"
+
+    def test_approve_evaluated_simulation_also_commits(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/sim-review-002/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-002:v1"},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "committed"
+
+    def test_approve_version_mismatch_returns_refresh_required(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v99", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["decision"] == "approved"
+        assert body["verdict"] == "REFRESH_REQUIRED"
+        assert body["reason_code"] == "VERSION_MISMATCH"
+        assert body["live_context_version"] == "store-001:v1"
+
+    def test_approve_nonexistent_simulation_returns_404(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/nope/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "nope:v1"},
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "simulation_not_found"
+
+    def test_approve_committed_simulation_returns_not_open(self, review_client: TestClient) -> None:
+        sim = _simulation_pending()
+        sim.status = "committed"
+        repo = InMemorySimulationRepository([sim])
+        review_client.app.state.simulations = repo
+        response = review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        assert response.json()["reason_code"] == "SIMULATION_NOT_OPEN"
+        assert response.json()["verdict"] == "DENY"
+
+    def test_approve_rejected_simulation_returns_not_open(self, review_client: TestClient) -> None:
+        sim = _simulation_pending()
+        sim.status = "rejected"
+        repo = InMemorySimulationRepository([sim])
+        review_client.app.state.simulations = repo
+        response = review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        assert response.json()["reason_code"] == "SIMULATION_NOT_OPEN"
+
+    def test_approve_missing_body_returns_422(self, review_client: TestClient) -> None:
+        response = review_client.post("/simulations/sim-review-001/approve", json={})
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "validation_error"
+
+
+class TestRejectSimulation:
+    def test_reject_returns_200_with_correct_response(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/sim-review-001/reject",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["simulation_id"] == "sim-review-001"
+        assert body["decision"] == "rejected"
+        assert body["status"] == "rejected"
+        assert body["verdict"] == "ALLOW"
+        assert body["reason_code"] == "APPROVED"
+        assert body["live_context_version"] == "store-001:v1"
+
+    def test_reject_version_mismatch_returns_refresh_required(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/sim-review-001/reject",
+            json={"base_context_version": "store-001:v99", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["decision"] == "rejected"
+        assert body["verdict"] == "REFRESH_REQUIRED"
+        assert body["reason_code"] == "VERSION_MISMATCH"
+
+    def test_reject_nonexistent_simulation_returns_404(self, review_client: TestClient) -> None:
+        response = review_client.post(
+            "/simulations/nope/reject",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "nope:v1"},
+        )
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "simulation_not_found"
+
+
+class TestReviewAuditLog:
+    def test_review_records_audit_entry(self, review_client: TestClient) -> None:
+        review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        audit = review_client.app.state.review_audit
+        records = audit.get("sim-review-001")
+        assert len(records) == 1
+        record = records[0]
+        assert record.simulation_id == "sim-review-001"
+        assert record.decision == "approved"
+        assert record.base_context_version == "store-001:v1"
+        assert record.proposal_context_version == "sim-review-001:v1"
+        assert record.verdict == "ALLOW"
+        assert record.reason_code == "APPROVED"
+        assert record.recorded_at is not None
+
+    def test_reject_also_records_audit(self, review_client: TestClient) -> None:
+        review_client.post(
+            "/simulations/sim-review-001/reject",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        audit = review_client.app.state.review_audit
+        records = audit.get("sim-review-001")
+        assert len(records) == 1
+        assert records[0].decision == "rejected"
+
+    def test_version_mismatch_does_not_record_audit(self, review_client: TestClient) -> None:
+        review_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v99", "proposal_context_version": "sim-review-001:v1"},
+        )
+        audit = review_client.app.state.review_audit
+        assert audit.get("sim-review-001") == []
+
+
+class TestReviewUnavailableSimulationRepo:
+    def test_approve_returns_503_when_repo_unavailable(self, simulation_client: TestClient) -> None:
+        """When the simulation repo is unavailable, review routes return 503."""
+        from retailtwin_api.simulation_repository import unavailable_simulation_repository
+
+        simulation_client.app.state.simulations = unavailable_simulation_repository()
+        simulation_client.app.state.live_context_version = "store-001:v1"
+        response = simulation_client.post(
+            "/simulations/sim-review-001/approve",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "simulations_unavailable"
+
+    def test_reject_returns_503_when_repo_unavailable(self, simulation_client: TestClient) -> None:
+        """When the simulation repo is unavailable, review routes return 503."""
+        from retailtwin_api.simulation_repository import unavailable_simulation_repository
+
+        simulation_client.app.state.simulations = unavailable_simulation_repository()
+        simulation_client.app.state.live_context_version = "store-001:v1"
+        response = simulation_client.post(
+            "/simulations/sim-review-001/reject",
+            json={"base_context_version": "store-001:v1", "proposal_context_version": "sim-review-001:v1"},
+        )
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "simulations_unavailable"
