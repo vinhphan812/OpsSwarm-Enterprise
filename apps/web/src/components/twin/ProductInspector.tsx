@@ -6,6 +6,7 @@ import { INSPECTION_KIND } from "@/enums/twin.enum";
 import { useTwinIssues } from "@/hooks/twinIssues.hook";
 import { useFacingsChange } from "@/hooks/recentChanges.hook";
 import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
+import { useMovedFrom } from "@/hooks/recentChanges.hook";
 import { anomaliesOf } from "@/state/anomaly.store";
 import { useUiStore } from "@/state/ui.store";
 import { AnomalyList } from "./AnomalyList";

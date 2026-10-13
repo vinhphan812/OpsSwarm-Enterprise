@@ -9,6 +9,7 @@ import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { STOCK_STATE, type StockState } from "@/enums/stock.enum";
 import { usePromotions } from "@/hooks/commerce.hook";
 import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
+import { useMovedFrom } from "@/hooks/recentChanges.hook";
 import { anomaliesOf } from "@/state/anomaly.store";
 import { usePanelStore } from "@/state/panel.store";
 import { useUiStore } from "@/state/ui.store";
@@ -159,6 +160,7 @@ export function ProductDetailsDialog() {
   const openPanel = usePanelStore((state) => state.setOpen);
   const live = useActiveState();
   const allAnomalies = useShownAnomalies();
+  const movedFrom = useMovedFrom(sku);
 
   const product = sku ? live?.products.find((candidate) => candidate.sku === sku) : undefined;
   const anomalies = sku ? anomaliesOf(allAnomalies, sku) : [];
@@ -191,6 +193,11 @@ export function ProductDetailsDialog() {
                 {state ? (
                   <Chip size="sm" variant="flat" color={STATE_COLOR[state]}>
                     {t(`inspector.state.${state}`)}
+                  </Chip>
+                ) : null}
+                {product && movedFrom ? (
+                  <Chip size="sm" variant="flat" color="primary">
+                    {t("inspector.movedFrom", { slot: movedFrom })}
                   </Chip>
                 ) : null}
                 {anomalies.length ? (

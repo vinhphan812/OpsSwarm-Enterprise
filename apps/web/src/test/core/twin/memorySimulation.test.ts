@@ -3,7 +3,9 @@ import { createMemoryTwin, patchProduct, type MemoryTwin } from "@/core/api/sour
 import { commitSimulation, createMemoryReviewer, discardSimulation, openSimulation } from "@/core/twin/memorySimulation";
 import { ACTION_TYPE, GUARD_VERDICT, REVIEW_DECISION, REVIEW_REASON, SIMULATION_STATUS } from "@/enums/simulation.enum";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { VIEW_MODE } from "@/enums/ui.enum";
 import { useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
 import type { Simulation } from "@/types/simulation.type";
 import type { StoreResponse } from "@/types/twin.type";
 
@@ -74,6 +76,17 @@ describe("simulations on the memory twin", () => {
     expect(useTwinStore.getState().simulation).toBeNull();
     expect(twin.current()).toEqual(before);
     expect(() => commitSimulation(twin)).toThrow("No simulation is open.");
+    // Not on screen, so nothing is played back.
+    expect(useTwinStore.getState().leftProposal).toBeNull();
+  });
+
+  it("keeps a discarded proposal that was on screen, so the scene can play it back to Live", () => {
+    openSimulation(twin);
+    const proposal = useTwinStore.getState().simulation!.state;
+    useUiStore.getState().setViewMode(VIEW_MODE.Simulation);
+    discardSimulation();
+    expect(useTwinStore.getState().leftProposal?.state).toBe(proposal);
+    useUiStore.setState(useUiStore.getInitialState(), true);
   });
 
   it("accepts through the guard: ALLOW commits through the live feed", async () => {

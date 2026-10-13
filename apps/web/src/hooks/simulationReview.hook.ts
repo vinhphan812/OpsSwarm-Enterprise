@@ -9,6 +9,9 @@ import {
   SIMULATION_STATUS,
   type ReviewDecision,
 } from "@/enums/simulation.enum";
+import { VIEW_MODE } from "@/enums/ui.enum";
+import { useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation } from "@/types/simulation.type";
 
 /** One proposal of one run: what a review was about. */
@@ -70,6 +73,10 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
     try {
       const result = await reviewer(simulation, decision);
       announce(result, simulation.base_context_version);
+      // The rejected proposal leaves the screen; its changes go back to Live in 3D.
+      if (result.status === SIMULATION_STATUS.Rejected && useUiStore.getState().viewMode === VIEW_MODE.Simulation) {
+        useTwinStore.getState().leaveProposal(simulation.state);
+      }
       if (result.status === SIMULATION_STATUS.Committed || result.status === SIMULATION_STATUS.Rejected) {
         setSettledKey(reviewKey(simulation));
       }

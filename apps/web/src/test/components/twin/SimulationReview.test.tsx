@@ -78,6 +78,8 @@ describe("Accept and Reject on the simulation banner", () => {
     expect(useTwinStore.getState().simulation).toBe(simulation);
     expect(actions()).toBeNull();
     expect(screen.getByRole("status").textContent).toContain("Reviewed, waiting for Live");
+    // An approval leaves no proposal to play back: Live changes through its feed.
+    expect(useTwinStore.getState().leftProposal).toBeNull();
   });
 
   it("disables both buttons while a review is on its way", async () => {
@@ -103,6 +105,8 @@ describe("Accept and Reject on the simulation banner", () => {
       }),
     );
     expect(notify.info).toHaveBeenCalledWith("sim-demo-001 rejected", "The store did not change.");
+    // The rejected proposal was on screen, so the scene plays its changes back to Live.
+    expect(useTwinStore.getState().leftProposal?.state).toBe(useTwinStore.getState().simulation?.state);
   });
 
   it("says why the guard refused, and keeps the buttons for a later review", async () => {
