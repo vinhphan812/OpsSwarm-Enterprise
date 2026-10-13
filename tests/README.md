@@ -78,7 +78,7 @@ When the following modules are implemented they are subject to elevated threshol
 (line >= 90%, branch >= 85%) via explicit per-path `fail_under` or `thresholds`
 configuration in the respective project config:
 
-- `guard/decision-context-guard/` -- Decision Context Guard / No-Stale-Commit
+- `apps/api/retailtwin_api/guard/decision_context_guard/` -- Decision Context Guard / No-Stale-Commit
 - `services/executor/` -- Executor mutation boundary
 - `services/twin/` -- Digital Twin mutation paths
 - `services/simulation/` -- Simulation Twin

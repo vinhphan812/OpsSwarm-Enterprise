@@ -84,7 +84,7 @@ class TestSimulationServiceContract:
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
         package_root = repo_root / "apps" / "api" / "retailtwin_api"
-        dcg_dir = package_root / "guard" / "decision-context-guard"
+        dcg_dir = package_root / "guard" / "decision_context_guard"
         assert dcg_dir.exists()
         contract = dcg_dir / "contract.schema.json"
         assert contract.exists()
@@ -110,7 +110,7 @@ class TestExecutorIsolation:
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
         package_root = repo_root / "apps" / "api" / "retailtwin_api"
-        guard_dir = package_root / "guard" / "decision-context-guard"
+        guard_dir = package_root / "guard" / "decision_context_guard"
         readme = guard_dir / "README.md"
         assert readme.exists()
         content = readme.read_text(encoding="utf-8")

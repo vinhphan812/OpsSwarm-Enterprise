@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 
 # Directories subject to elevated thresholds (>=90% line, >=85% branch)
 CRITICAL_DIRS = [
-    "guard/decision-context-guard",
+    "apps/api/retailtwin_api/guard/decision_context_guard",
     "services/executor",
     "services/twin",
     "services/simulation",

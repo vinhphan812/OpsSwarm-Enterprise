@@ -13,7 +13,6 @@ DELETED_CANONICAL_PATHS = (
     API_ROOT / "demo.py",
     API_ROOT / "agents" / "executor",
     API_ROOT / "agents" / "verifier",
-    API_ROOT / "guard" / "decision_context_guard",
     API_ROOT / "services" / "twin",
     API_ROOT / "services" / "simulation",
 )
@@ -22,7 +21,6 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "retailtwin_api.demo",
     "retailtwin_api.agents.executor",
     "retailtwin_api.agents.verifier",
-    "retailtwin_api.guard.decision_context_guard",
     "retailtwin_api.services.twin",
     "retailtwin_api.services.simulation",
 )
