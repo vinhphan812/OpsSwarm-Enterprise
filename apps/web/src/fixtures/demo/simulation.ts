@@ -11,11 +11,16 @@ import { demoStoreState } from "./store";
 
 export const DEMO_SIMULATION_ID = "sim-demo-001";
 
-/** Restock the empty P003, give P004 one more facing, and move P007 two slots along. */
+/**
+ * Restock the empty P003, give P004 one more facing, move P007 two slots along, and move
+ * the well-stocked P008 and P005 to another gondola, so a move shows a full facing travel.
+ */
 export const DEMO_ACTIONS: SimulationAction[] = [
   { type: ACTION_TYPE.ReplenishShelf, sku: "P003", quantity: 12 },
   { type: ACTION_TYPE.ChangeFacings, sku: "P004", facings: 4 },
   { type: ACTION_TYPE.MoveProduct, sku: "P007", from_slot: "B02-S20", to_slot: "B02-S22" },
+  { type: ACTION_TYPE.MoveProduct, sku: "P008", from_slot: "C01-S21", to_slot: "A02-S22" },
+  { type: ACTION_TYPE.MoveProduct, sku: "P005", from_slot: "A03-S22", to_slot: "B01-S22" },
 ];
 
 /** Slot ids are `<fixture id>-S<n>`, so the fixture of a slot is everything before the last dash. */

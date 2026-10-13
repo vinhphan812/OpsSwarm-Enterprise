@@ -5,21 +5,34 @@ import {
   BoxGeometry,
   Color,
   CylinderGeometry,
+  EdgesGeometry,
   IcosahedronGeometry,
+  LineBasicMaterial,
   Matrix4,
   MeshStandardMaterial,
   Quaternion,
   Vector3,
   type BufferGeometry,
+  type Group,
   type InstancedMesh,
 } from "three";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { worstSeverities } from "@/state/anomaly.store";
 import { useShownAnomalies } from "@/hooks/activeTwin.hook";
+import { useRecentChanges } from "@/hooks/recentChanges.hook";
 import { ANOMALY_SEVERITIES, type AnomalySeverity } from "@/enums/anomaly.enum";
 import { prefersReducedMotion } from "@/core/utils/motion";
-import { ANOMALY_HALO_GLOW, ANOMALY_HALO_OPACITY, ANOMALY_PULSE_DEPTH, ANOMALY_PULSE_HZ, SELECTION_ITEM_GLOW } from "@/constants/scene.constant";
-import { anomalyColor, selectionColor } from "@/core/utils/theme";
+import {
+  ANOMALY_HALO_GLOW,
+  ANOMALY_HALO_OPACITY,
+  ANOMALY_PULSE_DEPTH,
+  ANOMALY_PULSE_HZ,
+  MOVE_GHOST_OPACITY,
+  MOVE_SLOT_GLOW,
+  MOVE_SLOT_OPACITY,
+  SELECTION_ITEM_GLOW,
+} from "@/constants/scene.constant";
+import { anomalyColor, changeColor, selectionColor } from "@/core/utils/theme";
 import { ENTITY_TYPE, STOCK_KIND } from "@/enums/scene.enum";
 import { isDrag } from "@/scene/utils/pointer";
 import type {
@@ -285,10 +298,62 @@ export function stockItemAt(hit: Intersection): Placed | undefined {
     : undefined;
 }
 
-/** Writes each item's matrix and color into the instanced mesh. */
+/** Where an item is drawn; the default is where the state puts it. */
+type MatrixOf = (item: Placed) => Matrix4;
+const atState: MatrixOf = (item) => item.matrix;
+
+/** Reused by every tween frame; `setMatrixAt` copies it. */
+const tweened = new Matrix4();
+
+/**
+ * Carries the moved products' items from their source slot to where the state puts them
+ * over `MOVE_TWEEN_MS`, from when the move appeared. The layout effect has already drawn
+ * them at the state; each frame of the tween draws them on the way there, and its last
+ * frame draws the state again. A tween cut short (a newer state, another view) is put
+ * back at the state too, so the scene never stays between two slots.
+ */
+function useMoveTween(
+  ref: { current: InstancedMesh | null },
+  items: Placed[],
+  matrixOf: MatrixOf,
+  tween: MoveCue | null,
+) {
+  const running = useRef(false);
+  useLayoutEffect(() => {
+    running.current = tween !== null;
+    return () => {
+      const mesh = ref.current;
+      if (!running.current || !mesh) return;
+      running.current = false;
+      items.forEach((item, index) => mesh.setMatrixAt(index, matrixOf(item)));
+      mesh.instanceMatrix.needsUpdate = true;
+    };
+    // matrixOf is a module function per caller.
+  }, [ref, items, tween]);
+  useFrame(({ gl }) => {
+    const mesh = ref.current;
+    if (!running.current || !tween || !mesh) return;
+    const progress = moveProgress(tween.at, Date.now());
+    let moved = false;
+    items.forEach((item, index) => {
+      const offset = tween.offsets.get(item.productId);
+      if (!offset) return;
+      mesh.setMatrixAt(index, tweenMatrix(matrixOf(item), offset, progress, tweened));
+      moved = true;
+    });
+    if (progress >= 1 || !moved) running.current = false;
+    if (!moved) return;
+    mesh.instanceMatrix.needsUpdate = true;
+    // Shadows are drawn on demand (`StaticShadows`), so they follow the items by hand.
+    gl.shadowMap.needsUpdate = true;
+  });
+}
+
+/** Writes each item's matrix and color into the instanced mesh, and tweens the moved ones. */
 function useInstances(
   items: Placed[],
-  matrixOf: (item: Placed) => Matrix4 = (item) => item.matrix,
+  matrixOf: MatrixOf = atState,
+  tween: MoveCue | null = null,
 ) {
   const ref = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
@@ -303,11 +368,14 @@ function useInstances(
     mesh.computeBoundingSphere();
     // matrixOf is a module function per caller, so only the items change.
   }, [items]);
+  useMoveTween(ref, items, matrixOf, tween);
   return ref;
 }
 
-function StockMesh({ shape, items }: { shape: StockShape; items: Placed[] }) {
-  const ref = useInstances(items);
+type MeshProps = { shape: StockShape; items: Placed[]; tween: MoveCue | null };
+
+function StockMesh({ shape, items, tween }: MeshProps) {
+  const ref = useInstances(items, atState, tween);
 
   // Products are instances, not objects, so a click is mapped back through the instance id.
   const onClick = (event: ThreeEvent<MouseEvent>) => {
@@ -335,14 +403,8 @@ const glowMatrix = (item: Placed) =>
   new Matrix4().multiplyMatrices(item.matrix, SELECTED_SCALE);
 
 /** The selected product's items again, glowing. Takes no pointer events and casts no shadow. */
-function SelectedMesh({
-  shape,
-  items,
-}: {
-  shape: StockShape;
-  items: Placed[];
-}) {
-  const ref = useInstances(items, glowMatrix);
+function SelectedMesh({ shape, items, tween }: MeshProps) {
+  const ref = useInstances(items, glowMatrix, tween);
   if (items.length === 0) return null;
   return (
     <instancedMesh
@@ -361,12 +423,9 @@ function AnomalyMesh({
   shape,
   severity,
   items,
-}: {
-  shape: StockShape;
-  severity: AnomalySeverity;
-  items: Placed[];
-}) {
-  const ref = useInstances(items, haloMatrix);
+  tween,
+}: MeshProps & { severity: AnomalySeverity }) {
+  const ref = useInstances(items, haloMatrix, tween);
   if (items.length === 0) return null;
   return (
     <instancedMesh
@@ -377,6 +436,57 @@ function AnomalyMesh({
     />
   );
 }
+
+/** A thin outline where each moved product stood. Takes no pointer events and casts no shadow. */
+function GhostOutlines({ matrices }: { matrices: Matrix4[] }) {
+  const placements = useMemo(
+    () =>
+      matrices.map((matrix) => {
+        const position = new Vector3();
+        const quaternion = new Quaternion();
+        const scale = new Vector3();
+        matrix.decompose(position, quaternion, scale);
+        return { position, quaternion, scale };
+      }),
+    [matrices],
+  );
+  return (
+    <>
+      {placements.map((placement, index) => (
+        <lineSegments
+          key={index}
+          name="stock-ghost-outline"
+          args={[OUTLINE_GEOMETRY, moveGhostMaterial()]}
+          {...placement}
+          renderOrder={1}
+        />
+      ))}
+    </>
+  );
+}
+
+/** A light over the source or destination slot of each move. */
+function SlotLights({ matrices, end }: { matrices: Matrix4[]; end: SlotEnd }) {
+  const ref = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [matrices]);
+  if (matrices.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={ref}
+      args={[GEOMETRY[STOCK_SHAPE.Box], moveSlotMaterial(end), matrices.length]}
+      name={`stock-moved-slots-${end}`}
+      renderOrder={1}
+    />
+  );
+}
+
+const NO_SLOTS: Matrix4[] = [];
 
 /** The items of `batches` whose product passes `keep`, per shape. */
 function pick(batches: Batches, keep: (productId: string) => boolean) {
@@ -390,6 +500,12 @@ function pick(batches: Batches, keep: (productId: string) => boolean) {
  * select its product. The selected product glows, and a product with an open anomaly
  * gets a halo; only products in the twin state are drawn, so a stale anomaly shows nothing.
  * The Simulation view shows no halos (`useShownAnomalies`).
+ *
+ * A recent move (`useRecentChanges`) carries the product's items on an arc from its source
+ * slot to its destination, outlines where it stood, and lights both slots: the light hands
+ * over from source to destination as the items travel, flashes when they land, and fades
+ * out (`markLevels`, `marksShown`). With reduced motion the items stand at the destination
+ * from the start, and the outline and lights hold still for as long as the tween would take.
  */
 export function Stock({ store }: { store: StoreFixture }) {
   const batches = useMemo(() => buildStock(store), [store]);
@@ -406,21 +522,34 @@ export function Stock({ store }: { store: StoreFixture }) {
       batches: pick(batches, (id) => worst.get(id) === severity),
     }));
   }, [batches, anomalies]);
-  const pulse = useMemo(() => !prefersReducedMotion(), []);
+  const motion = useMemo(() => !prefersReducedMotion(), []);
+  const change = useRecentChanges();
+  const move = useMemo(() => moveCueOf(store, change), [store, change]);
+  const outlines = useMemo(
+    () => (move ? ghostOutlines(move, Object.values(buildStock(move.ghost)).flat()) : NO_SLOTS),
+    [move],
+  );
+  const tween = motion ? move : null;
+  const marks = useRef<Group>(null);
   useFrame(({ clock }) => {
-    if (pulse && anomalies.length) pulseHalos(Math.sin(clock.elapsedTime * Math.PI * 2 * ANOMALY_PULSE_HZ));
+    if (motion && anomalies.length) pulseHalos(Math.sin(clock.elapsedTime * Math.PI * 2 * ANOMALY_PULSE_HZ));
+    const now = Date.now();
+    const shown = move !== null && marksShown(move.at, now, motion);
+    if (marks.current) marks.current.visible = shown;
+    if (shown) showMarks(motion ? markLevels(move.at, now) : STEADY_MARKS);
   });
 
   return (
     <group name="stock">
       {SHAPES.map((shape) => (
-        <StockMesh key={shape} shape={shape} items={batches[shape]} />
+        <StockMesh key={shape} shape={shape} items={batches[shape]} tween={tween} />
       ))}
       {SHAPES.map((shape) => (
         <SelectedMesh
           key={`selected-${shape}`}
           shape={shape}
           items={selected[shape]}
+          tween={tween}
         />
       ))}
       {anomalous.flatMap(({ severity, batches: items }) =>
@@ -430,9 +559,15 @@ export function Stock({ store }: { store: StoreFixture }) {
             shape={shape}
             severity={severity}
             items={items[shape]}
+            tween={tween}
           />
         )),
       )}
+      <group ref={marks} name="stock-move-marks">
+        <GhostOutlines matrices={outlines} />
+        <SlotLights matrices={move?.fromSlots ?? NO_SLOTS} end="from" />
+        <SlotLights matrices={move?.toSlots ?? NO_SLOTS} end="to" />
+      </group>
     </group>
   );
 }

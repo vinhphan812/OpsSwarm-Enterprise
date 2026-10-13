@@ -61,6 +61,7 @@ export const en = {
     selectProduct: "Select {{sku}}",
     details: "Details",
     detailsOf: "Details of {{sku}}",
+    movedFrom: "Moved from {{slot}}",
     state: {
       ok: "OK",
       low: "Low",

@@ -57,9 +57,8 @@ describe("useRecentChanges", () => {
 
     act(() => useUiStore.getState().setViewMode(VIEW_MODE.Simulation));
     const diff = result.current?.diff;
-    expect(diff?.moved).toEqual([
-      { sku: "P007", from: { shelf_id: "B02", slot_id: "B02-S20" }, to: { shelf_id: "B02", slot_id: "B02-S22" } },
-    ]);
+    expect(diff?.moved.map((move) => move.sku)).toEqual(["P005", "P007", "P008"]);
+    expect(diff?.moved).toContainEqual({ sku: "P007", from: { shelf_id: "B02", slot_id: "B02-S20" }, to: { shelf_id: "B02", slot_id: "B02-S22" } });
     expect(diff?.facings.map((change) => change.sku)).toEqual(["P004"]);
     expect(result.current?.before).toBe(live);
     expect(diff?.quantity).toEqual([{ sku: "P003", shelfDelta: 12, backroomDelta: -12 }]);
@@ -69,7 +68,40 @@ describe("useRecentChanges", () => {
     act(() => vi.advanceTimersByTime(CHANGE_CUE_MS));
     expect(result.current).toBeNull();
 
+    // Back in Live, the proposal's changes play back to Live; Live itself is untouched.
     act(() => useUiStore.getState().setViewMode(VIEW_MODE.Live));
+    expect(result.current?.diff.moved).toContainEqual({
+      sku: "P007",
+      from: { shelf_id: "B02", slot_id: "B02-S22" },
+      to: { shelf_id: "B02", slot_id: "B02-S20" },
+    });
+    expect(result.current?.before).toBe(useTwinStore.getState().simulation?.state);
+    expect(useTwinStore.getState().live).toBe(live);
+    act(() => vi.advanceTimersByTime(CHANGE_CUE_MS));
+    expect(result.current).toBeNull();
+  });
+
+  it("plays a rejected proposal back to Live, but not one that was never on screen", () => {
+    const live = demoStoreState();
+    useTwinStore.getState().setLive(live);
+    const simulation = demoSimulation(live);
+    useTwinStore.getState().setSimulation(simulation);
+    useUiStore.getState().setViewMode(VIEW_MODE.Simulation);
+    const { result } = renderHook(() => useRecentChanges());
+    act(() => vi.advanceTimersByTime(CHANGE_CUE_MS));
+
+    act(() => {
+      useTwinStore.getState().leaveProposal(simulation.state);
+      useTwinStore.getState().setSimulation(null);
+    });
+    expect(result.current?.diff.moved.map((move) => move.to.slot_id)).toEqual(["A03-S22", "B02-S20", "C01-S21"]);
+    act(() => useUiStore.getState().setViewMode(VIEW_MODE.Live));
+    expect(result.current?.diff.moved.map((move) => move.to.slot_id)).toEqual(["A03-S22", "B02-S20", "C01-S21"]);
+    act(() => vi.advanceTimersByTime(CHANGE_CUE_MS));
+    expect(result.current).toBeNull();
+
+    // A proposal that opens while Live is on screen is not cued in Live.
+    act(() => useTwinStore.getState().setSimulation(demoSimulation(live)));
     expect(result.current).toBeNull();
   });
 });

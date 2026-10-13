@@ -23,6 +23,12 @@ type TwinStore = {
   simulation: Simulation | null;
   /** When the open simulation's proposed state last changed; 0 before any. */
   simulationChangedAt: number;
+  /**
+   * The proposal the scene showed when its run was rejected or discarded, and when, so the
+   * scene can carry its changes back to Live. Never set for an approval: Live then changes
+   * through its feed.
+   */
+  leftProposal: { state: StoreResponse; at: number } | null;
   /** Loading until the first live state; error when it could not be loaded. */
   status: TwinStatus;
   /** Readable reason for the error status. */
@@ -33,6 +39,7 @@ type TwinStore = {
   attempt: number;
   setLive: (state: StoreResponse, issues?: ProductIssue[]) => void;
   setSimulation: (simulation: Simulation | null) => void;
+  leaveProposal: (state: StoreResponse) => void;
   setStatus: (status: TwinStatus, error?: string | null) => void;
   setStale: (stale: boolean) => void;
   retry: () => void;
@@ -45,6 +52,7 @@ export const useTwinStore = create<TwinStore>()((set) => ({
   liveChange: null,
   simulation: null,
   simulationChangedAt: 0,
+  leftProposal: null,
   status: TWIN_STATUS.Loading,
   error: null,
   stale: false,
@@ -63,6 +71,7 @@ export const useTwinStore = create<TwinStore>()((set) => ({
       simulationChangedAt:
         simulation && simulation.state !== twin.simulation?.state ? Date.now() : twin.simulationChangedAt,
     })),
+  leaveProposal: (state) => set({ leftProposal: { state, at: Date.now() } }),
   setStatus: (status, error = null) => set({ status, error }),
   setStale: (stale) => set({ stale }),
   retry: () => set((state) => ({ attempt: state.attempt + 1 })),

@@ -8,7 +8,9 @@ import {
   type ReviewReason,
 } from "@/enums/simulation.enum";
 import { simulationOf, DEMO_ACTIONS } from "@/fixtures/demo/simulation";
+import { VIEW_MODE } from "@/enums/ui.enum";
 import { useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
 import type { SimulationReviewer } from "./simulationReview";
 
@@ -89,5 +91,7 @@ export function commitSimulation(twin: MemoryTwin): string {
 
 /** Drops the open simulation without touching Live. */
 export function discardSimulation() {
-  useTwinStore.getState().setSimulation(null);
+  const { simulation, setSimulation, leaveProposal } = useTwinStore.getState();
+  if (simulation && useUiStore.getState().viewMode === VIEW_MODE.Simulation) leaveProposal(simulation.state);
+  setSimulation(null);
 }
