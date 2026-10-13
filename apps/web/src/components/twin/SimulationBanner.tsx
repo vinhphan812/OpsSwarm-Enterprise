@@ -2,11 +2,13 @@ import { Button, Tooltip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { CheckIcon, CloseIcon, SimulationIcon } from "@/components/icons";
 import { isNewerVersion } from "@/core/api/version";
+import { changedSkus } from "@/core/twin/stateDiff";
 import type { SimulationReviewer } from "@/core/twin/simulationReview";
 import { ACTION_TYPE, REVIEW_DECISION } from "@/enums/simulation.enum";
-import { useShownSimulation } from "@/hooks/activeTwin.hook";
+import { useProposalChanges, useShownSimulation } from "@/hooks/activeTwin.hook";
 import { useSimulationReview } from "@/hooks/simulationReview.hook";
 import { useTwinStore } from "@/state/twin.store";
+import { useUiStore } from "@/state/ui.store";
 import type { SimulationAction } from "@/types/simulation.type";
 
 /** One action as the run serves it, so the reviewer sees what Accept would commit. */
@@ -25,9 +27,36 @@ function useActionLabel() {
 }
 
 /**
+ * The products the proposal on screen changes against Live, outlined in 3D. Picking one
+ * selects it, and the camera flies to it. No KPI values here.
+ */
+function ProposalChanges() {
+  const { t } = useTranslation();
+  const changes = useProposalChanges();
+  const select = useUiStore((state) => state.select);
+  const skus = changes ? changedSkus(changes) : [];
+  if (!skus.length) return null;
+  return (
+    <div className="simulation-banner-diff">
+      <span className="simulation-banner-meta">{t("simulation.changes.count", { count: skus.length })}</span>
+      <ul className="simulation-banner-changes" aria-label={t("simulation.changes.count", { count: skus.length })}>
+        {skus.map((sku) => (
+          <li key={sku}>
+            <button type="button" aria-label={t("simulation.changes.focus", { sku })} onClick={() => select(sku)}>
+              {sku}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
  * While the Simulation view is on: a frame around the 3D view and a label naming the run,
- * the live state it started from, its proposed actions, and that nothing in it has been
- * executed. Says so when Live has moved on since. With a `reviewer`, an evaluated run gets
+ * the live state it started from, its proposed actions, the products they change, and
+ * that nothing in it has been executed. With a candidate selected, these are the
+ * candidate's. Says so when Live has moved on since. With a `reviewer`, an evaluated run gets
  * Accept and Reject, which only send the review; see `useSimulationReview`. Renders
  * nothing in the Live view.
  */
@@ -64,6 +93,7 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
               ))}
             </ul>
           ) : null}
+          <ProposalChanges />
           {behind ? <span className="simulation-banner-stale">{t("simulation.liveMoved", { version: liveVersion })}</span> : null}
           {settled ? <span className="simulation-banner-meta">{t("simulation.review.waiting")}</span> : null}
         </div>

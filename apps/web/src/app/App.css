@@ -530,6 +530,36 @@ tr[data-open="true"] .receipt-caret {
   border-radius: 999px;
 }
 
+/* The changed products, after their count; each one focuses its product in 3D. */
+.simulation-banner-diff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.simulation-banner-diff .simulation-banner-changes {
+  margin: 0;
+}
+
+.simulation-banner-diff li {
+  padding: 0;
+  border-color: var(--color-change);
+}
+
+.simulation-banner-diff button {
+  padding: 1px 8px;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.simulation-banner-diff button:focus-visible {
+  outline: 2px solid var(--color-change);
+  outline-offset: 1px;
+  border-radius: 999px;
+}
+
 .simulation-banner-title {
   display: inline-flex;
   align-items: center;

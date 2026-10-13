@@ -10,6 +10,7 @@ import { demoAnomalies } from "@/fixtures/demo/anomalies";
 import { resolveAnomalies, simulateAnomaly } from "./simulateAnomaly";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { demoCandidates } from "@/fixtures/demo/candidates";
 import { demoSimulation } from "@/fixtures/demo/simulation";
 import { useTwinStore } from "@/state/twin.store";
 import type { SimulationAction } from "@/types/simulation.type";
@@ -60,7 +61,9 @@ const DEV_SOURCES: Record<string, TwinSource> = {
  * otherwise), and `twin.resolve("P001")` closes its anomalies again.
  * `twin.simulate()` opens a simulation of the demo actions on the current state (or of the
  * actions passed in), `twin.commit()` commits it to Live as a guarded commit would, and
- * `twin.discard()` drops it.
+ * `twin.discard()` drops it. `twin.candidate("cand-b")` shows one of the open simulation's
+ * candidates in the Simulation view, and `twin.candidate(null)` its own proposal again,
+ * until #39's panel selects them.
  */
 function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSource {
   const twin = createMemoryTwin(initial);
@@ -87,6 +90,7 @@ function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSou
       simulate: (...actions: SimulationAction[]) => openSimulation(twin, actions.length ? actions : undefined),
       commit: () => commitSimulation(twin),
       discard: discardSimulation,
+      candidate: (id: string | null) => useTwinStore.getState().selectCandidate(id),
     },
   });
   return twin.source;
@@ -121,7 +125,7 @@ export function pickSimulationReviewer(): SimulationReviewer | null {
 /**
  * The Live Twin from apps/api. While developing, `?twin=fixture|memory|demo|offline|slow|flaky`
  * swaps in a local twin instead. `demo` is the stocked demo store (fixtures/demo) with an
- * open demo simulation, and turns on the other demo data too (`isDemoMode`). A production build always reads apps/api.
+ * open demo simulation and its candidates, and turns on the other demo data too (`isDemoMode`). A production build always reads apps/api.
  */
 export function pickSource(): TwinSource {
   const mode = devTwinMode();
@@ -129,6 +133,7 @@ export function pickSource(): TwinSource {
   if (mode === "demo") {
     useAnomalyStore.getState().setAll(demoAnomalies());
     useTwinStore.getState().setSimulation(demoSimulation());
+    useTwinStore.getState().setCandidates(demoCandidates());
     return memoryTwinSource(demoStoreState());
   }
   return mode ? DEV_SOURCES[mode] : createApiSource();
