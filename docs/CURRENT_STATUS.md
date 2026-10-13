@@ -29,6 +29,7 @@ Implemented on `main`:
 - deterministic stockout risk for issue #32 in `services/forecasting/risk`. Shelf quantity, observed units per hour, and backroom quantity produce evidence over a 4-hour horizon. A forecast can only raise the rate. The calculator does not read the Live Twin and does not call a forecasting service;
 - simulation KPI evaluator for issue #33 in `services/simulation`. A candidate's actions are applied to a clone, then stockout risk, service level, movement cost, and a business score are stored for that `simulation_id`. The same actions repeat the stored result. This does not read or change the Live Twin and does not run the agent;
 - allow-listed tool registry for issue #11 (ADR 0009) in `apps/api/retailtwin_api/agents/orchestrator/tool_registry.py`. One pydantic model becomes one `LlmTool`, and the existing OpenAI-compatible and Vertex adapters translate that list. The store registry serves `get_inventory`, `get_store_state`, `get_shelf_state`, and `get_backroom_inventory` from the store it is given. `move_product`, `change_facings`, `replenish_shelf`, and `create_simulation` record a simulation request. `submit_action_for_commit` records a commit request and does not authorize it. None of these handlers change the store. A live-write name is refused. `forecast_demand` and the other analytical catalog tools stay off the model list until a deterministic port is bound. This does not call Gemini on Vertex AI; that proof remains issue #2;
+- observer for issue #12 (ADR 0010) in `apps/api/retailtwin_api/agents/observer/consumer.py`. A new `sale.completed` starts one investigation through an injected `start_investigation` call. The handoff carries the `StoreEvent` and `inv-` plus `event_id`, and it has no prompt. The same payload is a duplicate. A different payload is a conflict and does not replace the first event. The message is acknowledged after that record is committed. The analytics lander is unchanged and still does not start an investigation. This ledger is process memory. It does not write the Live Twin and it does not call a model. The demand-surge publisher still only publishes;
 - deterministic `sale.completed` publisher. The lander claims each `event_id` in Firestore `store_event_claims`. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation, so a takeover joins the same job. A replay of the same payload is a duplicate. A different payload is a conflict and does not replace the claim or the row. `correlation_id` is kept on the message and the row. A rejected message is quarantined before it is acknowledged;
 - 3D move cue for issue #23 in `apps/web`. When the twin state on screen moves a product, its items hop from the source slot to the destination, an outline marks where it stood, and the light hands over from the source slot to the destination, flashes on arrival and fades out, and the product card says where it came from. The cue is read from the state diff (#91), so it shows for Live changes and for the Simulation view against Live, and leaving a proposal plays the move back. Today it runs under `?twin=memory|demo`; reading moves from the Simulation API is still #92;
 - replenishment cue for issue #25 in `apps/web`. A recent stock change shows `Shelf +N` / `Backroom -N` on the product card and details dialog and glows on the slot of a shelf gain; a change that is not a matching backroom → shelf transfer is flagged as `inconsistentTransfer` until the next change; shelf units past what the facings hold show as `+N not shown`. Works in the Live and Simulation views under `?twin=memory|demo`; real `replenish_shelf` results from the API are still #92;
@@ -68,10 +69,9 @@ Baseline (PR #68):
 Do not infer implementation merely because a component is documented in the target architecture. The following remain planned/open unless their issue is explicitly completed:
 
 - Firestore-backed Live Twin and seed/reset;
-- Observer activation from a store event;
 - later analytical tables such as product performance and simulation results;
 - Gemini on Vertex AI real tool call;
-- Observer, Investigator and structured Planner;
+- Investigator and structured Planner;
 - Simulation Twin and KPI evaluator;
 - deterministic Decision Context Guard implementation;
 - No-Stale-Commit enforcement;
@@ -99,8 +99,8 @@ Gate status changes only when the corresponding issue contains reproducible evid
 
 1. Issue #58 is closed. The web build and test workflow is on `main`. Issue #60 adds the coverage baseline and threshold to that gate.
 2. Complete Firestore (#6), the Gemini real read tool (#2), and Cloud Run (#9). The store-events backbone (#7) claims each `sale.completed` event id once. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation. A replayed event id is a duplicate. It does not start the Observer. Issue #6 still owns the Live Twin.
-3. Pass Foundation Gate #10. #10 stays open: Firestore, Gemini real tool use, and Cloud Run are still required. A store event does not yet start an investigation.
-4. The allow-listed tool registry (#11, ADR 0009) is in the API. Continue the autonomous path at the Observer, then Investigator, Planner, Simulation, DCG, Executor, and Verifier. The registry does not call Gemini on Vertex AI; that proof stays with #2.
+3. Pass Foundation Gate #10. #10 stays open: Firestore, Gemini real tool use, and Cloud Run evidence for the gate are still required. The observer consumer can start one investigation for a new `sale.completed`. The analytics lander still does not.
+4. The allow-listed tool registry (#11, ADR 0009) and the observer (#12, ADR 0010) are in the API. Continue the autonomous path at the Investigator, then Planner, Simulation, DCG, Executor, and Verifier. Neither component calls Gemini on Vertex AI; that proof stays with #2.
 5. Bind those state changes to the 3D Live/Simulation views.
 6. Pass G02 → G03 → G04 → G05 → G06 in order.
 
