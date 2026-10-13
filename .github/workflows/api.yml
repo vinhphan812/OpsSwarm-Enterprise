@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'services/forecasting/**'
+      - 'services/simulation/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'apps/api/**'
       - 'services/forecasting/**'
+      - 'services/simulation/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
@@ -57,20 +59,47 @@ jobs:
         working-directory: services/forecasting
         run: python -m mypy demand --ignore-missing-imports && python -m pytest
 
+      - name: Simulation KPI tests with coverage
+        working-directory: ${{ github.workspace }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/services/simulation:${{ github.workspace }}/services/forecasting/risk
+        run: |
+          python -m mypy services/simulation/kpi --ignore-missing-imports
+          pytest \
+            --cov=retailtwin_api \
+            --cov=services/forecasting/risk \
+            --cov=services/simulation \
+            --cov-report=term \
+            --cov-report=xml:apps/api/coverage.xml \
+            --cov-branch \
+            --no-cov-on-fail \
+            services/simulation/tests/
+
       - name: Run tests with coverage
-        run: pytest --cov=retailtwin_api --cov-report=term --cov-report=xml --cov-branch
+        working-directory: ${{ github.workspace }}
+        run: |
+          pytest \
+            --cov=retailtwin_api \
+            --cov=services/forecasting/risk \
+            --cov=services/simulation \
+            --cov-report=term \
+            --cov-report=xml:apps/api/coverage.xml \
+            --cov-branch \
+            --cov-append \
+            apps/api/tests/
 
       - name: Check branch coverage threshold
         run: python check_branch_threshold.py
 
       - name: Enforce critical-path coverage policy
-        run: python enforce_critical_path_coverage.py
+        working-directory: ${{ github.workspace }}
+        run: python apps/api/enforce_critical_path_coverage.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: api-coverage
-          path: apps/api/coverage.xml
+          path: coverage.xml
 
       - name: Coverage summary
         run: |

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/vinhphan812/retailtwin-ai/services/simulation/kpi/kpi-result.schema.json",
+  "title": "Simulation KPI result",
+  "description": "Deterministic score for one simulation candidate. formula_id simulation-kpi-v1 is the rule in services/simulation/README.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formula_id",
+    "simulation_id",
+    "candidate_id",
+    "store_id",
+    "correlation_id",
+    "context_version",
+    "observed_at",
+    "stockout_risk",
+    "service_level",
+    "movement_cost",
+    "revenue_benefit",
+    "margin_benefit",
+    "business_score",
+    "movement_units",
+    "assumptions"
+  ],
+  "properties": {
+    "formula_id": {"const": "simulation-kpi-v1"},
+    "simulation_id": {"type": "string", "minLength": 1},
+    "candidate_id": {"type": "string", "minLength": 1},
+    "store_id": {"type": "string", "minLength": 1},
+    "correlation_id": {"type": "string", "minLength": 1},
+    "context_version": {"type": "string", "minLength": 1},
+    "observed_at": {"type": "string", "minLength": 1},
+    "stockout_risk": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "service_level": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "movement_cost": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "revenue_benefit": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "margin_benefit": {"const": "0"},
+    "business_score": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
+    "movement_units": {"type": "string", "pattern": "^\\d+$"},
+    "assumptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
