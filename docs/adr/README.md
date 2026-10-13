@@ -40,3 +40,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0006](0006-use-heroui-v2-for-app-status-ui.md) | Use HeroUI v2 for app status UI | Accepted |
 | [0007](0007-keep-store-layout-static-until-the-twin-serves-geometry.md) | Keep the store layout static until the twin serves geometry | Accepted |
 | [0008](0008-provider-neutral-llm.md) | Provider-neutral LLM runtime | Accepted |
+| [0009](0009-expose-one-allow-listed-tool-registry.md) | Expose one allow-listed tool registry | Accepted |
