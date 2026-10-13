@@ -1,6 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from retailtwin_api.analytics_repository import (
+    InMemoryAnomalyRepository,
+    InMemoryPromotionRepository,
+    InMemoryRevenueRepository,
+)
 from retailtwin_api.main import create_app
 from retailtwin_api.settings import DEFAULT_FIXTURE, Settings
 
@@ -28,8 +33,27 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
 
 
 @pytest.fixture
-def client(settings: Settings):
+def anomaly_repo() -> InMemoryAnomalyRepository:
+    return InMemoryAnomalyRepository()
+
+
+@pytest.fixture
+def revenue_repo() -> InMemoryRevenueRepository:
+    return InMemoryRevenueRepository()
+
+
+@pytest.fixture
+def promotion_repo() -> InMemoryPromotionRepository:
+    return InMemoryPromotionRepository()
+
+
+@pytest.fixture
+def client(settings: Settings, anomaly_repo, revenue_repo, promotion_repo) -> TestClient:
+    """Test client with seeded in-memory analytics repositories."""
     application = create_app(settings)
+    application.state.anomalies = anomaly_repo
+    application.state.revenue = revenue_repo
+    application.state.promotions = promotion_repo
     with TestClient(application) as test_client:
         yield test_client
 
