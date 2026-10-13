@@ -1,0 +1,28 @@
+name: Conflict markers
+
+# Fails any change that carries unresolved merge-conflict markers (#133).
+# No path filter: a marker in any file breaks main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: conflict-markers-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: No conflict markers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reject merge-conflict markers
+        run: |
+          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)( |$)'; then
+            echo "::error::Unresolved merge-conflict markers found (see lines above)."
+            exit 1
+          fi
+          echo "No merge-conflict markers."
