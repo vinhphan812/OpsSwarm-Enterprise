@@ -19,4 +19,7 @@ export type ActivityEntry = {
   correlation_id?: string;
   decision_id?: string;
   sku?: string;
+  /** The shelf or piece of equipment the entry is about; focused when there is no SKU. */
+  shelf_id?: string;
+  slot_id?: string;
 };

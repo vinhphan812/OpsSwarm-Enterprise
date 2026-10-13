@@ -3,6 +3,7 @@ import {
   AgentActivityPanel,
 } from "@/components/layout/AgentActivityPanel";
 import { CameraHelp } from "@/components/layout/CameraHelp";
+import { AgentFocusCaption } from "@/components/twin/AgentFocusCaption";
 import { LensSwitcher } from "@/components/layout/LensSwitcher";
 import { ViewModeSwitch } from "@/components/layout/ViewModeSwitch";
 import { EntityInspector } from "@/components/twin/EntityInspector";
@@ -11,6 +12,7 @@ import { SimulationBanner } from "@/components/twin/SimulationBanner";
 import { TwinIssuesNotice } from "@/components/twin/TwinIssuesNotice";
 import { TwinStatusOverlay } from "@/components/twin/TwinStatusOverlay";
 import { pickSimulationReviewer, pickSimulationSource, pickSource } from "@/core/twin/devSources";
+import { useAgentFocus } from "@/hooks/agentFocus.hook";
 import { useNetworkStatus } from "@/hooks/networkStatus.hook";
 import { useProductParam } from "@/hooks/productParam.hook";
 import { useSimulationSource } from "@/hooks/simulationSource.hook";
@@ -27,6 +29,7 @@ export function TwinPage() {
   useSimulationSource(simulationSource);
   useNetworkStatus();
   useProductParam();
+  useAgentFocus();
 
   return (
     <>
@@ -43,6 +46,7 @@ export function TwinPage() {
         <div className="absolute bottom-4 left-4 z-10">
           <CameraHelp />
         </div>
+        <AgentFocusCaption />
         <AgentActivityOpenButton />
         <EntityInspector />
         <ProductDetailsDialog />

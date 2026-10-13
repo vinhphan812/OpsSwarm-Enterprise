@@ -50,3 +50,5 @@ export const FOCUS_ELEVATION_STEP = 0.04;
 export const FOCUS_FIXTURE_MARGIN = 1.2;
 /** Seconds the camera takes to fly to a selected entity; slower than a wheel step, so the move reads. */
 export const FOCUS_SMOOTH_TIME = 0.55;
+/** The agent leaves the camera alone while the user drags it, and for this long after they last used it. */
+export const AGENT_FOCUS_IDLE_MS = 5000;

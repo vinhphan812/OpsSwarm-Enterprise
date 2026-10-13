@@ -37,6 +37,28 @@ describe("flyTo", () => {
   });
 });
 
+describe("flyTo leaves the controls to the user", () => {
+  it("still orbits and pans after a flight", () => {
+    const camera = new PerspectiveCamera(45, 1.5, 0.1, 200);
+    const controls = new CameraControls(camera, document.createElement("div"));
+    const view = productFocus(storeLayout, "A01", "A01-S21")!;
+    flyTo(controls as unknown as DreiCameraControls, view, false);
+    controls.update(0);
+    expect(controls.enabled).toBe(true);
+
+    const azimuth = controls.azimuthAngle;
+    void controls.rotate(0.5, 0, false);
+    controls.update(0);
+    expect(controls.azimuthAngle).toBeCloseTo(azimuth + 0.5, 5);
+
+    const target = controls.getTarget(new Vector3());
+    void controls.truck(1, 0, false);
+    controls.update(0);
+    expect(controls.getTarget(new Vector3()).distanceTo(target)).toBeGreaterThan(0.5);
+    controls.dispose();
+  });
+});
+
 describe("panelOffset", () => {
   it("puts the target in the middle of what the panel leaves visible", () => {
     const camera = new PerspectiveCamera(45, 1600 / 900, 0.1, 200);

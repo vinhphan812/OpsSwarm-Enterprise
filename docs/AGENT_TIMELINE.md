@@ -1,5 +1,7 @@
 # Agent Activity Timeline
 
+> **Status (2026-10-13, #28):** the mock `AgentEvent` / `IAgentEventStore` implementation (`apps/web/src/events/`, `timeline/`, `layout/AgentActivityPanel.tsx`) was never mounted and has been removed. The Agent Activity panel in `apps/web` reads `ActivityEntry` items from `run.store` (`types/agent.type.ts`); #94 fills it from `GET /agent/events`.
+
 The Agent Activity Timeline provides a real-time, 9-stage visualization of the autonomous path taken by an agent to solve a given task. 
 
 ## The 9-Stage Timeline
