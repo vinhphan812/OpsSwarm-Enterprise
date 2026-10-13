@@ -36,6 +36,7 @@ import {
   stockItemFor,
   type StockItem,
 } from "./catalog";
+import { FACING_GAP, slotCapacity } from "./capacity";
 import { surfaceMatrix, surfacesOf } from "./surfaces";
 
 const GEOMETRY: Record<StockShape, BufferGeometry> = {
@@ -99,7 +100,6 @@ function pulseHalos(wave: number) {
 }
 const ANOMALY_SCALE = new Matrix4().makeScale(1.12, 1.12, 1.12);
 
-const FACING_GAP = 0.008;
 const ROW_GAP = 0.005;
 /** Items are drawn a little under their footprint, so neighbours show a seam between them. */
 const ITEM_INSET = 0.92;
@@ -119,29 +119,17 @@ type Batches = Record<StockShape, Placed[]>;
 type Emit = (position: Tuple3) => void;
 
 /**
- * The item shrunk to fit its slot: `facings` items side by side never run past the
- * slot's edges, and one item never rises above the surface's clear height. The count
- * stays what the twin says; only the drawn size gives way. Fruit shrinks evenly so it
- * stays round.
+ * The item at its natural width, no taller than the surface's clear height. Fruit
+ * shrinks evenly so it stays round. Facings past the slot's capacity are not drawn
+ * (`slotCapacity`), so items never run past the slot's edges.
  */
-export function fitItem(
-  item: StockItem,
-  surface: StockSurface,
-  slot: SlotFixture,
-  facings: number,
-): StockItem {
+export function fitItem(item: StockItem, surface: StockSurface): StockItem {
   const [w, h, d] = item.size;
   if (item.shape === STOCK_SHAPE.Sphere) {
-    const scale = Math.min(
-      1,
-      slot.width / (Math.max(1, facings) * w),
-      surface.maxHeight / h,
-    );
+    const scale = Math.min(1, surface.maxHeight / h);
     return { ...item, size: [w * scale, h * scale, d * scale] };
   }
-  const gaps = FACING_GAP * Math.max(0, facings - 1);
-  const width = Math.min(w, (slot.width - gaps) / Math.max(1, facings));
-  return { ...item, size: [width, Math.min(h, surface.maxHeight), d] };
+  return { ...item, size: [w, Math.min(h, surface.maxHeight), d] };
 }
 
 /**
@@ -211,7 +199,7 @@ type Holder = {
 
 /**
  * Every product drawn at its slot with its facings, one item per unit of shelf
- * stock up to what the facings hold. Nothing is drawn for zero facings or zero
+ * stock up to what the facings hold. Facings past the slot's capacity are not drawn. Nothing is drawn for zero facings or zero
  * stock. A product whose shelf or slot is unknown is skipped; `toSceneStore`
  * reports those before they get here.
  */
@@ -246,8 +234,10 @@ export function buildStock(store: StoreFixture): Batches {
     const surface = slot ? holder?.surfaces[slot.surface] : undefined;
     if (!holder || !slot || !surface) continue;
 
-    const facings = Math.max(0, product.facings);
-    const item = fitItem(stockItemFor(surface.kind), surface, slot, facings);
+    const natural = stockItemFor(surface.kind);
+    // Never more than the slot holds; `toSceneStore` reports the overflow.
+    const facings = Math.min(Math.max(0, product.facings), slotCapacity(slot, natural));
+    const item = fitItem(natural, surface);
     const look = productLook(item, product.productId);
     const base = new Color(look.color);
     const [w, h, d] = item.size;
