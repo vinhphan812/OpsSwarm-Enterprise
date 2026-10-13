@@ -42,3 +42,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0008](0008-provider-neutral-llm.md) | Provider-neutral LLM runtime | Accepted |
 | [0009](0009-expose-one-allow-listed-tool-registry.md) | Expose one allow-listed tool registry | Accepted |
 | [0010](0010-start-one-investigation-per-sale.md) | Start one investigation per new sale | Accepted |
+| [0011](0011-collect-versioned-evidence-from-the-tool-registry.md) | Collect versioned evidence from the tool registry | Accepted |
