@@ -1,0 +1,45 @@
+# Version-control
+.git
+.gitignore
+.gitattributes
+
+# Docs & config at repo root (not needed in container)
+README.md
+LICENSE
+CONTRIBUTING.md
+.env
+.env.*
+*.md
+docs/
+
+# Test & CI tooling
+**/tests/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/htmlcov/
+**/.mypy_cache/
+**/.ruff_cache/
+**/node_modules/
+**/.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.whl
+
+# FastAPI / uvicorn run artifacts
+*.log
+pid
