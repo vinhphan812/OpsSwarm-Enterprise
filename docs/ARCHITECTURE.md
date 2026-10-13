@@ -260,7 +260,7 @@ agents/planner                   structured plans
 agents/simulator                 simulation orchestration
 agents/executor                  guarded execution
 agents/verifier                  post-action verification
-guard/decision-context-guard     deterministic live-action guard
+guard/decision_context_guard     deterministic live-action guard
 services/twin                    canonical twin access
 services/simulation              clone/apply/evaluate
 services/optimizer               optional candidate optimizer

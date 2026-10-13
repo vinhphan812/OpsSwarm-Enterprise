@@ -9,10 +9,11 @@ Covered scenarios:
     - No live mutation is possible with stale context_version
     - Version bump on Live Twin invalidates prior decisions
 
-Current status (stub layer):
-    The store fixture is read-only and has a fixed context_version.  These
-    tests verify the version-reporting surface and document the contract
-    that DCG and Executor must enforce once the agent stack is live.
+Current status:
+    The store fixture is read-only and has a fixed context_version. The
+    guard-level stale test runs the real Decision Context Guard and
+    No-Stale-Commit (#16, #17) against an in-memory Live Twin. Executor
+    rejection of a stale commit is #18.
 
 Key DCG invariants that must hold in the full implementation:
     1. context_version in Decision must match current store context_version
@@ -146,36 +147,49 @@ class TestStaleContextContract:
         assert body["fixture_loaded"] is True
         assert body["store_id"] == "store-001"
 
-    def test_stale_context_would_be_rejected_by_dcg(
-        self, run_id: str, env_info: dict
-    ) -> None:
+    def test_stale_context_is_rejected_by_dcg(self) -> None:
         """
-        Contract expectation: DCG must REJECT decisions with stale context_version.
+        G04 at the guard boundary (#17).
 
-        Scenario:
-          1. AI builds a decision while Live Twin context is at epoch v1
-          2. Live Twin state advances to epoch v2 (e.g. after Executor commit)
-          3. The decision's context_version is still "store-001:v1" (stale)
-          4. DCG must respond with REFRESH_REQUIRED and block Executor
-
-        The self-constructed dict below documents the expected contract;
-        it asserts only that the expected outcome is defined and that
-        the stale vs. current versions differ (making the decision invalid).
-        Until DCG and Executor are live, this is a contract-expectation test.
+          1. D1 is built while P001 is at version N.
+          2. P001 moves to N+1 on the Live Twin.
+          3. D1 is submitted: REFRESH_REQUIRED, no commit binding, Live unchanged,
+             and the audit says why.
         """
-        import json
-        dcg_check = {
-            "run_id": run_id,
-            "canonical_path": env_info["canonical_path"],
-            # Decision built while Live Twin was at epoch v1
-            "decision_context_version": "store-001:v1",
-            # Live Twin has since advanced to epoch v2
-            "current_context_version": "store-001:v2",
-            "expected_dcg_outcome": "REFRESH_REQUIRED",
-            "note": (
-                "DCG enforces this once the agent stack is live. "
-                "Executor is stubbed. v1 < v2: the decision is stale."
-            ),
-        }
-        assert dcg_check["expected_dcg_outcome"] == "REFRESH_REQUIRED"
-        assert dcg_check["decision_context_version"] != dcg_check["current_context_version"]
+        from datetime import datetime, timezone
+
+        from retailtwin_api.contracts import (
+            DCGVerdict, Decision, EvidenceBundle, ExpectedImpact, ReplenishShelf,
+        )
+        from retailtwin_api.firestore_twin import InMemoryTwinRepository, InventorySeed
+        from retailtwin_api.guard.decision_context_guard import (
+            VERSION_STALE, DecisionContextGuard, InMemoryGuardAudit, NoStaleCommit,
+        )
+
+        now = datetime.now(timezone.utc)
+        twin = InMemoryTwinRepository()
+        twin.seed("store-001", "v1", [InventorySeed(
+            sku="P001", shelf_id="SH1", slot_id="S1", facings=2, shelf_quantity=10, backroom_quantity=30,
+        )])
+        d1 = Decision(
+            decision_id="d1", agent_id="planner", context_version="store-001:v1", context_timestamp=now,
+            evidence=[EvidenceBundle(
+                bundle_id="b1", provenance="tool-registry", source="investigator",
+                entity_versions={"P001": "1"}, collected_at=now, freshness=now,
+                store_id="store-001", correlation_id="run-stale-g04", is_sufficient=True,
+            )],
+            proposed_actions=[ReplenishShelf(sku="P001", quantity=6)],
+            expected_impact=ExpectedImpact(kpi_score=0.2, description="restock"),
+        )
+        current = twin.get_inventory("store-001", "P001")
+        assert current is not None
+        twin.upsert_inventory(current.model_copy(update={"version": 2}), expected_version=1)
+        before = twin.get_inventory("store-001", "P001")
+
+        audit = InMemoryGuardAudit()
+        result, binding = NoStaleCommit(DecisionContextGuard(twin), audit).authorize(d1)
+
+        assert (result.verdict, result.reason_code) == (DCGVerdict.REFRESH_REQUIRED, VERSION_STALE)
+        assert binding is None
+        assert twin.get_inventory("store-001", "P001") == before
+        assert [(e.correlation_id, e.reason_code) for e in audit.events("d1")] == [("run-stale-g04", VERSION_STALE)]
