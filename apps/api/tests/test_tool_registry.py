@@ -103,6 +103,7 @@ def test_catalog_covers_the_mvp_names_and_hides_unbound_tools(registry) -> None:
         "forecast_demand",
         "get_stockout_risk",
         "get_product_performance",
+        "get_promotions",
         "get_planogram",
         "move_product",
         "change_facings",
@@ -115,6 +116,7 @@ def test_catalog_covers_the_mvp_names_and_hides_unbound_tools(registry) -> None:
     exposed = {tool.name for tool in registry.llm_tools()}
     assert exposed == EXPOSED_TOOL_NAMES
     assert "forecast_demand" not in exposed
+    assert "get_promotions" not in exposed
     assert "compare_scenarios" not in exposed
     assert LIVE_WRITE_TOOLS.isdisjoint(exposed)
 

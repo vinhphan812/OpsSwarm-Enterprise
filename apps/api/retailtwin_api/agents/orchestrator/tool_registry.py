@@ -264,6 +264,12 @@ CATALOG = _catalog(
         SkuHorizonArgs,
     ),
     CatalogTool(
+        "get_promotions",
+        "Read active promotions for one SKU. Does not change the store.",
+        ToolCapability.READ,
+        SkuArgs,
+    ),
+    CatalogTool(
         "get_planogram",
         "Read the current planogram. Does not change the store.",
         ToolCapability.READ,

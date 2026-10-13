@@ -56,6 +56,6 @@ ADR 0009. The registry in `tool_registry.py` is the only tool list the orchestra
 | `create_simulation` | SIMULATION | Allocates a simulation id |
 | `submit_action_for_commit` | COMMIT_REQUEST | Records a commit request |
 
-None of those handlers change the store or issue a commit authorization. `forecast_demand`, `get_stockout_risk`, and the other analytical catalog names stay off this list until a deterministic port is bound with `bind_catalog_tool`. A call also needs the matching capability in `granted`. Unknown names, invalid arguments, missing permission, and timeouts return a controlled `ToolResult`.
+None of those handlers change the store or issue a commit authorization. `forecast_demand`, `get_stockout_risk`, `get_promotions`, and the other analytical catalog names stay off this list until a deterministic port is bound with `bind_catalog_tool`. A call also needs the matching capability in `granted`. Unknown names, invalid arguments, missing permission, and timeouts return a controlled `ToolResult`.
 
 The live Vertex proof that Gemini calls `get_inventory` stays with issue #2. Tests use `FakeLlmProvider` and the same `LlmTool` list.
