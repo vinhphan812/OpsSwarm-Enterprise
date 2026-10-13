@@ -15,6 +15,7 @@ import {
   MIN_POLAR_ANGLE,
   PAN_BOUNDS,
 } from "@/constants/camera.constant";
+import { useCameraActivity } from "@/hooks/cameraActivity.hook";
 import { useFitCamera } from "@/hooks/fitCamera.hook";
 import { useFocusSelection } from "@/hooks/focusSelection.hook";
 import { useOrbitAroundPointer } from "@/hooks/orbitPoint.hook";
@@ -31,11 +32,15 @@ import { entityProps } from "./entities/entity";
 import { sceneOf, storeLayout } from "./layout";
 import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 
-/** Keeps the camera framing the whole store as the canvas resizes, orbits around the pointer, and flies to a selection. */
+/**
+ * Keeps the camera framing the whole store as the canvas resizes, orbits around the pointer, flies to a
+ * selection, and notes when the user moves it.
+ */
 function FrameCamera() {
   useFitCamera();
   useOrbitAroundPointer();
   useFocusSelection();
+  useCameraActivity();
   return null;
 }
 

@@ -203,6 +203,11 @@ export const en = {
     timeline: "Agent activity timeline",
     section: "Activity",
     selectProduct: "Show {{sku}} in the store",
+    followAgent: "Follow agent",
+    followAgentHint: "Fly the camera to what the agent works on, unless you are using it",
+  },
+  agentFocus: {
+    source: "Agent",
   },
   panel: {
     close: "Close the {{title}} panel",

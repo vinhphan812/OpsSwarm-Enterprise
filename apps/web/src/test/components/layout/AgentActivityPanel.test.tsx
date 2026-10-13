@@ -62,3 +62,15 @@ test("selects the product of a timeline entry, so the scene highlights and focus
   expect(selectedProductId(useUiStore.getState())).toBe("P001");
   expect(sku.getAttribute("aria-pressed")).toBe("true");
 });
+
+test("turns Follow agent off and on again", () => {
+  useUiStore.getState().setFollowAgent(true);
+  renderPanel();
+  const follow = screen.getByRole("switch", { name: "Follow agent" }) as HTMLInputElement;
+  expect(follow.checked).toBe(true);
+
+  fireEvent.click(follow);
+  expect(useUiStore.getState().followAgent).toBe(false);
+  fireEvent.click(follow);
+  expect(useUiStore.getState().followAgent).toBe(true);
+});

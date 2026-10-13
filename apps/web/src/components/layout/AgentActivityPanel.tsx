@@ -1,4 +1,4 @@
-import { Button } from "@heroui/react";
+import { Button, Switch } from "@heroui/react";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { ActivityIcon, PanelToggleIcon } from "@/components/icons";
@@ -59,22 +59,38 @@ export function AgentActivityOpenButton() {
   );
 }
 
-/** Operations lens: the store API check and the agent's timeline. A SKU in the timeline selects that product. */
+/**
+ * Operations lens: the store API check and the agent's timeline. A SKU in the timeline selects that product;
+ * Follow agent lets the agent's own steps move the camera (`useAgentFocus`).
+ */
 function OperationsView() {
   const { t } = useTranslation();
   const activity = useRunStore((state) => state.activity);
   const select = useUiStore((state) => state.select);
   const selected = useUiStore(selectedProductId);
+  const followAgent = useUiStore((state) => state.followAgent);
+  const setFollowAgent = useUiStore((state) => state.setFollowAgent);
 
   return (
     <>
       <StoreStatus />
 
       <section className="activity-section">
-        <h2 className="activity-section-title">
-          {t("activity.section")}
-          <span className="activity-count">{activity.length}</span>
-        </h2>
+        <div className="activity-section-head">
+          <h2 className="activity-section-title">
+            {t("activity.section")}
+            <span className="activity-count">{activity.length}</span>
+          </h2>
+          <Switch
+            size="sm"
+            isSelected={followAgent}
+            onValueChange={setFollowAgent}
+            title={t("activity.followAgentHint")}
+            classNames={{ label: "text-xs text-ink-soft" }}
+          >
+            {t("activity.followAgent")}
+          </Switch>
+        </div>
         <AnimatePresence initial={false} mode="popLayout">
           {activity.length ? (
             <motion.ol

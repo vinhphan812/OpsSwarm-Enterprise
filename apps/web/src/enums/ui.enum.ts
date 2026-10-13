@@ -13,3 +13,10 @@ export const LENS = {
 } as const;
 export type Lens = (typeof LENS)[keyof typeof LENS];
 export const LENSES: readonly Lens[] = Object.values(LENS);
+
+/** Who moved the selection: the user, or the agent through `focusEntity`. */
+export const FOCUS_SOURCE = {
+  User: "user",
+  Agent: "agent",
+} as const;
+export type FocusSource = (typeof FOCUS_SOURCE)[keyof typeof FOCUS_SOURCE];

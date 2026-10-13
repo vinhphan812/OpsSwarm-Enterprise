@@ -51,7 +51,7 @@ export function flyTo(controls: CameraControls, view: FocusView, animate: boolea
 /**
  * Flies the camera to whatever gets selected: a product's slot from the front, or a
  * whole shelf or piece of equipment. Once per selection: a later twin update does not
- * move the camera again. A product selected before the twin has loaded (`?product=`)
+ * move the camera again, but the agent focusing an entity again (`focusEntity`) does. A product selected before the twin has loaded (`?product=`)
  * is focused when it arrives. Must run inside the R3F Canvas, next to the default
  * CameraControls.
  */
@@ -60,6 +60,7 @@ export function useFocusSelection() {
   const camera = useThree((state) => state.camera);
   const id = useUiStore((state) => state.selectedEntityId);
   const type = useUiStore((state) => state.selectedEntityType);
+  const seq = useUiStore((state) => state.focusSeq);
   const live = useActiveState();
   const panelOpen = usePanelStore((state) => state.open);
   const size = useThree((state) => state.size);
@@ -70,7 +71,7 @@ export function useFocusSelection() {
       focused.current = null;
       return;
     }
-    const key = `${type}:${id}`;
+    const key = `${type}:${id}:${seq}`;
     if (!controls || focused.current === key) return;
 
     let view: FocusView | null = null;
@@ -87,5 +88,5 @@ export function useFocusSelection() {
     const shift = panelOpen && size.width > PANEL_COVER_PX * 2 ? PANEL_COVER_PX / 2 : 0;
     flyTo(controls, view, !prefersReducedMotion(), panelOffset(view, size.height, shift));
     // The panel and canvas size are read when a selection is focused, not followed after.
-  }, [camera, controls, id, type, live]);
+  }, [camera, controls, id, type, seq, live]);
 }

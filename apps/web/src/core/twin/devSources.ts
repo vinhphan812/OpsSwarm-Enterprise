@@ -10,6 +10,7 @@ import { demoAnomalies } from "@/fixtures/demo/anomalies";
 import { resolveAnomalies, simulateAnomaly } from "./simulateAnomaly";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { replayDemoAgentRun } from "@/fixtures/demo/agentRun";
 import { demoCandidates } from "@/fixtures/demo/candidates";
 import { demoSimulation } from "@/fixtures/demo/simulation";
 import { useTwinStore } from "@/state/twin.store";
@@ -63,7 +64,8 @@ const DEV_SOURCES: Record<string, TwinSource> = {
  * actions passed in), `twin.commit()` commits it to Live as a guarded commit would, and
  * `twin.discard()` drops it. `twin.candidate("cand-b")` shows one of the open simulation's
  * candidates in the Simulation view, and `twin.candidate(null)` its own proposal again,
- * until #39's panel selects them.
+ * until #39's panel selects them. `twin.agentRun()` replays the demo agent run on P003 in the
+ * Agent Activity timeline, which the camera follows (#28); it returns a function that stops it.
  */
 function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSource {
   const twin = createMemoryTwin(initial);
@@ -91,6 +93,7 @@ function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSou
       commit: () => commitSimulation(twin),
       discard: discardSimulation,
       candidate: (id: string | null) => useTwinStore.getState().selectCandidate(id),
+      agentRun: () => replayDemoAgentRun(),
     },
   });
   return twin.source;
