@@ -43,6 +43,8 @@ export const en = {
     invalid: "Cannot be shown",
     shelfSlot: "Shelf / slot",
     facings: "Facings",
+    facingsChange: "Facings {{before}} → {{after}}",
+    overCapacity: "Over slot capacity",
     onShelf: "On shelf",
     backroom: "Backroom",
     version: "Version",
@@ -150,9 +152,9 @@ export const en = {
     },
   },
   issues: {
-    title: "Products that cannot be shown: {{count}}",
+    title: "Products that cannot be shown as they are: {{count}}",
     more: "and {{count}} more",
-    console: "Digital Twin: products that cannot be shown",
+    console: "Digital Twin: products that cannot be shown as they are",
   },
   issue: {
     missingSku: "missing sku",
@@ -165,6 +167,7 @@ export const en = {
     unknownShelf: "shelf {{shelfId}} is not in the layout",
     slotNotOnShelf: "slot {{slotId}} is not on shelf {{shelfId}}",
     slotTaken: "slot {{slotId}} already holds {{owner}}",
+    facingsOverCapacity: "{{facings}} facings, but slot {{slotId}} holds {{capacity}}",
   },
   invalidState: {
     title: "Invalid Digital Twin data: {{reason}}",

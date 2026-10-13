@@ -2,6 +2,8 @@ import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { ProductIssue } from "@/core/api/validate";
 import { storeFixture } from "@/fixtures/storeFixture";
+import { ENTITY_TYPE } from "@/enums/scene.enum";
+import { capacityOf } from "@/scene/entities/stock/capacity";
 
 /**
  * Shelf, slot, and equipment positions. The twin state has no geometry yet, so the
@@ -23,9 +25,22 @@ const SLOTS_BY_HOLDER = new Map<string, Set<string>>(
     .map(([id, slots]) => [id, new Set(slots.map((slot) => slot.slotId))]),
 );
 
+/** How many facings each slot holds, by slot id (`slotCapacity`). Slot ids are unique across fixtures. */
+const CAPACITY_BY_SLOT = new Map<string, number>([
+  ...storeLayout.shelves.flatMap((shelf) =>
+    shelf.slots.map((slot) => [slot.slotId, capacityOf(ENTITY_TYPE.Shelf, slot)] as const),
+  ),
+  ...storeLayout.equipment.flatMap((item) =>
+    item.slots.map((slot) => [slot.slotId, capacityOf(item.kind, slot)] as const),
+  ),
+]);
+
 type SceneState = {
   store: StoreFixture;
-  /** Products the layout cannot place; they are not drawn. */
+  /**
+   * Products the layout cannot place, which are not drawn, and products with more facings
+   * than their slot holds, which are drawn up to what it holds.
+   */
   issues: ProductIssue[];
 };
 
@@ -57,7 +72,10 @@ function toProductFixtures(products: ProductInventory[]): ProductFixture[] {
   }));
 }
 
-/** Maps twin state onto the fixed layout. Placement, facings, and stock come from state. */
+/**
+ * Maps twin state onto the fixed layout. Placement, facings, and stock come from state.
+ * Facings past a slot's capacity are never valid: the product is drawn and reported.
+ */
 export function toSceneStore(state: StoreResponse): SceneState {
   const products: ProductFixture[] = [];
   const issues: ProductIssue[] = [];
@@ -70,6 +88,11 @@ export function toSceneStore(state: StoreResponse): SceneState {
     }
     taken.set(product.slotId, product.productId);
     products.push(product);
+    const capacity = CAPACITY_BY_SLOT.get(product.slotId) ?? 0;
+    if (product.facings > capacity) {
+      const { productId: sku, facings, slotId } = product;
+      issues.push({ sku, code: "facingsOverCapacity", values: { facings, capacity, slotId } });
+    }
   }
   return {
     store: {

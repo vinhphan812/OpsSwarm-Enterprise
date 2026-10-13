@@ -4,6 +4,7 @@ import { issueReason } from "@/core/api/validate";
 import { inspectProduct } from "@/core/twin/twinIssues";
 import { INSPECTION_KIND } from "@/enums/twin.enum";
 import { useTwinIssues } from "@/hooks/twinIssues.hook";
+import { useFacingsChange } from "@/hooks/recentChanges.hook";
 import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
 import { anomaliesOf } from "@/state/anomaly.store";
 import { useUiStore } from "@/state/ui.store";
@@ -21,6 +22,7 @@ export function ProductInspector({ productId }: { productId: string }) {
   const inspection = inspectProduct(productId, live, issues);
   const anomalies = anomaliesOf(useShownAnomalies(), productId);
   const showDetails = useUiStore((state) => state.showDetails);
+  const facingsChange = useFacingsChange(productId);
 
   return (
     <InspectorCard title={productId} label={t("inspector.label", { sku: productId })}>
@@ -37,6 +39,19 @@ export function ProductInspector({ productId }: { productId: string }) {
           </Chip>
           <p>{issueReason(inspection.issue)}</p>
         </div>
+      ) : null}
+      {inspection.kind === INSPECTION_KIND.Ok && inspection.overflow ? (
+        <div className="mb-2 flex flex-col gap-1">
+          <Chip size="sm" color="danger" variant="flat">
+            {t("inspector.overCapacity")}
+          </Chip>
+          <p>{issueReason(inspection.overflow)}</p>
+        </div>
+      ) : null}
+      {inspection.kind === INSPECTION_KIND.Ok && facingsChange ? (
+        <Chip size="sm" variant="flat" color="primary" className="mb-2">
+          {t("inspector.facingsChange", facingsChange)}
+        </Chip>
       ) : null}
       {inspection.kind === INSPECTION_KIND.Ok && live ? (
         <AnomalyList anomalies={anomalies} contextVersion={live.context_version} />

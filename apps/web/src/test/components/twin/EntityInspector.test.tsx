@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { EntityInspector } from "@/components/twin/EntityInspector";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
@@ -9,6 +9,7 @@ import { useTwinStore } from "@/state/twin.store";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { format } from "@/core/utils/format";
 import { SAMPLE_CHECKOUTS, SAMPLE_SALES } from "@/test/checkoutSample";
+import { patchProduct } from "@/core/api/sources/memorySource";
 
 // The app has no checkout data until apps/api serves it; tests stand in the expected shape.
 vi.mock("@/hooks/checkout.hook", async () => {
@@ -41,6 +42,24 @@ test("shows a shelf's stock from the twin, and selects a product from its list",
   fireEvent.click(screen.getByRole("button", { name: "Select P002" }));
   expect(selectedProductId(useUiStore.getState())).toBe("P002");
   expect(screen.getByLabelText("Product P002").textContent).toContain("A01 / A01-S20");
+});
+
+test("shows a recent facings change, and flags facings past the slot's capacity", () => {
+  useUiStore.getState().select("P001");
+  render(<EntityInspector />);
+  const card = () => screen.getByLabelText("Product P001");
+  expect(card().textContent).not.toContain("Facings 3 →");
+
+  act(() => useTwinStore.getState().setLive(patchProduct(stockedStoreState(), "P001", { facings: 5 })));
+  expect(card().textContent).toContain("Facings 3 → 5");
+  expect(card().textContent).not.toContain("Over slot capacity");
+
+  act(() => useTwinStore.getState().setLive(patchProduct(stockedStoreState(), "P001", { facings: 12 })));
+  expect(card().textContent).toContain("Facings 5 → 12");
+  expect(card().textContent).toContain("Over slot capacity");
+  expect(card().textContent).toContain("12 facings, but slot A01-S01 holds 5");
+  // Still drawn, so its figures stay on the card.
+  expect(card().textContent).toContain("A01 / A01-S01");
 });
 
 test("shows a checkout's figures", () => {

@@ -24,10 +24,10 @@ export type StockItem = {
  * product's color and height are picked from its id: stable across reloads, but not data.
  */
 const STOCK_ITEM: Record<StockKind, StockItem> = {
-  /** A cereal box on the gondolas. */
+  /** A slim carton on the gondolas, five facings to a slot. */
   [STOCK_KIND.Packaged]: {
     shape: STOCK_SHAPE.Box,
-    size: [0.19, 0.25, 0.07],
+    size: [0.065, 0.25, 0.07],
     color: "#e8b33c",
     palette: ["#e8b33c", "#d9534f", "#3f7cc4", "#4e9a5b", "#f08a3c", "#8e5bb5", "#f2e2c4", "#2f9c9c", "#c8443f", "#f5c542"],
     minHeight: 0.78,

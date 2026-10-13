@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { CHANGE_CUE_MS } from "@/constants/twin.constant";
-import { diffStates, isEmptyDiff } from "@/core/twin/stateDiff";
+import { diffStates, isEmptyDiff, type FacingsChange } from "@/core/twin/stateDiff";
 import { shownSimulation, useTwinStore, type RecentChange } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 
@@ -37,4 +37,10 @@ export function useRecentChanges(): RecentChange | null {
   }, [change, recent]);
 
   return recent ? change : null;
+}
+
+/** `sku`'s facings change, while it is recent; null otherwise. */
+export function useFacingsChange(sku: string | null): FacingsChange | null {
+  const change = useRecentChanges();
+  return change?.diff.facings.find((item) => item.sku === sku) ?? null;
 }
