@@ -1,6 +1,7 @@
 """Provider-neutral simulation, candidate, KPI, and agent activity DTOs."""
 
 from datetime import datetime
+from enum import Enum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -135,3 +136,60 @@ class CursorParameters(BaseModel):
 
     since: str | None = Field(default=None, min_length=1)
     limit: int = Field(default=50, ge=1, le=100)
+
+
+# ─── Simulation review (approve / reject) ──────────────────────────────────────
+
+
+class DecisionReviewVerdict(str, Enum):
+    """DCG guard verdict for simulation review."""
+
+    ALLOW = "ALLOW"
+    DENY = "DENY"
+    REFRESH_REQUIRED = "REFRESH_REQUIRED"
+    HUMAN_REVIEW = "HUMAN_REVIEW"
+
+
+class DecisionReviewReasonCode(str, Enum):
+    """Machine-readable reason code returned after DCG evaluation."""
+
+    APPROVED = "APPROVED"
+    VERSION_MISMATCH = "VERSION_MISMATCH"
+    VERSION_STALE = "VERSION_STALE"
+    SIMULATION_NOT_OPEN = "SIMULATION_NOT_OPEN"
+    SIMULATION_NOT_FOUND = "SIMULATION_NOT_FOUND"
+    DCG_DENY = "DCG_DENY"
+    DCG_HUMAN_REVIEW = "DCG_HUMAN_REVIEW"
+
+
+class SimulationReviewRequest(BaseModel):
+    """Request body for POST /simulations/{id}/approve and /reject."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_context_version: str = Field(min_length=1)
+    proposal_context_version: str = Field(min_length=1)
+
+
+class SimulationReviewResponse(BaseModel):
+    """Response body for simulation approve/reject routes."""
+
+    simulation_id: str
+    decision: Literal["approved", "rejected"]
+    status: SimulationStatus
+    verdict: DecisionReviewVerdict
+    reason_code: DecisionReviewReasonCode
+    live_context_version: str
+
+
+class ReviewAuditRecord(BaseModel):
+    """Immutable audit trail for each review decision."""
+
+    simulation_id: str
+    decision: Literal["approved", "rejected"]
+    base_context_version: str
+    proposal_context_version: str
+    live_context_version: str
+    verdict: DecisionReviewVerdict
+    reason_code: DecisionReviewReasonCode
+    recorded_at: datetime

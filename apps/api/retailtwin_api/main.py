@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from retailtwin_api.errors import ApiError, api_error_handler, http_error_handler, validation_error_handler
-from retailtwin_api.events import EventLog
+from retailtwin_api.events import EventLog, ReviewAuditLog
 from retailtwin_api.middleware import CorrelationMiddleware
 from retailtwin_api.routes import router
 from retailtwin_api.settings import Settings, get_settings
@@ -32,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     store = open_store(resolved.store_fixture_path, resolved.store_id)
     app.state.store = store
     app.state.events = EventLog()
+    app.state.review_audit = ReviewAuditLog()
+    app.state.live_context_version = store.view().context_version if store.loaded else ""
     # Production has no implicit demo fixture. An integration injects a real adapter.
     app.state.simulations = unavailable_simulation_repository()
     if not store.loaded:
