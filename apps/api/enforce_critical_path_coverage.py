@@ -77,15 +77,37 @@ def get_coverage(path: str) -> tuple[float, float] | None:
     try:
         tree = ET.parse(cov_xml)
         root = tree.getroot()
+        req_abs = os.path.abspath(os.path.join(repo_root, path)).replace("\\", "/")
+        path_parts = path.replace("\\", "/").split("/")
+        base_name = path_parts[-1] if path_parts else ""
+        found_files: list[tuple[str, str, str]] = []
+
         for cls in root.findall(".//class"):
             fn = cls.get("filename", "")
             fn_norm = fn.replace("\\", "/")
-            path_norm = path.replace("\\", "/")
-            if fn_norm.endswith(path_norm) or path_norm.endswith(fn_norm):
-                lr = cls.get("line-rate")
-                br = cls.get("branch-rate")
+            fn_abs = os.path.abspath(fn_norm).replace("\\", "/")
+            fn_base = fn_norm.split("/")[-1] if "/" in fn_norm else fn_norm
+            found_files.append((fn_norm, fn_abs, fn_base))
+            lr = cls.get("line-rate")
+            br = cls.get("branch-rate")
+
+            # Strategy 1: repo-relative endswith
+            if fn_norm.endswith(path) or path.endswith(fn_norm):
                 if lr is not None and br is not None:
                     return float(lr), float(br)
+
+            # Strategy 2: absolute-path normalization
+            if fn_abs == req_abs:
+                if lr is not None and br is not None:
+                    return float(lr), float(br)
+
+            # Strategy 3: bare filename match
+            if fn_base == base_name and base_name:
+                if lr is not None and br is not None:
+                    return float(lr), float(br)
+
+        print(f"DEBUG no match: path={path!r} base_name={base_name!r} req_abs={req_abs!r}")
+        print(f"DEBUG filenames: {sorted(set(f[0] for f in found_files))}")
         return None
     except Exception:
         return None

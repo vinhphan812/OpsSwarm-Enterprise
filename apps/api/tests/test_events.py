@@ -151,12 +151,22 @@ def test_naive_timestamp_is_rejected(client) -> None:
 
 
 def test_accepted_event_logs_the_correlation_id(client, caplog) -> None:
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.INFO, logger="retailtwin_api"):
         response = client.post("/events", json=VALID_EVENT)
 
     assert response.status_code == 201
-    assert "run-20261007-001" in caplog.text
-    assert "evt-000123" in caplog.text
+
+    # Structured logging: correlation_id and event_id are in the extra dict and message string.
+    event_log_records = [
+        r for r in caplog.records if r.message.startswith("event.accepted")
+    ]
+    assert len(event_log_records) == 1, f"Expected exactly one 'event.accepted' record, got {len(event_log_records)}"
+    record = event_log_records[0]
+    # The event's correlation_id is stored in correlation_id_header extra field
+    assert hasattr(record, "correlation_id_header"), "correlation_id_header missing from log record"
+    assert record.correlation_id_header == "run-20261007-001"
+    assert hasattr(record, "event_id"), "event_id missing from log record"
+    assert record.event_id == "evt-000123"
 
 
 # ---------------------------------------------------------------------------
