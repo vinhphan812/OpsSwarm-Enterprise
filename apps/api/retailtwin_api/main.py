@@ -1,6 +1,5 @@
 """FastAPI application for the RetailTwin day-0 boundary."""
 
-import json
 import logging
 
 from fastapi import FastAPI
@@ -10,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from retailtwin_api.errors import ApiError, api_error_handler, http_error_handler, validation_error_handler
 from retailtwin_api.events import EventLog
+from retailtwin_api.middleware import CorrelationMiddleware
 from retailtwin_api.routes import router
 from retailtwin_api.settings import Settings, get_settings
 from retailtwin_api.simulation_repository import unavailable_simulation_repository
@@ -20,18 +20,28 @@ logger = logging.getLogger(__name__)
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
-    level = getattr(logging, resolved.log_level.upper(), logging.INFO)
-    logging.basicConfig(level=level)
 
-    app = FastAPI(title="RetailTwin API", version="0.1.0")
+    app = FastAPI(
+        title="RetailTwin API",
+        version="0.1.0",
+        description="Day-0 retail store event API. Structured JSON logs and "
+        "correlation IDs are enabled in all environments.",
+    )
     app.state.settings = resolved
+
     store = open_store(resolved.store_fixture_path, resolved.store_id)
     app.state.store = store
     app.state.events = EventLog()
     # Production has no implicit demo fixture. An integration injects a real adapter.
     app.state.simulations = unavailable_simulation_repository()
     if not store.loaded:
-        logger.error(json.dumps({"message": "fixture.unavailable", "reason": store.error}))
+        logger.error(
+            "fixture.unavailable",
+            extra={"store_error": store.error, "fixture_path": str(resolved.store_fixture_path)},
+        )
+
+    # Correlation + structured logging middleware (must be outermost)
+    app.add_middleware(CorrelationMiddleware)
 
     app.add_exception_handler(ApiError, api_error_handler)
     app.add_exception_handler(StarletteHTTPException, http_error_handler)
@@ -40,9 +50,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         CORSMiddleware,
         allow_origins=_origins(resolved.cors_origins),
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["accept", "content-type"],
+        allow_headers=["accept", "content-type", "x-correlation-id"],
     )
     app.include_router(router)
+
+    logger.info(
+        "app.startup",
+        extra={
+            "app_env": resolved.app_env,
+            "is_production": resolved.is_production,
+            "store_id": resolved.store_id,
+            "fixture_loaded": store.loaded,
+            "fixture_path": str(resolved.store_fixture_path),
+        },
+    )
     return app
 
 

@@ -9,8 +9,18 @@ class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     service: Literal["retailtwin-api"]
     environment: str
+    app_env: str
     store_id: str
     fixture_loaded: bool
+
+
+class ReadyResponse(BaseModel):
+    """Readiness probe response — used by Cloud Run load-balancer routing decisions."""
+
+    ready: Literal[True]
+    service: Literal["retailtwin-api"]
+    store_id: str
+    correlation_id: str
 
 
 class ProductInventory(BaseModel):

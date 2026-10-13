@@ -6,7 +6,6 @@ on:
     paths:
       - 'apps/api/**'
       - 'services/forecasting/**'
-      - 'services/simulation/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
@@ -14,7 +13,6 @@ on:
     paths:
       - 'apps/api/**'
       - 'services/forecasting/**'
-      - 'services/simulation/**'
       - 'tests/e2e/**'
       - '.github/workflows/api.yml'
       - 'package.json'
@@ -59,10 +57,16 @@ jobs:
         working-directory: services/forecasting
         run: python -m mypy demand --ignore-missing-imports && python -m pytest
 
+      - name: Run tests with coverage
+        working-directory: ${{ github.workspace }}
+        env:
+          PYTHONPATH: ${{ github.workspace }}/apps/api
+        run: pytest --cov=retailtwin_api --cov-report=term --cov-report=xml:apps/api/coverage.xml --cov-branch apps/api/tests/
+
       - name: Simulation KPI tests with coverage
         working-directory: ${{ github.workspace }}
         env:
-          PYTHONPATH: ${{ github.workspace }}/services/simulation:${{ github.workspace }}/services/forecasting/risk
+          PYTHONPATH: ${{ github.workspace }}/apps/api:${{ github.workspace }}/services/simulation:${{ github.workspace }}/services/forecasting/risk
         run: |
           python -m mypy services/simulation/kpi --ignore-missing-imports
           pytest \
@@ -72,21 +76,9 @@ jobs:
             --cov-report=term \
             --cov-report=xml:apps/api/coverage.xml \
             --cov-branch \
+            --cov-append \
             --no-cov-on-fail \
             services/simulation/tests/
-
-      - name: Run tests with coverage
-        working-directory: ${{ github.workspace }}
-        run: |
-          pytest \
-            --cov=retailtwin_api \
-            --cov=services/forecasting/risk \
-            --cov=services/simulation \
-            --cov-report=term \
-            --cov-report=xml:apps/api/coverage.xml \
-            --cov-branch \
-            --cov-append \
-            apps/api/tests/
 
       - name: Check branch coverage threshold
         run: python check_branch_threshold.py
@@ -99,7 +91,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: api-coverage
-          path: coverage.xml
+          path: apps/api/coverage.xml
 
       - name: Coverage summary
         run: |
@@ -108,53 +100,6 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           pytest --cov=retailtwin_api --cov-report=term 2>&1 | tail -20 | tee -a $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-
-  deploy-cloud-run:
-    name: Deploy to Cloud Run
-    runs-on: ubuntu-latest
-    needs: build-test
-    # Only run if GCP_DEPLOY_SA variable is set (configure via repo Settings → Actions Variables)
-    if: github.event_name == 'pull_request' && vars.GCP_DEPLOY_SA
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ vars.GCP_DEPLOY_SA }}
-
-      - name: Set up Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push container
-        uses: docker/build-push-action@v5
-        with:
-          push: true
-          tags: us-central1-docker.pkg.dev/retailtwin-ai-511002/retailtwin/retailtwin-api:${{ github.sha }}
-
-      - name: Deploy to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: retailtwin-api
-          region: us-central1
-          image: us-central1-docker.pkg.dev/retailtwin-ai-511002/retailtwin/retailtwin-api:${{ github.sha }}
-          service_account: ${{ env.RETAILTWIN_RUNTIME_SA }}
-          port: 8080
-          memory: 512Mi
-          cpu: 1
-          max_instances: 10
-          min_instances: 0
-          timeout: 60
-
-      - name: Health check
-        run: |
-          curl -sf "https://${{ env.CLOUD_RUN_URL }}/health" || exit 1
 
   e2e-smoke:
     name: E2E Smoke
@@ -180,3 +125,91 @@ jobs:
 
       - name: Run E2E smoke suite
         run: pytest tests/e2e/ -v --tb=short
+
+  # ── Production deployment ────────────────────────────────────────────────────
+  # Deploys to Cloud Run after all tests pass on a merge to main.
+  # Requires WORKLOAD_IDENTITY_FEDERATION configured:
+  #   - Project: retailtwin-ai-511002
+  #   - SA: github-actions@retailtwin-ai-511002.iam.gserviceaccount.com
+  #   - Roles: Cloud Run Admin, Container Registry Writer, Secret Manager Secret Accessor
+  deploy-cloudrun:
+    name: Deploy to Cloud Run (production)
+    runs-on: ubuntu-latest
+    needs: [build-test, e2e-smoke]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Separate environment enforces protection: no direct push-to-main without CI green.
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: github-actions@retailtwin-ai-511002.iam.gserviceaccount.com
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker gcr.io
+
+      - name: Build and push container image
+        run: |
+          docker build \
+            --tag gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }} \
+            --tag gcr.io/retailtwin-ai-511002/retailtwin-api:latest \
+            .
+          docker push gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
+          docker push gcr.io/retailtwin-ai-511002/retailtwin-api:latest
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: retailtwin-api
+          region: us-central1
+          project_id: retailtwin-ai-511002
+          image: gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
+          service_account: retailtwin-runtime@retailtwin-ai-511002.iam.gserviceaccount.com
+          allow_unauthenticated: false
+          port: 8080
+          min_instances: 1
+          max_instances: 10
+          memory: 512Mi
+          cpu: 1
+          timeout: 60
+          concurrency: 80
+          env_vars: APP_ENV=production,LOG_LEVEL=INFO
+          # secrets: STORE_FIXTURE_PATH=store-fixture:latest  # enable after Secret Manager setup
+
+      - name: Verify production deployment
+        run: |
+          set -e
+          SERVICE_URL="${{ steps.deploy.outputs.url }}"
+          echo "Service URL: ${SERVICE_URL}"
+          echo "ROLLING_URL=${SERVICE_URL}" >> $GITHUB_ENV
+
+          # Obtain identity token scoped to the service URL for authenticated health check
+          TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}" --quiet)
+          echo "Identity token obtained"
+
+          # Liveness: /health (should always be 200 if container is alive)
+          HEALTH=$(curl -sf -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/health" || echo "")
+          echo "Health: ${HEALTH}"
+
+          # Assert production env
+          echo "${HEALTH}" | grep -q '"app_env":"production"' \
+            || { echo "ERROR: APP_ENV not set to production" >&2; exit 1; }
+
+          # Assert OK status
+          echo "${HEALTH}" | grep -q '"status":"ok"' \
+            || { echo "ERROR: Service not OK" >&2; exit 1; }
+
+          # Readiness probe: /ready
+          READY=$(curl -sf -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/ready" -o /dev/null -w "%{http_code}")
+          echo "Readiness: ${READY}"
+          [[ "${READY}" == "200" ]] \
+            || { echo "ERROR: Readiness probe failed" >&2; exit 1; }
+
+          echo ""
+          echo "=== Production deployment verified ==="
