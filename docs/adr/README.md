@@ -41,3 +41,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0007](0007-keep-store-layout-static-until-the-twin-serves-geometry.md) | Keep the store layout static until the twin serves geometry | Accepted |
 | [0008](0008-provider-neutral-llm.md) | Provider-neutral LLM runtime | Accepted |
 | [0009](0009-expose-one-allow-listed-tool-registry.md) | Expose one allow-listed tool registry | Accepted |
+| [0010](0010-start-one-investigation-per-sale.md) | Start one investigation per new sale | Accepted |
