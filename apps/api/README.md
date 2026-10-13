@@ -57,3 +57,4 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 | `LOG_LEVEL` | `INFO` | Log level |
 
 Accepted events log `event_id`, `correlation_id`, and `store_id` in process memory only. This demo scaffold does not publish events, connect to Firestore, or interact with BigQuery. Canonical event backbone implementation is out-of-scope for this demo.
+// trigger

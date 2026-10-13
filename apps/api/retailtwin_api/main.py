@@ -14,6 +14,7 @@ from retailtwin_api.routes import router
 from retailtwin_api.settings import Settings, get_settings
 from retailtwin_api.simulation_repository import unavailable_simulation_repository
 from retailtwin_api.store import open_store
+from retailtwin_api.analytics_repository import unavailable_analytics_repositories
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.live_context_version = store.view().context_version if store.loaded else ""
     # Production has no implicit demo fixture. An integration injects a real adapter.
     app.state.simulations = unavailable_simulation_repository()
+    # Analytics repositories: GCP-backed (BigQuery + Firestore); empty adapters in dev.
+    # Swap app.state.anomalies / .revenue / .promotions in integration tests.
+    anomalies, revenue, promotions = unavailable_analytics_repositories()
+    app.state.anomalies = anomalies
+    app.state.revenue = revenue
+    app.state.promotions = promotions
     if not store.loaded:
         logger.error(
             "fixture.unavailable",

@@ -1,6 +1,7 @@
 """Day-0 routes. Live Twin mutation stays behind the guard and the executor."""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -8,6 +9,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from retailtwin_api.errors import ApiError
 from retailtwin_api.events import EventConflict, EventLog, ReviewAuditLog
 from retailtwin_api.schemas import EventReceipt, HealthResponse, ProductInventory, ReadyResponse, StoreEvent, StoreResponse
+from retailtwin_api.analytics_repository import AnomalyRepository, RevenueRepository, PromotionRepository
 from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
     AgentEventListResponse, CandidateListResponse, CursorParameters, PageParameters,
@@ -31,6 +33,18 @@ def get_events(request: Request) -> EventLog:
 
 def get_simulations(request: Request) -> SimulationReadRepository:
     return request.app.state.simulations
+
+
+def get_anomalies(request: Request) -> AnomalyRepository:
+    return request.app.state.anomalies
+
+
+def get_revenue_repo(request: Request) -> RevenueRepository:
+    return request.app.state.revenue
+
+
+def get_promotions(request: Request) -> PromotionRepository:
+    return request.app.state.promotions
 
 
 def require_simulations(repository: SimulationReadRepository) -> None:
@@ -148,7 +162,6 @@ def _log_event(event: StoreEvent, duplicate: bool, correlation_id: str) -> None:
             "duplicate": duplicate,
         },
     )
-
 
 
 @router.get("/simulations", response_model=SimulationListResponse)
