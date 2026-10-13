@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Check coverage thresholds and fail if below minimum."""
+"""Check coverage thresholds and fail if below minimum.
+
+This script is part of the Day-0 Cloud Run deployment PR (#111).
+It validates branch coverage meets minimum thresholds before CI passes.
+"""
 import xml.etree.ElementTree as ET
 import sys
 
