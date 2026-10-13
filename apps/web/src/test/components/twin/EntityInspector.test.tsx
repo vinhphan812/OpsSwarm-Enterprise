@@ -10,6 +10,11 @@ import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { format } from "@/core/utils/format";
 import { SAMPLE_CHECKOUTS, SAMPLE_SALES } from "@/test/checkoutSample";
 import { patchProduct } from "@/core/api/sources/memorySource";
+import { CHANGE_CUE_MS } from "@/constants/twin.constant";
+import { VIEW_MODE } from "@/enums/ui.enum";
+import { demoSimulation } from "@/fixtures/demo/simulation";
+import { unitsDrawn } from "@/scene/entities/stock/Stock";
+import { toSceneStore } from "@/scene/layout";
 
 // The app has no checkout data until apps/api serves it; tests stand in the expected shape.
 vi.mock("@/hooks/checkout.hook", async () => {
@@ -60,6 +65,71 @@ test("shows a recent facings change, and flags facings past the slot's capacity"
   expect(card().textContent).toContain("12 facings, but slot A01-S01 holds 5");
   // Still drawn, so its figures stay on the card.
   expect(card().textContent).toContain("A01 / A01-S01");
+});
+
+test("shows a replenishment's deltas, and flags a one-sided one until the next change", () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  useUiStore.getState().select("P001");
+  render(<EntityInspector />);
+  const card = () => screen.getByLabelText("Product P001").textContent;
+  // P001 starts with 8 on the shelf and 42 in the backroom.
+  const setP001 = (patch: Record<string, number>) =>
+    act(() => useTwinStore.getState().setLive(patchProduct(stockedStoreState(), "P001", patch)));
+
+  setP001({ shelf_quantity: 12, backroom_quantity: 38 });
+  expect(card()).toContain("Shelf +4");
+  expect(card()).toContain("Backroom -4");
+  expect(card()).not.toContain("Inconsistent transfer");
+
+  setP001({ shelf_quantity: 17, backroom_quantity: 38 });
+  expect(card()).toContain("Shelf +5");
+  expect(card()).not.toContain("Backroom -");
+  expect(card()).toContain("Inconsistent transfer");
+  expect(card()).toContain("shelf +5 but backroom 0: not a matching transfer");
+
+  // The badges fade with the cue; the flag stays until the next change.
+  act(() => vi.advanceTimersByTime(CHANGE_CUE_MS));
+  expect(card()).not.toContain("Shelf +5");
+  expect(card()).toContain("Inconsistent transfer");
+  setP001({ shelf_quantity: 15, backroom_quantity: 38 });
+  expect(card()).not.toContain("Inconsistent transfer");
+  vi.useRealTimers();
+});
+
+test("counts the shelf units the facings cannot hold", () => {
+  useUiStore.getState().select("P001");
+  render(<EntityInspector />);
+  const full = patchProduct(stockedStoreState(), "P001", { shelf_quantity: 500 });
+  const holds = unitsDrawn(toSceneStore(full).store).get("P001")!;
+  expect(screen.getByLabelText("Product P001").textContent).not.toContain("not shown");
+  act(() => useTwinStore.getState().setLive(full));
+  expect(screen.getByLabelText("Product P001").textContent).toContain(`500 (+${500 - holds} not shown)`);
+});
+
+test("shows a proposed replenishment against Live in the Simulation view, and flags a one-sided one", () => {
+  useUiStore.getState().select("P003");
+  const simulation = demoSimulation(stockedStoreState());
+  act(() => {
+    useTwinStore.getState().setSimulation(simulation);
+    useUiStore.getState().setViewMode(VIEW_MODE.Simulation);
+  });
+  render(<EntityInspector />);
+  const card = () => screen.getByLabelText("Product P003").textContent;
+  expect(card()).toContain("Shelf +12");
+  expect(card()).toContain("Backroom -12");
+  expect(card()).not.toContain("Inconsistent transfer");
+
+  act(() =>
+    useTwinStore.getState().setSimulation({
+      ...simulation,
+      state: patchProduct(simulation.state, "P003", { backroom_quantity: 18 }),
+    }),
+  );
+  expect(card()).toContain("Inconsistent transfer");
+  act(() => {
+    useUiStore.getState().setViewMode(VIEW_MODE.Live);
+    useTwinStore.getState().setSimulation(null);
+  });
 });
 
 test("shows a checkout's figures", () => {

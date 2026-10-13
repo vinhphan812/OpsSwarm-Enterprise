@@ -14,6 +14,7 @@ import { usePanelStore } from "@/state/panel.store";
 import { useTwinStore } from "@/state/twin.store";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { stockedStoreState } from "@/test/stockedState";
+import { patchProduct } from "@/core/api/sources/memorySource";
 
 vi.mock("@/hooks/checkout.hook", () => ({ useCheckoutSummary: () => null, useCheckoutTransactions: () => [] }));
 // apps/api serves no promotions yet; the dialog reads them through usePromotions.
@@ -126,6 +127,22 @@ describe("product details dialog", () => {
     expect(dialog.textContent).toContain("Not in any promotion.");
     expect(dialog.textContent).toContain("No open anomalies.");
     expect(within(dialog).queryByRole("button", { name: /in Promotions$/ })).toBeNull();
+  });
+
+  it("shows a recent restock's deltas, a one-sided one's flag, and the units the facings cannot hold", async () => {
+    useUiStore.getState().showDetails("P001");
+    renderPage();
+    // P001 starts with 8 on the shelf and 42 in the backroom.
+    act(() => useTwinStore.getState().setLive(patchProduct(state, "P001", { shelf_quantity: 12, backroom_quantity: 38 })));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Shelf +4");
+    expect(dialog.textContent).toContain("Backroom -4");
+    expect(dialog.textContent).not.toContain("Inconsistent transfer");
+    expect(dialog.textContent).not.toContain("not shown");
+
+    act(() => useTwinStore.getState().setLive(patchProduct(state, "P001", { shelf_quantity: 500, backroom_quantity: 38 })));
+    expect(dialog.textContent).toContain("Inconsistent transfer");
+    expect(dialog.textContent).toMatch(/\+\d+ not shown/);
   });
 });
 

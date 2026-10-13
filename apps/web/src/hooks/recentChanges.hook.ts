@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useReducer } from "react";
 import { CHANGE_CUE_MS } from "@/constants/twin.constant";
-import { diffStates, isEmptyDiff, type FacingsChange } from "@/core/twin/stateDiff";
+import { diffStates, isEmptyDiff, type FacingsChange, type QuantityChange } from "@/core/twin/stateDiff";
 import { shownSimulation, useTwinStore, type RecentChange } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { StoreResponse } from "@/types/twin.type";
@@ -68,4 +68,16 @@ export function useRecentChanges(): RecentChange | null {
 export function useFacingsChange(sku: string | null): FacingsChange | null {
   const change = useRecentChanges();
   return change?.diff.facings.find((item) => item.sku === sku) ?? null;
+}
+
+/** The slot `sku` was moved from, while the move is recent; null otherwise. */
+export function useMovedFrom(sku: string | null): string | null {
+  const change = useRecentChanges();
+  return change?.diff.moved.find((item) => item.sku === sku)?.from.slot_id ?? null;
+}
+
+/** `sku`'s shelf and backroom deltas, while they are recent; null otherwise. */
+export function useQuantityChange(sku: string | null): QuantityChange | null {
+  const change = useRecentChanges();
+  return change?.diff.quantity.find((item) => item.sku === sku) ?? null;
 }

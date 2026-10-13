@@ -11,6 +11,8 @@ export type Formatters = {
   percent: (value: number) => string;
   /** A signed change such as "+8%"; 0 shows without a sign. */
   change: (value: number) => string;
+  /** A signed count such as "+12" or "-12"; 0 shows without a sign. */
+  delta: (value: number) => string;
   hour: (iso: string) => string;
   day: (iso: string) => string;
 };
@@ -21,6 +23,7 @@ function formatters(locale: string, currency: string): Formatters {
   const count = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
   const percent = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1 });
   const change = new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 1, signDisplay: "exceptZero" });
+  const delta = new Intl.NumberFormat(locale, { maximumFractionDigits: 0, signDisplay: "exceptZero" });
   const hour = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false });
   const day = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
 
@@ -30,6 +33,7 @@ function formatters(locale: string, currency: string): Formatters {
     count: (value) => count.format(value),
     percent: (value) => percent.format(value),
     change: (value) => change.format(value),
+    delta: (value) => delta.format(value),
     hour: (iso) => hour.format(new Date(iso)),
     day: (iso) => day.format(new Date(iso)),
   };
