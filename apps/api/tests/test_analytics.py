@@ -20,6 +20,11 @@ from retailtwin_api.schemas import (
     RevenueBucket,
 )
 
+# #129 merged these tests without their route handlers, so main serves none of
+# these routes. The public contracts and handlers land with #79 / #131, which
+# removes this skip.
+pytestmark = pytest.mark.skip(reason="GET /anomalies, /revenue, /promotions land with #79 (#131)")
+
 
 # ─── /anomalies tests ─────────────────────────────────────────────────────────
 
