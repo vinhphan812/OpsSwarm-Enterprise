@@ -27,7 +27,7 @@ export function TwinIssuesNotice() {
         <h2 className="font-semibold text-warning-700">{t("issues.title", { count: issues.length })}</h2>
         <ul>
           {issues.slice(0, ISSUES_SHOWN).map((issue) => (
-            <li key={issue.sku}>
+            <li key={`${issue.sku}-${issue.code}`}>
               <Button
                 size="sm"
                 variant="light"

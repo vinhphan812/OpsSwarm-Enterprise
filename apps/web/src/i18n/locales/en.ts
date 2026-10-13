@@ -45,6 +45,10 @@ export const en = {
     facings: "Facings",
     facingsChange: "Facings {{before}} → {{after}}",
     overCapacity: "Over slot capacity",
+    inconsistentTransfer: "Inconsistent transfer",
+    shelfDelta: "Shelf {{delta}}",
+    backroomDelta: "Backroom {{delta}}",
+    notShown: "+{{count}} not shown",
     onShelf: "On shelf",
     backroom: "Backroom",
     version: "Version",
@@ -169,6 +173,7 @@ export const en = {
     slotNotOnShelf: "slot {{slotId}} is not on shelf {{shelfId}}",
     slotTaken: "slot {{slotId}} already holds {{owner}}",
     facingsOverCapacity: "{{facings}} facings, but slot {{slotId}} holds {{capacity}}",
+    inconsistentTransfer: "shelf {{shelf}} but backroom {{backroom}}: not a matching transfer",
   },
   invalidState: {
     title: "Invalid Digital Twin data: {{reason}}",

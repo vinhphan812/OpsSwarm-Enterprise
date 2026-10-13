@@ -50,6 +50,17 @@ import {
   type StockItem,
 } from "./catalog";
 import { FACING_GAP, slotCapacity } from "./capacity";
+import {
+  ghostOutlines,
+  markLevels,
+  marksShown,
+  moveCueOf,
+  moveProgress,
+  STEADY_MARKS,
+  tweenMatrix,
+  type MarkLevels,
+  type MoveCue,
+} from "./moveCue";
 import { surfaceMatrix, surfacesOf } from "./surfaces";
 
 const GEOMETRY: Record<StockShape, BufferGeometry> = {
@@ -290,6 +301,24 @@ export function buildStock(store: StoreFixture): Batches {
   return batches;
 }
 
+const drawnCounts = new WeakMap<StoreFixture, Map<string, number>>();
+
+/**
+ * How many shelf units of each product `buildStock` draws: never more than its facings
+ * hold. Computed once per store object.
+ */
+export function unitsDrawn(store: StoreFixture): Map<string, number> {
+  let counts = drawnCounts.get(store);
+  if (!counts) {
+    counts = new Map();
+    for (const item of Object.values(buildStock(store)).flat()) {
+      counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1);
+    }
+    drawnCounts.set(store, counts);
+  }
+  return counts;
+}
+
 /** The stock item a raycast hit, if it hit one. Fixture hit boxes use it to let their own items take a click. */
 export function stockItemAt(hit: Intersection): Placed | undefined {
   const items = hit.object.userData.stockItems as Placed[] | undefined;
@@ -435,6 +464,53 @@ function AnomalyMesh({
       renderOrder={1}
     />
   );
+}
+
+const OUTLINE_GEOMETRY = new EdgesGeometry(new BoxGeometry(1, 1, 1));
+
+/** Which slot of a move a light is over. */
+type SlotEnd = "from" | "to";
+
+/**
+ * The outline at a moved product's source and the lights over its slots, in the change
+ * color. Made on first use, once the theme stylesheet has loaded; `showMarks` fades them.
+ */
+let ghostMaterial: LineBasicMaterial | null = null;
+function moveGhostMaterial() {
+  ghostMaterial ??= new LineBasicMaterial({
+    color: changeColor(),
+    transparent: true,
+    opacity: MOVE_GHOST_OPACITY,
+    depthWrite: false,
+  });
+  return ghostMaterial;
+}
+const slotMaterials = new Map<SlotEnd, MeshStandardMaterial>();
+function moveSlotMaterial(end: SlotEnd) {
+  let material = slotMaterials.get(end);
+  if (!material) {
+    material = new MeshStandardMaterial({
+      color: changeColor(),
+      emissive: changeColor(),
+      emissiveIntensity: MOVE_SLOT_GLOW,
+      transparent: true,
+      opacity: MOVE_SLOT_OPACITY,
+      depthWrite: false,
+    });
+    slotMaterials.set(end, material);
+  }
+  return material;
+}
+
+/** Sets how strongly the outline and both slot lights show; the destination also takes the arrival flash. */
+function showMarks(levels: MarkLevels) {
+  moveGhostMaterial().opacity = MOVE_GHOST_OPACITY * levels.ghost;
+  const from = moveSlotMaterial("from");
+  from.opacity = MOVE_SLOT_OPACITY * levels.from;
+  from.emissiveIntensity = MOVE_SLOT_GLOW * levels.from;
+  const to = moveSlotMaterial("to");
+  to.opacity = Math.min(1, MOVE_SLOT_OPACITY * (levels.to + levels.flash));
+  to.emissiveIntensity = MOVE_SLOT_GLOW * (levels.to + levels.flash);
 }
 
 /** A thin outline where each moved product stood. Takes no pointer events and casts no shadow. */

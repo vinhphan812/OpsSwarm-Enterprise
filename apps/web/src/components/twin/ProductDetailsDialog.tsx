@@ -9,7 +9,11 @@ import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { STOCK_STATE, type StockState } from "@/enums/stock.enum";
 import { usePromotions } from "@/hooks/commerce.hook";
 import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
-import { useMovedFrom } from "@/hooks/recentChanges.hook";
+import { useMovedFrom, useQuantityChange } from "@/hooks/recentChanges.hook";
+import { useTwinIssues, useUnitsNotShown } from "@/hooks/twinIssues.hook";
+import { isInconsistentTransfer } from "@/core/twin/twinIssues";
+import { issueReason } from "@/core/api/validate";
+import { QuantityDeltas } from "./ProductInspector";
 import { anomaliesOf } from "@/state/anomaly.store";
 import { usePanelStore } from "@/state/panel.store";
 import { useUiStore } from "@/state/ui.store";
@@ -37,9 +41,13 @@ function Section({ title, count, children }: { title: string; count?: number; ch
   );
 }
 
-/** Stock tiles: units on the shelf against facings (with how full the front is), backroom, facings, version. */
+/**
+ * Stock tiles: units on the shelf against facings (with how full the front is, and how
+ * many units the facings cannot hold), backroom, facings, version.
+ */
 function StockTiles({ product, state }: { product: ProductInventory; state: StockState }) {
   const { t } = useTranslation();
+  const notShown = useUnitsNotShown(product.sku);
   const fill = product.facings ? Math.min(1, product.shelf_quantity / product.facings) : 0;
   return (
     <dl className="details-tiles">
@@ -48,6 +56,7 @@ function StockTiles({ product, state }: { product: ProductInventory; state: Stoc
         <dd>
           {format.count(product.shelf_quantity)}
           <small>{t("productDetails.ofFacings", { facings: product.facings })}</small>
+          {notShown ? <small>· {t("inspector.notShown", { count: notShown })}</small> : null}
         </dd>
         <span className="details-fill" aria-hidden>
           <span style={{ width: `${fill * 100}%` }} />
@@ -161,6 +170,8 @@ export function ProductDetailsDialog() {
   const live = useActiveState();
   const allAnomalies = useShownAnomalies();
   const movedFrom = useMovedFrom(sku);
+  const quantityChange = useQuantityChange(sku);
+  const transfer = useTwinIssues().find((issue) => issue.sku === sku && isInconsistentTransfer(issue));
 
   const product = sku ? live?.products.find((candidate) => candidate.sku === sku) : undefined;
   const anomalies = sku ? anomaliesOf(allAnomalies, sku) : [];
@@ -200,12 +211,18 @@ export function ProductDetailsDialog() {
                     {t("inspector.movedFrom", { slot: movedFrom })}
                   </Chip>
                 ) : null}
+                {product && transfer ? (
+                  <Chip size="sm" variant="flat" color="warning" title={issueReason(transfer)}>
+                    {t("inspector.inconsistentTransfer")}
+                  </Chip>
+                ) : null}
                 {anomalies.length ? (
                   <Chip size="sm" variant="flat" color="danger">
                     {t("productDetails.anomalyCount", { count: anomalies.length })}
                   </Chip>
                 ) : null}
               </span>
+              {product && quantityChange ? <QuantityDeltas change={quantityChange} /> : null}
               {product && live ? (
                 <span className="text-xs font-normal text-ink-muted">
                   {t("productDetails.subtitle", {

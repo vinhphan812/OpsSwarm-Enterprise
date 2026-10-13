@@ -28,7 +28,7 @@ export type SlotBox = { productId: string; slotId: string; matrix: Matrix4 };
 export type SlotMarks = {
   /** Slots holding more facings than they fit. */
   overflow: SlotBox[];
-  /** Slots whose product's facings changed in `change`. */
+  /** Slots whose product's facings changed in `change`, or whose shelf gained units. */
   changed: SlotBox[];
 };
 
@@ -55,12 +55,19 @@ function holdersOf(store: StoreFixture): Map<string, Holder> {
 
 /**
  * The slots of `store`, the state on screen, to mark: every overflowing slot, and the
- * slots of the facings changes in `change` whose product still has the new facings.
+ * slots of the facings changes in `change` whose product still has the new facings, or of
+ * the shelf gains in `change` whose product still has the new shelf count.
  */
 export function slotMarksOf(store: StoreFixture, change: RecentChange | null): SlotMarks {
   const marks: SlotMarks = { overflow: [], changed: [] };
   const holders = holdersOf(store);
   const changed = new Map(change?.diff.facings.map((item) => [item.sku, item.after]));
+  const before = new Map(change?.before.products.map((item) => [item.sku, item.shelf_quantity]));
+  const restocked = new Map(
+    change?.diff.quantity
+      .filter((item) => item.shelfDelta > 0 && before.has(item.sku))
+      .map((item) => [item.sku, before.get(item.sku)! + item.shelfDelta]),
+  );
   for (const product of store.products) {
     const holder = holders.get(product.shelfId);
     const slot = holder?.slots.get(product.slotId);
@@ -80,7 +87,9 @@ export function slotMarksOf(store: StoreFixture, change: RecentChange | null): S
         ),
     });
     if (product.facings > slotCapacity(slot, stockItemFor(surface.kind))) marks.overflow.push(box());
-    if (changed.get(product.productId) === product.facings) marks.changed.push(box());
+    if (changed.get(product.productId) === product.facings || restocked.get(product.productId) === product.shelfQuantity) {
+      marks.changed.push(box());
+    }
   }
   return marks;
 }
@@ -109,7 +118,7 @@ const NO_RAYCAST = () => null;
 /**
  * Slot marks over the stock. An overflowing slot is outlined in red, with a faint red
  * fill, for as long as it overflows; it is never drawn as a valid slot. A recent facings
- * change (`useRecentChanges`) glows on its slot and fades over `CHANGE_CUE_MS`; with
+ * change or shelf gain (`useRecentChanges`) glows on its slot and fades over `CHANGE_CUE_MS`; with
  * reduced motion it holds still until the cue ends.
  */
 export function SlotMarksLayer({ store }: { store: StoreFixture }) {
@@ -135,7 +144,7 @@ export function SlotMarksLayer({ store }: { store: StoreFixture }) {
       {marks.changed.map(({ slotId, matrix }) => (
         <mesh
           key={`changed-${slotId}`}
-          name={`slot-facings-changed-${slotId}`}
+          name={`slot-changed-${slotId}`}
           matrix={matrix}
           matrixAutoUpdate={false}
           geometry={UNIT_BOX}

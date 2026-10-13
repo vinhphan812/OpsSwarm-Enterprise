@@ -1,16 +1,37 @@
 import { Button, Chip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { issueReason } from "@/core/api/validate";
+import type { QuantityChange } from "@/core/twin/stateDiff";
 import { inspectProduct } from "@/core/twin/twinIssues";
 import { INSPECTION_KIND } from "@/enums/twin.enum";
-import { useTwinIssues } from "@/hooks/twinIssues.hook";
-import { useFacingsChange } from "@/hooks/recentChanges.hook";
+import { format } from "@/core/utils/format";
+import { useTwinIssues, useUnitsNotShown } from "@/hooks/twinIssues.hook";
+import { useFacingsChange, useQuantityChange } from "@/hooks/recentChanges.hook";
 import { useActiveState, useShownAnomalies } from "@/hooks/activeTwin.hook";
 import { useMovedFrom } from "@/hooks/recentChanges.hook";
 import { anomaliesOf } from "@/state/anomaly.store";
 import { useUiStore } from "@/state/ui.store";
 import { AnomalyList } from "./AnomalyList";
 import { Figures, InspectorCard } from "./InspectorCard";
+
+/** A recent stock change as one badge per side that changed: "Shelf +12", "Backroom -12". */
+export function QuantityDeltas({ change }: { change: QuantityChange }) {
+  const { t } = useTranslation();
+  return (
+    <span className="mb-2 flex flex-wrap gap-1">
+      {change.shelfDelta ? (
+        <Chip size="sm" variant="flat" color="primary">
+          {t("inspector.shelfDelta", { delta: format.delta(change.shelfDelta) })}
+        </Chip>
+      ) : null}
+      {change.backroomDelta ? (
+        <Chip size="sm" variant="flat" color="primary">
+          {t("inspector.backroomDelta", { delta: format.delta(change.backroomDelta) })}
+        </Chip>
+      ) : null}
+    </span>
+  );
+}
 
 /**
  * Twin figures and open anomalies of the selected product. Click an item on a shelf, or
@@ -24,6 +45,9 @@ export function ProductInspector({ productId }: { productId: string }) {
   const anomalies = anomaliesOf(useShownAnomalies(), productId);
   const showDetails = useUiStore((state) => state.showDetails);
   const facingsChange = useFacingsChange(productId);
+  const movedFrom = useMovedFrom(productId);
+  const quantityChange = useQuantityChange(productId);
+  const notShown = useUnitsNotShown(productId);
 
   return (
     <InspectorCard title={productId} label={t("inspector.label", { sku: productId })}>
@@ -49,9 +73,25 @@ export function ProductInspector({ productId }: { productId: string }) {
           <p>{issueReason(inspection.overflow)}</p>
         </div>
       ) : null}
+      {inspection.kind === INSPECTION_KIND.Ok && inspection.transfer ? (
+        <div className="mb-2 flex flex-col gap-1">
+          <Chip size="sm" color="warning" variant="flat">
+            {t("inspector.inconsistentTransfer")}
+          </Chip>
+          <p>{issueReason(inspection.transfer)}</p>
+        </div>
+      ) : null}
+      {inspection.kind === INSPECTION_KIND.Ok && quantityChange ? (
+        <QuantityDeltas change={quantityChange} />
+      ) : null}
       {inspection.kind === INSPECTION_KIND.Ok && facingsChange ? (
         <Chip size="sm" variant="flat" color="primary" className="mb-2">
           {t("inspector.facingsChange", facingsChange)}
+        </Chip>
+      ) : null}
+      {inspection.kind === INSPECTION_KIND.Ok && movedFrom ? (
+        <Chip size="sm" variant="flat" color="primary" className="mb-2">
+          {t("inspector.movedFrom", { slot: movedFrom })}
         </Chip>
       ) : null}
       {inspection.kind === INSPECTION_KIND.Ok && live ? (
@@ -62,7 +102,12 @@ export function ProductInspector({ productId }: { productId: string }) {
           rows={[
             [t("inspector.shelfSlot"), `${inspection.product.shelf_id} / ${inspection.product.slot_id}`],
             [t("inspector.facings"), inspection.product.facings],
-            [t("inspector.onShelf"), inspection.product.shelf_quantity],
+            [
+              t("inspector.onShelf"),
+              notShown
+                ? `${inspection.product.shelf_quantity} (${t("inspector.notShown", { count: notShown })})`
+                : inspection.product.shelf_quantity,
+            ],
             [t("inspector.backroom"), inspection.product.backroom_quantity],
             [t("inspector.version"), inspection.product.version],
           ]}
