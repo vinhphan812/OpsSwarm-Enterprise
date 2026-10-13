@@ -195,3 +195,48 @@ If time is short:
 Minimum viable competition story:
 
 **ONE 3D store + ONE autonomous event + ONE Gemini Agent + ONE investigation + ONE simulation + ONE DCG stale-context rejection + ONE automatic refresh/replan + ONE successful guarded commit + ONE visible 3D change.**
+
+## 12. LLM Provider Architecture
+
+The inference layer uses a **provider-neutral contract** (`apps/api/retailtwin_api/llm/contracts.py`).
+All adapters implement `LlmProvider.complete(request: LlmRequest) -> LlmResponse`.
+
+### Available providers
+
+| Provider | Config key | Credentials | Use |
+|---|---|---|---|
+| `fake` | `LLM_PROVIDER=fake` | None | Tests, local dev, deterministic CI |
+| `openai_compatible` | `LLM_PROVIDER=openai_compatible` | `LLM_BASE_URL`, `LLM_API_KEY` | Local proxies, third-party OpenAI-API-compatible endpoints |
+| `vertex_gemini` | `LLM_PROVIDER=vertex_gemini` | GCP ADC (service account) | Production — Gemini on Vertex AI via Application Default Credentials |
+
+### Using the fake provider
+
+The fake provider returns pre-configured responses deterministically. No network call is made.
+
+```python
+from retailtwin_api.llm import FakeLlmProvider, LlmRequest, LlmMessage, LlmTool, LlmToolCall
+
+provider = FakeLlmProvider(
+    responses=[
+        FakeLlmProvider.Response(content="Order 5 units."),
+        FakeLlmProvider.Response(
+            tool_calls=[
+                LlmToolCall(id="call_1", name="order_item", arguments={"sku": "P017", "qty": 5})
+            ],
+            finish_reason="tool_calls",
+        ),
+    ],
+)
+response = await provider.complete(request)
+```
+
+In CI and tests, inject the fake provider so no real LLM is called.
+
+### Adding a new provider
+
+1. Create `apps/api/retailtwin_api/llm/<provider_name>.py` implementing `LlmProvider`.
+2. Add `"<provider_name>"` to the `Literal` type in `LlmConfig.provider`.
+3. Add the construction branch in `create_provider()` in `factory.py`.
+4. Export from `llm/__init__.py`.
+5. Add `test_llm_<provider_name>.py` with coverage for: success, error mapping, tool calls, structured output.
+6. Document in this section and in `.env.example`.
