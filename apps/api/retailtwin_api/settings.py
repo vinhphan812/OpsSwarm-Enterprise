@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     # seeded from the fixture. firestore: the Firestore Live Twin (#6).
     live_twin_backend: Literal["fixture", "memory", "firestore"] = Field(default="memory")
 
+    # ── LLM (ADR 0008, ADR 0020) ─────────────────────────────────────────────
+    # The day-0 API does not construct a provider. Production construction is
+    # checked in retailtwin_api.llm.factory, not at process start.
+    llm_provider: str = Field(default="fake")
+    llm_model: str = Field(default="fake-test")
+    llm_base_url: str | None = None
+    llm_api_key: str | None = None
+    llm_timeout_seconds: float = Field(default=30.0, gt=0)
+    google_cloud_project: str | None = None
+    google_cloud_location: str = Field(default="us-central1")
+
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
 

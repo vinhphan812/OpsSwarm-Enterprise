@@ -58,4 +58,4 @@ gcloud run services update-traffic retailtwin-api \
 
 - Firebase Hosting for the web app
 - A GitHub Actions deploy job
-- Vertex AI and the Firestore Live Twin on this service
+- Vertex AI and the Firestore Live Twin on this service. This revision does not construct an LLM provider. When a revision does, ADR 0020 requires `vertex_gemini` and Application Default Credentials. The deploy script does not set those variables; that wiring stays with #134 and #143.

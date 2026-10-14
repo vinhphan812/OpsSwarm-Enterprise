@@ -235,8 +235,9 @@ In CI and tests, inject the fake provider so no real LLM is called.
 ### Adding a new provider
 
 1. Create `apps/api/retailtwin_api/llm/<provider_name>.py` implementing `LlmProvider`.
-2. Add `"<provider_name>"` to the `Literal` type in `LlmConfig.provider`.
-3. Add the construction branch in `create_provider()` in `factory.py`.
-4. Export from `llm/__init__.py`.
-5. Add `test_llm_<provider_name>.py` with coverage for: success, error mapping, tool calls, structured output.
-6. Document in this section and in `.env.example`.
+2. Call `register_provider(name, build, capabilities)` from that module. Do not add a branch in the planner, the investigator, or the tool registry.
+3. Export the adapter from `llm/__init__.py` when callers construct it directly.
+4. Add `test_llm_<provider_name>.py` with coverage for: success, error mapping, tool calls, structured output.
+5. Document in this section and in `.env.example`.
+
+Production (`APP_ENV=production`) can construct only `vertex_gemini` for project `retailtwin-ai-511002` in `us-central1`. The adapter uses Application Default Credentials. `register_provider` cannot replace or remove that name. A fake provider, a loopback URL, and a Gemini or Google API key are refused. There is no fallback to the fake provider when a real adapter fails. Issue #2 still owns the live tool call.

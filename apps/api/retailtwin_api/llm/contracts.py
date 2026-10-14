@@ -191,6 +191,29 @@ class LlmTransportResponse(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class ProviderCapabilities(BaseModel):
+    """What an adapter can do. Agent code reads these flags, not a vendor name."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    structured_output: bool
+    tool_calling: bool
+    tool_result_continuation: bool
+    native_json_schema: bool
+    usage_metadata: bool
+
+
+STANDARD_CAPABILITIES = ProviderCapabilities(
+    structured_output=True,
+    tool_calling=True,
+    tool_result_continuation=True,
+    native_json_schema=True,
+    usage_metadata=True,
+)
+
+
 class LlmProvider:
+    capabilities: ProviderCapabilities | None = None
+
     async def complete(self, request: LlmRequest) -> LlmResponse:
         raise NotImplementedError
