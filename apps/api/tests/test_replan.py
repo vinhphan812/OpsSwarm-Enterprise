@@ -867,7 +867,8 @@ def test_second_refresh_reads_a_new_context_version() -> None:
     assert result.status is ReplanStatus.COMMITTED
     assert result.refresh_count == 2
     assert result.context_version == LATER
-    assert result.committed_decision_id == f"plan-{CORRELATION}-{SKU}-1"
+    # The first refresh's plan-...-1 was rejected; the second refresh's plan gets a new id.
+    assert result.committed_decision_id == f"plan-{CORRELATION}-{SKU}-1-r2"
     assert contexts.stores == [STORE, STORE]
     assert seen.versions == [[NEXT, NEXT, NEXT], [LATER, LATER, LATER]]
     assert CONTEXT not in {version for batch in seen.versions for version in batch}
@@ -991,3 +992,32 @@ def test_replan_source_does_not_import_a_model_sdk_simulator_or_demo() -> None:
         "guardedexecutor",
     ):
         assert banned not in lowered, banned
+
+
+def test_refreshed_decision_never_reuses_the_rejected_decision_id() -> None:
+    """A stale decision produced by the planner has the id the refreshed plan would get."""
+    twin = _repo()
+    planner_id = f"plan-{CORRELATION}-{SKU}-1"
+    spy = Spy()
+
+    result = _run(_decision(decision_id=planner_id), twin, _provider(), spy, contexts=ContextScript([NEXT]))
+
+    assert result.status is ReplanStatus.COMMITTED
+    assert result.committed_decision_id == f"{planner_id}-r1"
+    assert [item.decision_id for item in spy.decisions] == [f"{planner_id}-r1"]
+    assert spy.bindings[0].decision_id == f"{planner_id}-r1"
+
+
+def test_distinct_renames_only_reused_ids() -> None:
+    from retailtwin_api.agents.orchestrator.replan import _distinct
+
+    seen = {"plan-x-1", "plan-x-1-r2"}
+    fresh = _decision(decision_id="plan-x-2")
+    reused = _decision(decision_id="plan-x-1")
+
+    renamed = _distinct([reused, fresh], seen, 2)
+
+    assert [item.decision_id for item in renamed] == ["plan-x-1-r2-r2", "plan-x-2"]
+    assert renamed[1] is fresh
+    assert reused.decision_id == "plan-x-1"
+    assert {"plan-x-1-r2-r2", "plan-x-2"} <= seen

@@ -196,6 +196,19 @@ def _from_guard(
     )
 
 
+def _distinct(decisions: Sequence[Decision], seen: set[str], refresh: int) -> list[Decision]:
+    """New immutable decisions: an id already used in this run gets an ``-r{refresh}`` suffix."""
+
+    distinct: list[Decision] = []
+    for item in decisions:
+        decision_id = item.decision_id
+        while decision_id in seen:
+            decision_id = f"{decision_id}-r{refresh}"
+        seen.add(decision_id)
+        distinct.append(item if decision_id == item.decision_id else item.model_copy(update={"decision_id": decision_id}))
+    return distinct
+
+
 def _carry_context(decisions: Sequence[Decision], version: str) -> bool:
     return all(item.context_version == version for item in decisions)
 
@@ -345,6 +358,9 @@ async def replan(
             decision.context_version,
         )
     pending: list[Decision] = [decision]
+    # Every decision this loop has seen. A refreshed plan reuses the planner's
+    # ``plan-{correlation}-{sku}-{n}`` ids, so it is renamed until it is distinct.
+    seen_ids: set[str] = {decision.decision_id}
     refreshes = 0
     stopped_context = decision.context_version
     while pending:
@@ -382,7 +398,7 @@ async def replan(
                 if isinstance(outcome, ReplanResult):
                     return outcome
                 refreshes += 1
-                pending = outcome
+                pending = _distinct(outcome, seen_ids, refreshes)
                 continue
             if checked.verdict is not DCGVerdict.ALLOW:
                 status = (
@@ -445,7 +461,7 @@ async def replan(
             if isinstance(outcome, ReplanResult):
                 return outcome
             refreshes += 1
-            pending = outcome
+            pending = _distinct(outcome, seen_ids, refreshes)
             continue
         if verdict.verdict is DCGVerdict.HUMAN_REVIEW:
             return _from_guard(
