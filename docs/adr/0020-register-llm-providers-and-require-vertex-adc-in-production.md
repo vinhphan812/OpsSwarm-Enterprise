@@ -24,7 +24,7 @@ When `APP_ENV=production`, `create_provider` accepts only `vertex_gemini` on pro
 
 Local tests keep the fake provider. A compatible endpoint remains available in development. Production inference cannot silently run the fake adapter. Issue #2 is still the proof that Gemini on Vertex calls `get_inventory`. Gates G02–G06 and foundation gate #10 stay unpassed. Issue #6 still owns the Firestore Live Twin.
 
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/178
 - Issue: #136
 - Supersedes:
 - Superseded by:
