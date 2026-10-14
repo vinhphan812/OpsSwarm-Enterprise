@@ -18,7 +18,7 @@ Issue #35 requires a correlated trace of one autonomous run: the trigger, the ev
 
 The decision row copies `expected_impact.kpi_score` as its predicted impact. `-1.0` stays the unscored sentinel. The reason summary is the decision's short description, capped, and it is not a prompt. Tool parameters are the canonical action JSON already hashed by the guard. Evidence is stored as bundle id plus entity version, not the evidence payload.
 
-A second write of the same payload is a duplicate. A different payload for the same `record_id` is a conflict and does not replace the row. Writes are BigQuery query jobs on `retailtwin-ai-511002` in `us-central1`, with `NOT EXISTS` on `record_id`. There is no streaming insert and no route. The Live Twin is not written. `agent_actions` is unchanged.
+A second write of the same payload is a duplicate. A different payload for the same `record_id` is a conflict and does not replace the row. The BigQuery job id comes from `record_id` alone. A writer that finds that job already exists joins it and reads the stored row: the same payload is a duplicate, a different payload is a conflict, and a finished job with no row is unavailable. Writes are BigQuery query jobs on `retailtwin-ai-511002` in `us-central1`, with `NOT EXISTS` on `record_id`. There is no streaming insert and no route. The Live Twin is not written. `agent_actions` is unchanged.
 
 ## Consequences
 

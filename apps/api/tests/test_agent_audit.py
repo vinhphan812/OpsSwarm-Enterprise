@@ -313,9 +313,10 @@ def test_existing_job_is_joined_and_a_failed_job_stays_closed(caplog: pytest.Log
             BackboneError("Already Exists: secret"),
             "",
             json.dumps({"status": {"state": "DONE"}}),
+            json.dumps([_stored(record)]),
         ]
     )
-    assert BigQueryAuditLog(BackboneConfig(), joined).record([record]) is AuditOutcome.INSERTED
+    assert BigQueryAuditLog(BackboneConfig(), joined).record([record]) is AuditOutcome.DUPLICATE
     assert any("wait" in call for call in joined.calls[2])
     assert all("secret" not in message for message in _messages(caplog))
 
@@ -332,6 +333,49 @@ def test_existing_job_is_joined_and_a_failed_job_stays_closed(caplog: pytest.Log
     assert str(caught.value) == "The audit table could not be written."
     assert "secret" not in str(caught.value)
     assert all("secret" not in message for message in _messages(caplog))
+
+
+def test_racing_writers_cannot_accept_a_different_payload(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    record = _flagship_records()[0]
+    stored = _stored(record)
+    stored["reason_summary"] = "secret summary"
+    raced = _Runner(
+        [
+            "[]",
+            BackboneError("Already Exists: secret"),
+            "",
+            json.dumps({"status": {"state": "DONE"}}),
+            json.dumps([stored]),
+        ]
+    )
+    log = BigQueryAuditLog(BackboneConfig(), raced)
+
+    with pytest.raises(AuditConflict) as caught:
+        log.record([record])
+
+    assert str(caught.value) == "The audit record already exists with a different payload."
+    assert "secret" not in str(caught.value)
+    assert all("secret" not in message for message in _messages(caplog))
+    assert len(raced.calls) == 5
+
+
+def test_joined_job_without_a_row_is_unavailable() -> None:
+    record = _flagship_records()[0]
+    runner = _Runner(
+        [
+            "[]",
+            BackboneError("Already Exists"),
+            "",
+            json.dumps({"status": {"state": "DONE"}}),
+            "[]",
+        ]
+    )
+
+    with pytest.raises(AuditUnavailable) as caught:
+        BigQueryAuditLog(BackboneConfig(), runner).record([record])
+
+    assert str(caught.value) == "The audit table could not be written."
 
 
 def test_bigquery_failure_does_not_echo_the_runner(caplog: pytest.LogCaptureFixture) -> None:
