@@ -3,7 +3,7 @@ import { patchProduct } from "@/core/api/sources/memorySource";
 import { diffStates } from "@/core/twin/stateDiff";
 import { inspectProduct, transferIssues, twinIssues } from "@/core/twin/twinIssues";
 import { slotMarksOf } from "@/scene/entities/stock/SlotMarks";
-import { unitsDrawn } from "@/scene/entities/stock/Stock";
+import { unitsHeld } from "@/scene/entities/stock/Stock";
 import { toSceneStore } from "@/scene/layout";
 import { sampleStoreState } from "@/test/sampleState";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
@@ -45,10 +45,10 @@ describe("transferIssues", () => {
 
 describe("units not shown", () => {
   it("draws shelf units only up to what the facings hold", () => {
-    const holds = unitsDrawn(toSceneStore(withP001({ shelf_quantity: 10_000 })).store).get("P001")!;
+    const holds = unitsHeld(toSceneStore(withP001({ shelf_quantity: 10_000 })).store).get("P001")!;
     expect(holds).toBeGreaterThan(8);
-    expect(unitsDrawn(toSceneStore(withP001({ shelf_quantity: holds + 7 })).store).get("P001")).toBe(holds);
-    expect(unitsDrawn(toSceneStore(before).store).get("P001")).toBe(8);
+    expect(unitsHeld(toSceneStore(withP001({ shelf_quantity: holds + 7 })).store).get("P001")).toBe(holds);
+    expect(unitsHeld(toSceneStore(before).store).get("P001")).toBe(8);
   });
 });
 

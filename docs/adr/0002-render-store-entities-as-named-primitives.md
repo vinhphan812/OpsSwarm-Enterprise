@@ -34,4 +34,4 @@ Positions for this scaffold come from `apps/web/src/scene/storeFixture.ts`. Issu
 - Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/56
 - Issue: https://github.com/vinhphan812/retailtwin-ai/issues/3
 - Supersedes:
-- Superseded by:
+- Superseded by: [0022](0022-draw-demo-stock-with-glb-models.md), in part: stock may be drawn with GLB models

@@ -64,9 +64,9 @@ describe("selection glow", () => {
     expect(find("stock-selected-box")).toBeUndefined();
 
     await select("P002");
-    const p002 = stockedStoreState().products.find((product) => product.sku === "P002")!;
+    const p002 = Object.values(buildStock(toSceneStore(stockedStoreState()).store)).flat().filter((item) => item.productId === "P002");
     const overlay = find("stock-selected-box") as InstancedMesh;
-    expect(overlay.count).toBe(p002.shelf_quantity);
+    expect(overlay.count).toBe(p002.length);
     expect(glows(overlay)).toBe(true);
     expect(overlay.castShadow).toBe(false);
 

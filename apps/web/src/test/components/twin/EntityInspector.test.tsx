@@ -13,7 +13,7 @@ import { patchProduct } from "@/core/api/sources/memorySource";
 import { CHANGE_CUE_MS } from "@/constants/twin.constant";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { demoSimulation } from "@/fixtures/demo/simulation";
-import { unitsDrawn } from "@/scene/entities/stock/Stock";
+import { unitsHeld } from "@/scene/entities/stock/Stock";
 import { toSceneStore } from "@/scene/layout";
 
 // The app has no checkout data until apps/api serves it; tests stand in the expected shape.
@@ -100,7 +100,7 @@ test("counts the shelf units the facings cannot hold", () => {
   useUiStore.getState().select("P001");
   render(<EntityInspector />);
   const full = patchProduct(stockedStoreState(), "P001", { shelf_quantity: 500 });
-  const holds = unitsDrawn(toSceneStore(full).store).get("P001")!;
+  const holds = unitsHeld(toSceneStore(full).store).get("P001")!;
   expect(screen.getByLabelText("Product P001").textContent).not.toContain("not shown");
   act(() => useTwinStore.getState().setLive(full));
   expect(screen.getByLabelText("Product P001").textContent).toContain(`500 (+${500 - holds} not shown)`);
