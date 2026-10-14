@@ -117,7 +117,9 @@ class AuditRecord(BaseModel):
 class AuditStore(Protocol):
     def get_trace(self, correlation_id: str) -> list[AuditRecord]: ...
 
-    def insert(self, record: AuditRecord) -> None: ...
+    def insert(self, record: AuditRecord) -> bool:
+        """Return True when this call stores a new row."""
+        ...
 
 
 def records_from_decision(
@@ -271,8 +273,12 @@ def record_trace(store: AuditStore, records: Sequence[AuditRecord]) -> AuditOutc
     if not pending:
         log.info("audit recorded correlation_id=%s outcome=duplicate rows=0", correlation_id)
         return AuditOutcome.DUPLICATE
+    wrote = False
     for record in pending:
-        store.insert(record)
+        wrote = store.insert(record) or wrote
+    if not wrote:
+        log.info("audit recorded correlation_id=%s outcome=duplicate rows=0", correlation_id)
+        return AuditOutcome.DUPLICATE
     log.info(
         "audit recorded correlation_id=%s outcome=inserted rows=%s",
         correlation_id,
@@ -324,13 +330,15 @@ class InMemoryAuditLog:
         with self._lock:
             return [row.model_copy(deep=True) for row in self._rows.values() if row.correlation_id == correlation_id]
 
-    def insert(self, record: AuditRecord) -> None:
+    def insert(self, record: AuditRecord) -> bool:
         with self._lock:
             prior = self._rows.get(record.record_id)
             if prior is not None and _canonical(prior) != _canonical(record):
                 raise AuditConflict("The audit record already exists with a different payload.")
-            if prior is None:
-                self._rows[record.record_id] = record.model_copy(deep=True)
+            if prior is not None:
+                return False
+            self._rows[record.record_id] = record.model_copy(deep=True)
+            return True
 
     def record(self, records: Sequence[AuditRecord]) -> AuditOutcome:
         with self._lock:
@@ -338,7 +346,11 @@ class InMemoryAuditLog:
 
 
 class BigQueryAuditLog:
-    """Query-job writer for ``retailtwin.agent_action_audit``. No streaming insert."""
+    """Query-job writer for ``retailtwin.agent_action_audit``. No streaming insert.
+
+    The job id comes from ``record_id`` alone. A second writer joins that job
+    and reads the stored row before it reports success.
+    """
 
     def __init__(self, config: BackboneConfig, runner: CommandRunner) -> None:
         self._config = config.validated()
@@ -357,7 +369,7 @@ class BigQueryAuditLog:
         except (BackboneError, AuditRejected) as exc:
             _unavailable(exc)
 
-    def insert(self, record: AuditRecord) -> None:
+    def insert(self, record: AuditRecord) -> bool:
         job_id = "audit_" + hashlib.sha256(record.record_id.encode()).hexdigest()[:32]
         command = query_command(self._config, _insert_sql(self._config), _parameters(record), job_id)
         try:
@@ -366,6 +378,9 @@ class BigQueryAuditLog:
             if "Already Exists" not in str(exc):
                 _unavailable(exc)
             self._join(job_id)
+            self._require_stored_payload(record)
+            return False
+        return True
 
     def record(self, records: Sequence[AuditRecord]) -> AuditOutcome:
         return record_trace(self, records)
@@ -402,6 +417,22 @@ class BigQueryAuditLog:
         if not isinstance(status, dict) or status.get("state") != "DONE" or status.get("errorResult"):
             log.info("audit job failed job_id=%s", job_id)
             raise AuditUnavailable("The audit table could not be written.")
+
+    def _require_stored_payload(self, record: AuditRecord) -> None:
+        prior = next(
+            (row for row in self.get_trace(record.correlation_id) if row.record_id == record.record_id),
+            None,
+        )
+        if prior is None:
+            log.info("audit joined job missing record_id=%s", record.record_id)
+            raise AuditUnavailable("The audit table could not be written.")
+        if _canonical(prior) != _canonical(record):
+            log.info(
+                "audit conflict correlation_id=%s record_id=%s",
+                record.correlation_id,
+                record.record_id,
+            )
+            raise AuditConflict("The audit record already exists with a different payload.")
 
 
 def _validate_batch(records: Sequence[AuditRecord]) -> list[AuditRecord]:
