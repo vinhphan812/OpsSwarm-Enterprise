@@ -8,6 +8,8 @@ import { groupBy } from "@/core/utils/collections";
 import {
   CAMERA_DRAG_SMOOTH_TIME,
   CAMERA_FOV,
+  CAMERA_NEAR,
+  CAMERA_FAR,
   CAMERA_SMOOTH_TIME,
   INITIAL_CAMERA_POSITION,
   MAX_POLAR_ANGLE,
@@ -19,9 +21,13 @@ import { useCameraActivity } from "@/hooks/cameraActivity.hook";
 import { useFitCamera } from "@/hooks/fitCamera.hook";
 import { useFocusSelection } from "@/hooks/focusSelection.hook";
 import { useOrbitAroundPointer } from "@/hooks/orbitPoint.hook";
+import { useStockModels } from "@/hooks/stockModels.hook";
+import { Decor } from "./entities/decor/Decor";
 import { Equipment } from "./entities/equipment/Equipment";
 import { Exterior } from "./entities/Exterior";
+import { Roof } from "./entities/Roof";
 import { Floor } from "./entities/Floor";
+import { Sky } from "./entities/Sky";
 import { Shelf } from "./entities/Shelf";
 import { SlotMarksLayer } from "./entities/stock/SlotMarks";
 import { Stock } from "./entities/stock/Stock";
@@ -30,6 +36,7 @@ import { SKY_COLOR } from "@/constants/scene.constant";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { entityProps } from "./entities/entity";
 import { sceneOf, storeLayout } from "./layout";
+import { NO_MODELS, type StockModels } from "./entities/stock/models";
 import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 
 /**
@@ -47,6 +54,8 @@ function FrameCamera() {
 type StoreContentsProps = {
   store: StoreFixture;
   interactive?: boolean;
+  /** GLB models for the stock; without them every item is a primitive. */
+  models?: StockModels;
 };
 
 const NO_PRODUCTS: ProductFixture[] = [];
@@ -54,6 +63,7 @@ const NO_PRODUCTS: ProductFixture[] = [];
 export function StoreContents({
   store,
   interactive = true,
+  models = NO_MODELS,
 }: StoreContentsProps) {
   // One pass over the products instead of a filter per shelf and per slot.
   const byHolder = useMemo(
@@ -67,6 +77,7 @@ export function StoreContents({
     <group {...entityProps(store.storeId, ENTITY_TYPE.Store)}>
       <Floor />
       <Walls />
+      <Roof />
       {store.shelves.map((shelf) => (
         <Shelf
           key={shelf.shelfId}
@@ -75,7 +86,7 @@ export function StoreContents({
           interactive={interactive}
         />
       ))}
-      <Stock store={store} />
+      <Stock store={store} models={models} />
       <SlotMarksLayer store={store} />
       {store.equipment.map((item) => (
         <Equipment
@@ -96,13 +107,25 @@ export function StoreContents({
  */
 export function TwinStoreContents({
   interactive = true,
+  models,
 }: {
   interactive?: boolean;
+  models?: StockModels;
 }) {
   const twin = useActiveState();
-  const store = useMemo(() => (twin ? sceneOf(twin).store : storeLayout), [twin]);
+  const store = useMemo(
+    () => (twin ? sceneOf(twin).store : storeLayout),
+    [twin],
+  );
 
-  return <StoreContents store={store} interactive={interactive} />;
+  return (
+    <StoreContents store={store} interactive={interactive} models={models} />
+  );
+}
+
+/** The twin's store with the stock GLB models, drawn as primitives until they load (`useStockModels`). */
+function ModelledStoreContents() {
+  return <TwinStoreContents models={useStockModels()} />;
 }
 
 const clearSelection = () => useUiStore.getState().select(null);
@@ -143,11 +166,16 @@ export function StoreScene() {
     <Canvas
       shadows="soft"
       dpr={DPR}
-      camera={{ position: INITIAL_CAMERA_POSITION, fov: CAMERA_FOV }}
+      camera={{
+        position: INITIAL_CAMERA_POSITION,
+        fov: CAMERA_FOV,
+        near: CAMERA_NEAR,
+        far: CAMERA_FAR,
+      }}
       onPointerMissed={clearSelection}
     >
       <color attach="background" args={[SKY_COLOR]} />
-      <fog attach="fog" args={[SKY_COLOR, 40, 90]} />
+      <fog attach="fog" args={[SKY_COLOR, 55, 140]} />
       <hemisphereLight args={["#fffaf2", "#cbb69c", 0.5]} />
       <ambientLight intensity={0.55} />
       {/* Warm sun through the glass wall on the left; the mullions throw stripes across the planks. */}
@@ -191,8 +219,10 @@ export function StoreScene() {
       </Environment>
       <FrameCamera />
       <StaticShadows />
+      <Sky />
       <Exterior />
-      <TwinStoreContents />
+      <Decor />
+      <ModelledStoreContents />
       {/* Left drag orbits around the point under the cursor, right drag (or two fingers) pans, the wheel zooms toward the cursor. */}
       <CameraControls
         makeDefault

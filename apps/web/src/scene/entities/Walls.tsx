@@ -4,6 +4,7 @@ import { Object3D, type Camera, type Group, type InstancedMesh } from "three";
 import { GLAZING, STORE_FLOOR, STORE_WALL, WALL_SLATS } from "@/constants/dimensions.constant";
 import { CurtainWall, SlidingDoor } from "./Glazing";
 import type { Tuple3 } from "@/types/scene.type";
+import { EXTERIOR_WALLS_AT, exteriorLevel } from "@/scene/camera/exterior";
 import { WALL_CAP_COLOR, WALL_COLOR, WALL_GAP_COLOR, WALL_SLAT_COLOR } from "@/constants/scene.constant";
 
 const HALF_W = STORE_FLOOR.width / 2;
@@ -83,14 +84,21 @@ function solidRuns(length: number, openings: Opening[]): Array<[number, number]>
 /**
  * A thick wall whose local +Z faces into the store, with optional glazed
  * openings. It hides itself while the camera orbits outside it, so it never
- * blocks the shelves.
+ * blocks the shelves, unless the camera is zoomed out far enough that the store
+ * is drawn as a closed building.
  */
 function Wall({ name, length, position, rotationY, isBehind, openings = [], children }: WallProps) {
   const ref = useRef<Group>(null);
 
-  useFrame(({ camera, gl }) => {
+  useFrame(({ camera, gl, controls }) => {
     if (!ref.current) return;
-    const visible = !isBehind(camera);
+    // Zoomed out, the store is a closed building and every wall stands (`exteriorLevel`).
+    const zoom = controls as { distance?: number; maxDistance?: number } | null;
+    const closedUp =
+      zoom?.distance !== undefined && zoom.maxDistance !== undefined
+        ? exteriorLevel({ distance: zoom.distance, maxDistance: zoom.maxDistance }) >= EXTERIOR_WALLS_AT
+        : false;
+    const visible = closedUp || !isBehind(camera);
     if (ref.current.visible === visible) return;
     ref.current.visible = visible;
     // Shadows are drawn on demand (StaticShadows); a wall that comes or goes changes them.
@@ -168,6 +176,14 @@ export function Walls() {
         rotationY={Math.PI / 2}
         isBehind={(camera) => camera.position.x < -HALF_W}
         openings={[{ x: 0, width: STORE_FLOOR.depth - 2 * GLAZING.endPier, kind: "window" }]}
+      />
+      <Wall
+        name="wall-front"
+        length={STORE_FLOOR.width + 2 * T}
+        position={[0, 0, HALF_D]}
+        rotationY={Math.PI}
+        isBehind={(camera) => camera.position.z > HALF_D}
+        openings={[{ x: 0, width: STORE_FLOOR.width - 2 * GLAZING.endPier, kind: "window" }]}
       />
       <Wall
         name="wall-right"
