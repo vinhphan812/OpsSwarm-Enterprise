@@ -160,7 +160,8 @@ jobs:
       - name: Build and push container image
         uses: docker/build-push-action@v6
         with:
-          context: apps/api
+          context: .
+          dockerfile: Dockerfile
           push: true
           tags: |
             gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
