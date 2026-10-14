@@ -24,7 +24,7 @@ A second write of the same payload is a duplicate. A different payload for the s
 
 One flagship correlation id can be queried back in stage order, including a denial that never executed. The table is not created by this record; `infrastructure/gcp/apply-agent-action-audit.sh` creates it only when `CONFIRM_GCP_AGENT_AUDIT=yes`. The in-memory log is the test stand-in and is not durable. Gates G02–G06 and foundation gate #10 stay unpassed. Issue #6 still owns the Firestore Live Twin.
 
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/177
 - Issue: #35
 - Supersedes:
 - Superseded by:
