@@ -1,18 +1,21 @@
 import { defaultClient } from "@/core/api/client";
-import { parseSimulation } from "@/core/api/validate";
+import { parseCandidate, parseSimulation } from "@/core/api/validate";
 import { isNewerVersion } from "@/core/api/version";
 import { TWIN_POLL_MAX_MS, TWIN_POLL_MS } from "@/constants/twin.constant";
 import { SIMULATION_STATUS } from "@/enums/simulation.enum";
 import type { RetailTwinClient } from "@/types/api.type";
-import type { Simulation } from "@/types/simulation.type";
+import type { Candidate, Simulation } from "@/types/simulation.type";
 
-/** Read-only feed of the open Simulation Twin run. The web app never writes through it. */
+/** Read-only feed of the open Simulation Twin run and its candidates. The web app never writes through it. */
 export interface SimulationSource {
   /**
-   * Calls `onSimulation` with the open simulation, or null once none is open, and
+   * Calls `onUpdate` with the open simulation and its candidates, or null and [] once none is open, and
    * `onError` when a read fails. Returns the unsubscribe function.
    */
-  subscribe(onSimulation: (simulation: Simulation | null) => void, onError?: (error: unknown) => void): () => void;
+  subscribe(
+    onUpdate: (simulation: Simulation | null, candidates?: Candidate[]) => void,
+    onError?: (error: unknown) => void
+  ): () => void;
 }
 
 const OPEN: readonly string[] = [SIMULATION_STATUS.Pending, SIMULATION_STATUS.Evaluated];
@@ -43,17 +46,24 @@ export function createSimulationSource(
   maxIntervalMs = TWIN_POLL_MAX_MS,
 ): SimulationSource {
   return {
-    subscribe: (onSimulation, onError) => {
+    subscribe: (onUpdate, onError) => {
       let active = true;
       let delay = intervalMs;
-      let current: Simulation | null = null;
+      let currentSim: Simulation | null = null;
+      let currentCandidates: Candidate[] = [];
       let delivered = false;
       let timer: ReturnType<typeof setTimeout>;
 
-      const read = async (): Promise<Simulation | null> => {
+      const read = async (): Promise<{ simulation: Simulation | null; candidates: Candidate[] }> => {
         const { simulations } = await client.simulations();
         const open = simulations.find((summary) => OPEN.includes(summary.status));
-        return open ? parseSimulation(await client.simulation(open.simulation_id)) : null;
+        if (!open) return { simulation: null, candidates: [] };
+        const sim = parseSimulation(await client.simulation(open.simulation_id));
+        const candRes = await client.candidates(open.simulation_id);
+        const candidates = (candRes.candidates || [])
+          .map(parseCandidate)
+          .filter((c) => c.simulation_id === open.simulation_id);
+        return { simulation: sim, candidates };
       };
 
       const poll = async () => {
@@ -62,10 +72,18 @@ export function createSimulationSource(
             const next = await read();
             if (!active) return;
             delay = intervalMs;
-            if (next === null ? current !== null || !delivered : isNewerSimulation(next, current)) {
-              current = next;
+            const changed =
+              next.simulation === null
+                ? currentSim !== null || !delivered
+                : isNewerSimulation(next.simulation, currentSim) ||
+                  next.candidates.length !== currentCandidates.length ||
+                  JSON.stringify(next.candidates) !== JSON.stringify(currentCandidates);
+
+            if (changed) {
+              currentSim = next.simulation;
+              currentCandidates = next.candidates;
               delivered = true;
-              onSimulation(next);
+              onUpdate(next.simulation, next.candidates);
             }
           } catch (error) {
             if (!active) return;

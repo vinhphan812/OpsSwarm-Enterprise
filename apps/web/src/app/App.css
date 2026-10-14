@@ -34,8 +34,6 @@
 @theme static {
   /* Glow of the selected product, shelf, or equipment. */
   --color-selection: #ffffff;
-  /* Outline and slot light of a recent change, such as a moved product. */
-  --color-change: #3987e5;
   /* Halo of a product with an open anomaly, by severity. */
   --color-anomaly-high: #ff4d3d;
   --color-anomaly-medium: #ff9f1a;
@@ -151,18 +149,6 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-ink-soft);
-}
-
-.activity-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 4px 0 10px;
-}
-
-.activity-section-head .activity-section-title {
-  margin: 0;
 }
 
 .activity-count {
@@ -539,36 +525,6 @@ tr[data-open="true"] .receipt-caret {
   color: var(--color-ink);
   background: color-mix(in srgb, var(--color-simulation) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-simulation) 35%, transparent);
-  border-radius: 999px;
-}
-
-/* The changed products, after their count; each one focuses its product in 3D. */
-.simulation-banner-diff {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 8px;
-}
-
-.simulation-banner-diff .simulation-banner-changes {
-  margin: 0;
-}
-
-.simulation-banner-diff li {
-  padding: 0;
-  border-color: var(--color-change);
-}
-
-.simulation-banner-diff button {
-  padding: 1px 8px;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.simulation-banner-diff button:focus-visible {
-  outline: 2px solid var(--color-change);
-  outline-offset: 1px;
   border-radius: 999px;
 }
 

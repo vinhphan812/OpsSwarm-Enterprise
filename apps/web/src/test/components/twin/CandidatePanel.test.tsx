@@ -75,15 +75,15 @@ describe("CandidatePanel", () => {
     expect(screen.getByText("$380.20")).toBeTruthy();
   });
 
-  it("shows the agent justification in a collapsible section", () => {
+  it("shows the provenance in a collapsible section", () => {
     open();
     act(() => useTwinStore.getState().selectCandidate("cand-c"));
     render(<CandidatePanel />);
-    expect(screen.getByText("Why this plan")).toBeTruthy();
+    expect(screen.getByText("Provenance")).toBeTruthy();
     // Text should be hidden by default (collapsed)
     expect(screen.queryByText(/movement-only plan/i)).toBeNull();
     // Expand it
-    fireEvent.click(screen.getByRole("button", { name: /why this plan/i }));
+    fireEvent.click(screen.getByRole("button", { name: /provenance/i }));
     expect(screen.getByText(/movement-only plan/i)).toBeTruthy();
   });
 
