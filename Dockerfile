@@ -45,20 +45,15 @@ COPY --from=builder --chown=appuser:appgroup /app/data/ ./data/
 # Make the venv Python/uvicorn available on PATH (base Python is outside the venv)
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PORT=8080
-ENV UVICORN_HOST=0.0.0.0
-ENV UVICORN_PORT=8080
 
-# Run as non-root; uvicorn does not require root to bind a low port once
-# the binary has CAP_NET_BIND_SERVICE (Python's built-in servers hold it).
+# Run as non-root. Cloud Run sends traffic to 0.0.0.0:$PORT.
 USER appuser
 
 EXPOSE 8080
 
-# Health-check: Cloud Run probes /health every few seconds. Match the route
-# so the container stays live even if the fixture is missing (returns "degraded").
+# Docker-only check. Cloud Run uses its own HTTP probe and ignores this.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD /app/.venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+    CMD /app/.venv/bin/python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8080'))"
 
-# Entrypoint: use the venv Python directly so it always resolves the venv site-packages.
-# Cloud Run sets PORT; uvicorn reads it from the environment.
-ENTRYPOINT ["/app/.venv/bin/python", "-m", "uvicorn", "retailtwin_api.main:app"]
+# exec so Cloud Run's SIGTERM reaches uvicorn. Uvicorn does not read PORT by itself.
+ENTRYPOINT ["/bin/sh", "-c", "exec /app/.venv/bin/python -m uvicorn retailtwin_api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
