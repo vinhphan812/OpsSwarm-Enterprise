@@ -168,10 +168,11 @@ class TestCanonicalStages:
     ) -> None:
         """Demo-only agent implementations live exclusively under demo_runtime.
 
-        ``agents/executor`` is the production guarded Executor (ADR 0016) and
-        ``agents/verifier`` is the production post-action verifier (ADR 0017).
-        The demo copies stay under ``demo_runtime``. Neither production module
-        imports it.
+        ``agents/executor`` is the production guarded Executor (ADR 0016),
+        ``agents/verifier`` is the production post-action verifier (ADR 0017),
+        and ``agents/orchestrator/replan.py`` is the production re-plan loop
+        (ADR 0018). The demo copies stay under ``demo_runtime``. None of these
+        production modules imports it.
         """
         import ast
         import pathlib
@@ -184,6 +185,7 @@ class TestCanonicalStages:
         production = {
             package_root / "agents" / "executor" / "executor.py": "GuardedExecutor",
             package_root / "agents" / "verifier" / "verify.py": "verify",
+            package_root / "agents" / "orchestrator" / "replan.py": "replan",
         }
         for path, marker in production.items():
             assert path.is_file(), path
@@ -206,7 +208,7 @@ class TestCanonicalStages:
             names = [
                 node.name
                 for node in tree.body
-                if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
             ]
             assert marker in names, path
 
