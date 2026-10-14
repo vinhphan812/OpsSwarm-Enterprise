@@ -168,3 +168,85 @@ def test_middleware_logs_request_start_and_end(client, caplog) -> None:
         assert getattr(record, "correlation_id"), "Empty correlation_id"
         assert record.message.startswith("request."), f"Unexpected message: {record.message}"
         assert record.levelname == "INFO"
+
+
+# ── Health degraded when analytics unavailable ──────────────────────────────────
+
+class _RaisingAnomalyRepo:
+    available = False
+    def list_anomalies(self, **kwargs):
+        raise RuntimeError("Firestore unreachable")
+
+
+class _RaisingRevenueRepo:
+    available = False
+    def get_revenue(self, **kwargs):
+        raise RuntimeError("BigQuery unreachable")
+
+
+class _RaisingPromotionRepo:
+    available = False
+    def list_promotions(self, **kwargs):
+        raise RuntimeError("BigQuery unreachable")
+
+
+def test_health_returns_degraded_when_analytics_unavailable(
+    settings, caplog, monkeypatch
+) -> None:
+    """When store is loaded but an analytics call actually raises, /health returns degraded."""
+    from fastapi.testclient import TestClient
+
+    from retailtwin_api.main import create_app
+
+    application = create_app(settings)
+    # Override with stubs that raise (simulating a real GCP outage).
+    application.state.anomalies = _RaisingAnomalyRepo()
+    application.state.revenue = _RaisingRevenueRepo()
+    application.state.promotions = _RaisingPromotionRepo()
+
+    with TestClient(application) as test_client:
+        response = test_client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["fixture_loaded"] is True
+    # No internal paths leaked
+    assert str(settings.store_fixture_path) not in response.text
+
+
+def test_health_returns_ok_when_empty_analytics_stubs(settings, caplog, monkeypatch) -> None:
+    """When store is loaded and analytics stubs return empty lists, /health returns ok."""
+    from fastapi.testclient import TestClient
+
+    from retailtwin_api.analytics_repository import (
+        _UnavailableAnomalyRepository,
+        _UnavailableRevenueRepository,
+        _UnavailablePromotionRepository,
+    )
+
+    from retailtwin_api.main import create_app
+
+    application = create_app(settings)
+    # Stubs with available=False return [] — this is NOT degraded.
+    application.state.anomalies = _UnavailableAnomalyRepository()
+    application.state.revenue = _UnavailableRevenueRepository()
+    application.state.promotions = _UnavailablePromotionRepository()
+
+    with TestClient(application) as test_client:
+        response = test_client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["fixture_loaded"] is True
+
+
+def test_health_returns_ok_when_store_and_analytics_available(client) -> None:
+    """When store is loaded and analytics repos are available, /health returns ok."""
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["fixture_loaded"] is True
