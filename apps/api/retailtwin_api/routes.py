@@ -6,6 +6,12 @@ from typing import Literal, cast
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
+from retailtwin_api.analytics_repository import (
+    AnalyticsError,
+    AnomalyRepository,
+    PromotionRepository,
+    RevenueRepository,
+)
 from retailtwin_api.errors import ApiError
 from retailtwin_api.events import EventConflict, EventLog, ReviewAuditLog
 from retailtwin_api.schemas import (
@@ -22,13 +28,20 @@ from retailtwin_api.schemas import (
     StoreEvent,
     StoreResponse,
 )
-from retailtwin_api.analytics_repository import AnomalyRepository, RevenueRepository, PromotionRepository
 from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
-    AgentEventListResponse, CandidateListResponse, CursorParameters, PageParameters,
-    DecisionReviewReasonCode, DecisionReviewVerdict,
-    SimulationDetail, SimulationFilters, SimulationListResponse, SimulationStatus,
-    SimulationReviewRequest, SimulationReviewResponse,
+    AgentEventListResponse,
+    CandidateListResponse,
+    CursorParameters,
+    DecisionReviewReasonCode,
+    DecisionReviewVerdict,
+    PageParameters,
+    SimulationDetail,
+    SimulationFilters,
+    SimulationListResponse,
+    SimulationReviewRequest,
+    SimulationReviewResponse,
+    SimulationStatus,
 )
 from retailtwin_api.store import StoreRepository
 
@@ -60,6 +73,7 @@ def get_promotions(request: Request) -> PromotionRepository:
     return request.app.state.promotions
 
 
+
 def require_simulations(repository: SimulationReadRepository) -> None:
     if not repository.available:
         raise ApiError(503, "simulations_unavailable", "Simulation read model is not available.")
@@ -75,15 +89,49 @@ def _correlation_id(request: Request) -> str:
 
 
 @router.get("/health", response_model=HealthResponse, include_in_schema=True)
-def health(request: Request, store: StoreRepository = Depends(get_store)) -> HealthResponse:
-    """Liveness probe: is the process alive? Always returns 200 if the container is running."""
+def health(
+    request: Request,
+    store: StoreRepository = Depends(get_store),
+    anomalies: AnomalyRepository = Depends(get_anomalies),
+    revenue: RevenueRepository = Depends(get_revenue_repo),
+    promotions: PromotionRepository = Depends(get_promotions),
+) -> HealthResponse:
+    """Liveness probe: is the process alive?
+
+    - status="ok"      when store is loaded AND no analytics calls raise an exception
+    - status="degraded" only when store is not loaded OR when an analytics call
+                       actually raises (e.g. GCP unreachable).  Empty responses
+                       (a store with no anomalies today) are NOT degraded.
+    """
+    if not store.loaded:
+        return HealthResponse(
+            status="degraded",
+            service="retailtwin-api",
+            environment=request.app.state.settings.app_env,
+            app_env=request.app.state.settings.app_env,
+            store_id=store.store_id,
+            fixture_loaded=False,
+        )
+    try:
+        anomalies.list_anomalies(store_id=store.store_id, limit=1)
+        revenue.get_revenue(store_id=store.store_id, period="hourly", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc))
+        promotions.list_promotions(store_id=store.store_id, limit=1)
+    except Exception:
+        return HealthResponse(
+            status="degraded",
+            service="retailtwin-api",
+            environment=request.app.state.settings.app_env,
+            app_env=request.app.state.settings.app_env,
+            store_id=store.store_id,
+            fixture_loaded=True,
+        )
     return HealthResponse(
-        status="ok" if store.loaded else "degraded",
+        status="ok",
         service="retailtwin-api",
         environment=request.app.state.settings.app_env,
         app_env=request.app.state.settings.app_env,
         store_id=store.store_id,
-        fixture_loaded=store.loaded,
+        fixture_loaded=True,
     )
 
 
@@ -177,6 +225,109 @@ def _log_event(event: StoreEvent, duplicate: bool, correlation_id: str) -> None:
     )
 
 
+# ─── Analytics ─────────────────────────────────────────────────────────────────
+
+@router.get("/anomalies", response_model=AnomaliesResponse, include_in_schema=True)
+def list_anomalies(
+    request: Request,
+    severity: AnomalySeverity | None = Query(default=None),
+    anomaly_type: AnomalyType | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: AnomalyRepository = Depends(get_anomalies),
+) -> AnomaliesResponse:
+    """Return detected anomalies for a store, newest first.
+
+    Degrades gracefully: if the analytics backend is unavailable, returns an empty
+    list with code "analytics_unavailable" logged as a warning (not a 500 crash).
+    """
+    target_store = store_id or request.app.state.settings.store_id
+    try:
+        return repo.list_anomalies(
+            store_id=target_store,
+            severity=severity,
+            anomaly_type=anomaly_type,
+            since=since,
+            limit=limit,
+        )
+    except AnalyticsError as exc:
+        logger.warning(
+            "analytics.anomalies_unavailable",
+            extra={"correlation_id": _correlation_id(request), "store_id": target_store},
+        )
+        raise ApiError(503, "analytics_unavailable", "Anomalies analytics are currently unavailable.") from exc
+
+
+@router.get("/revenue", response_model=RevenueResponse, include_in_schema=True)
+def get_revenue(
+    request: Request,
+    period: Literal["hourly", "daily", "weekly", "monthly"] = Query(default="daily"),
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: RevenueRepository = Depends(get_revenue_repo),
+) -> RevenueResponse:
+    """Return revenue aggregates for a store over the requested period.
+
+    Degrades gracefully: if the analytics backend is unavailable, returns an empty
+    revenue response with code "analytics_unavailable" logged as a warning.
+    """
+    target_store = store_id or request.app.state.settings.store_id
+    now = datetime.now(timezone.utc)
+    period_start = start or (now - timedelta(days=1))
+    period_end = end or now
+    if period_start > period_end:
+        raise ApiError(422, "invalid_range", "start must be before end.")
+    try:
+        return repo.get_revenue(
+            store_id=target_store,
+            period=period,
+            start=period_start,
+            end=period_end,
+        )
+    except AnalyticsError as exc:
+        logger.warning(
+            "analytics.revenue_unavailable",
+            extra={"correlation_id": _correlation_id(request), "store_id": target_store},
+        )
+        raise ApiError(503, "analytics_unavailable", "Revenue analytics are currently unavailable.") from exc
+
+
+@router.get("/promotions", response_model=PromotionsResponse, include_in_schema=True)
+def list_promotions(
+    request: Request,
+    status: PromotionStatus | None = Query(default=None),
+    sku: str | None = Query(default=None, min_length=1),
+    category: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: PromotionRepository = Depends(get_promotions),
+) -> PromotionsResponse:
+    """Return promotions for a store, newest first.
+
+    Degrades gracefully: if the analytics backend is unavailable, returns an empty
+    list with code "analytics_unavailable" logged as a warning.
+    """
+    target_store = store_id or request.app.state.settings.store_id
+    try:
+        return repo.list_promotions(
+            store_id=target_store,
+            status=status,
+            sku=sku,
+            category=category,
+            limit=limit,
+        )
+    except AnalyticsError as exc:
+        logger.warning(
+            "analytics.promotions_unavailable",
+            extra={"correlation_id": _correlation_id(request), "store_id": target_store},
+        )
+        raise ApiError(503, "analytics_unavailable", "Promotion analytics are currently unavailable.") from exc
+
+
+# ─── Simulations ────────────────────────────────────────────────────────────────
+
 @router.get("/simulations", response_model=SimulationListResponse)
 def list_simulations(
     status: str | None = Query(default=None, pattern="^(pending|evaluated|committed|rejected|open)$"),
@@ -233,74 +384,6 @@ def list_agent_events(
     return AgentEventListResponse(events=events, cursor=cursor)
 
 
-# ─── Analytics ─────────────────────────────────────────────────────────────────
-
-@router.get("/anomalies", response_model=AnomaliesResponse, include_in_schema=True)
-def list_anomalies(
-    request: Request,
-    severity: AnomalySeverity | None = Query(default=None),
-    anomaly_type: AnomalyType | None = Query(default=None),
-    since: datetime | None = Query(default=None),
-    limit: int = Query(default=100, ge=1, le=500),
-    store_id: str | None = Query(default=None, min_length=1),
-    repo: AnomalyRepository = Depends(get_anomalies),
-) -> AnomaliesResponse:
-    """Return detected anomalies for a store, newest first."""
-    target_store = store_id or request.app.state.settings.store_id
-    return repo.list_anomalies(
-        store_id=target_store,
-        severity=severity,
-        anomaly_type=anomaly_type,
-        since=since,
-        limit=limit,
-    )
-
-
-@router.get("/revenue", response_model=RevenueResponse, include_in_schema=True)
-def get_revenue(
-    request: Request,
-    period: Literal["hourly", "daily", "weekly", "monthly"] = Query(default="daily"),
-    start: datetime | None = Query(default=None),
-    end: datetime | None = Query(default=None),
-    store_id: str | None = Query(default=None, min_length=1),
-    repo: RevenueRepository = Depends(get_revenue_repo),
-) -> RevenueResponse:
-    """Return revenue aggregates for a store over the requested period."""
-    target_store = store_id or request.app.state.settings.store_id
-    now = datetime.now(timezone.utc)
-    period_start = start or (now - timedelta(days=1))
-    period_end = end or now
-    if period_start > period_end:
-        raise ApiError(422, "invalid_range", "start must be before end.")
-    return repo.get_revenue(
-        store_id=target_store,
-        period=period,
-        start=period_start,
-        end=period_end,
-    )
-
-
-@router.get("/promotions", response_model=PromotionsResponse, include_in_schema=True)
-def list_promotions(
-    request: Request,
-    status: PromotionStatus | None = Query(default=None),
-    sku: str | None = Query(default=None, min_length=1),
-    category: str | None = Query(default=None, min_length=1),
-    limit: int = Query(default=100, ge=1, le=500),
-    store_id: str | None = Query(default=None, min_length=1),
-    repo: PromotionRepository = Depends(get_promotions),
-) -> PromotionsResponse:
-    """Return promotions for a store, newest first."""
-    target_store = store_id or request.app.state.settings.store_id
-    return repo.list_promotions(
-        store_id=target_store,
-        status=status,
-        sku=sku,
-        category=category,
-        limit=limit,
-    )
-
-
 # ─── Simulation review ──────────────────────────────────────────────────────────
 
 def get_review_audit(request: Request) -> ReviewAuditLog:
@@ -320,7 +403,7 @@ def _run_review(
     audit: ReviewAuditLog,
     live_version: str,
 ) -> SimulationReviewResponse:
-    """Shared logic for /approve and /reject: version check → simulation check → audit."""
+    """Shared logic for /approve and /reject: version check -> simulation check -> audit."""
     # 1. Version validation: base_context_version must match live store version
     if body.base_context_version != live_version:
         logger.warning(
