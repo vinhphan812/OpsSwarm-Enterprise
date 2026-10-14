@@ -154,17 +154,19 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker gcr.io
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and push container image
-        run: |
-          docker build \
-            --tag gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }} \
-            --tag gcr.io/retailtwin-ai-511002/retailtwin-api:latest \
-            .
-          docker push gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
-          docker push gcr.io/retailtwin-ai-511002/retailtwin-api:latest
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: true
+          tags: |
+            gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
+            gcr.io/retailtwin-ai-511002/retailtwin-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deploy to Cloud Run
         id: deploy
@@ -174,7 +176,7 @@ jobs:
           region: us-central1
           project_id: retailtwin-ai-511002
           image: gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
-          service_account: retailtwin-runtime@retailtwin-ai-511002.iam.gserviceaccount.com
+          service_account: github-actions@retailtwin-ai-511002.iam.gserviceaccount.com
           allow_unauthenticated: false
           port: 8080
           min_instances: 1
