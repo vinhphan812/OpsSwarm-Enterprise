@@ -16,6 +16,8 @@ The orchestrator uses a provider-neutral `LlmProvider` interface from `retailtwi
 | `openai_compatible` | `LLM_PROVIDER=openai_compatible` | `LLM_BASE_URL`, `LLM_API_KEY` | Local proxies, OpenAI, Azure |
 | `vertex_gemini` | `LLM_PROVIDER=vertex_gemini` | GCP ADC | Production — Gemini on Vertex AI |
 
+`create_provider` uses the registry in `retailtwin_api.llm.factory` (ADR 0020). Production accepts only `vertex_gemini` with Application Default Credentials. A fake provider, a loopback endpoint, and an API key are refused. Agent packages do not branch on the provider name.
+
 ### Using FakeLlmProvider in Tests
 
 ```python

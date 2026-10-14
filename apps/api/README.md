@@ -84,6 +84,13 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 | `RETAILTWIN_DCG_MAX_ACTIONS` | `5` | More actions need a person |
 | `RETAILTWIN_DCG_MAX_REPLENISH_UNITS` | `200` | A larger replenishment needs a person |
 | `RETAILTWIN_REPLAN_MAX_REFRESHES` | `1` | Stale-context refreshes before re-plan stops |
+| `LLM_PROVIDER` | `fake` | `fake`, `openai_compatible`, or `vertex_gemini` |
+| `LLM_MODEL` | `fake-test` | Model name passed to the selected provider |
+| `LLM_TIMEOUT_SECONDS` | `30` | Provider request timeout |
+| `LLM_BASE_URL` | unset | OpenAI-compatible base URL. No default host |
+| `LLM_API_KEY` | unset | OpenAI-compatible credential only. Vertex does not read it |
+| `GOOGLE_CLOUD_PROJECT` | unset | Vertex project. Production must be `retailtwin-ai-511002` |
+| `GOOGLE_CLOUD_LOCATION` | `us-central1` | Vertex region |
 
 Accepted events log `event_id`, `correlation_id`, and `store_id` in process memory only. This demo scaffold does not publish events, connect to Firestore, or interact with BigQuery. Canonical event backbone implementation is out-of-scope for this demo.
 // trigger

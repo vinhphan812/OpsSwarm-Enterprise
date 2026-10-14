@@ -369,7 +369,10 @@ def test_openai_adapter_maps_429_to_rate_limit_error(monkeypatch: pytest.MonkeyP
 # ─── Vertex adapter ────────────────────────────────────────────────────────────
 
 
-def test_vertex_requires_project_id() -> None:
+def test_vertex_requires_project_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GOOGLE_CLOUD_PROJECT", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(ConfigurationError, match="project_id"):
         create_provider(LlmConfig(provider="vertex_gemini", model="gemini-2.5-flash"))
 

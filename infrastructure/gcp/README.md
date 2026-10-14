@@ -72,6 +72,6 @@ python infrastructure/gcp/verify.py
 
 - #6 writes documents into `(default)`. It does not create another database.
 - #7 adds the subscription and BigQuery tables.
-- #2 makes the Gemini read-tool call.
+- #2 makes the Gemini read-tool call. Production inference, when constructed, is `vertex_gemini` on this project in `us-central1` through Application Default Credentials (ADR 0020). The day-0 API does not construct a provider. The executable cloud matrix remains #134.
 - #9 deploys the scale-to-zero Cloud Run service.
 - Foundation gate #10 stays open until those exist.
