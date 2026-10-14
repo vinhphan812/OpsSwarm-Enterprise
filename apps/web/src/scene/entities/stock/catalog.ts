@@ -65,6 +65,23 @@ export function stockItemFor(kind: StockKind): StockItem {
 }
 
 /**
+ * The size items are drawn at, where it differs from `STOCK_ITEM`. The scene shows stock
+ * symbolically: bigger packs and fruit, fewer of them, so a shelf reads at a glance. Counts
+ * (capacity, units held) keep the natural size.
+ */
+const DISPLAY_SIZE: Partial<Record<StockKind, Tuple3>> = {
+  [STOCK_KIND.Packaged]: [0.105, 0.25, 0.12],
+  [STOCK_KIND.Fruit]: [0.11, 0.088, 0.11],
+};
+
+/** The item as `Stock` draws it: `cell` times its display size (a banana hand takes more room than an apple). */
+export function displayItemFor(kind: StockKind, cell = 1): StockItem {
+  const item = STOCK_ITEM[kind];
+  const size = DISPLAY_SIZE[kind] ?? item.size;
+  return { ...item, size: [size[0] * cell, size[1] * cell, size[2] * cell] };
+}
+
+/**
  * A stable 0..1 number from a product id, for picking its looks: FNV-1a, then the
  * MurmurHash3 finalizer, so ids that differ in one digit (P001, P002) still land apart.
  */

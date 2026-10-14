@@ -70,6 +70,24 @@ describe("pickSource", () => {
     expect(useTwinStore.getState().candidates).toEqual([]);
   });
 
+  it("opens only ?twin=demo in a production build made with VITE_ALLOW_DEMO=true", async () => {
+    vi.stubEnv("DEV", false);
+    vi.stubEnv("VITE_ALLOW_DEMO", "true");
+    for (const mode of ["memory", "fixture", "offline", "slow", "flaky"]) {
+      at(`/?twin=${mode}`);
+      expect(pickSource()).toBe(apiSource);
+      expect(isDemoMode()).toBe(false);
+    }
+    at("/");
+    expect(pickSource()).toBe(apiSource);
+    at("/?twin=demo");
+    const source = pickSource();
+    expect(source).not.toBe(apiSource);
+    expect(isDemoMode()).toBe(true);
+    expect(pickSimulationSource()).toBeNull();
+    await expect(source.snapshot()).resolves.toMatchObject({ products: demoStoreState().products });
+  });
+
   it("keeps demo anomalies, simulations, checkouts and badges out of the apps/api path, even when it fails", async () => {
     at("/");
     await expect(pickSource().snapshot()).rejects.toThrow("The API is unreachable.");

@@ -1,0 +1,7 @@
+Low Poly Vehicles Pack, by Daniel Quevedo
+https://opengameart.org/content/low-poly-vehicles-pack
+
+License: CC0 (Public Domain). "Public Domain, do whatever you want. Credits are appreciated :)"
+
+bus.glb: Bus.fbx from the pack, converted to binary glTF (FBX2glTF) and recolored
+(body orange-red, glass light blue, wheels grey) to sit with the Kenney pieces.

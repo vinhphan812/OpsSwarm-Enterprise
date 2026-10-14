@@ -48,10 +48,11 @@ Errors and network changes show as HeroUI toasts (`core/notify.ts`). When the br
 ## The scene
 
 - **Room**: a 14 m × 11 m floor with a procedural oak plank texture. The texture is drawn on a canvas with a seeded PRNG, so it looks the same on every load. In node tests there is no canvas, so the floor is a flat color there.
-- **Walls**: a U-shaped shell with the front (+Z) left open:
+- **Walls and roof**: four walls and a flat roof:
   - The back wall has a wood slat panel and a sliding glass door.
-  - The left wall is a glass curtain wall.
-  - A wall hides itself while the camera is outside it.
+  - The left wall and the front (+Z, toward the park) are glass curtain walls.
+  - A wall hides itself while the camera is outside it, so the shelves are always in view.
+  - Zoomed out past 1.25× the distance that fits the store, the store closes up into a building (`exteriorLevel`, `scene/camera/exterior.ts`): by 1.6× (`EXTERIOR_VIEW`) every wall stands and the `Roof` has faded in, with a parapet, two air-conditioning units, and a "MINI MART" sign (drawn on a canvas) on the front and over the door. The fitted view, where the app opens, stays open; zooming back in opens it again. The roof takes no clicks.
   - The lawn and sky outside are an `Exterior` plane plus the background color and fog.
 - **Fixtures**: listed in `fixtures/storeFixture.ts`:
   - 9 double-sided gondolas, `A01`–`C03`.
@@ -61,13 +62,15 @@ Errors and network changes show as HeroUI toasts (`core/notify.ts`). When the br
   - Plastic backstock crates (`CP`), also decor.
 - **Slots**: every display surface of a fixture is split into slots, named `<fixtureId>-S01`, `-S02`, and so on (`slotsFor`). Checkouts, barriers, and crates have no slots, so a product put on one is reported as an unknown shelf.
 - **Stock**: `Stock` draws every product in the store as a few instanced meshes. It draws one item per unit of `shelf_quantity`, front row first, up to what the facings hold. Items keep their natural width; one taller than the deck's clear height is drawn lower (`fitItem`). A slot holds `slotCapacity` facings at that width (`stock/capacity.ts`: 5 on a gondola, 2 in a glass-door cooler, 3 in an open chiller, 7 on a produce rack); the layout is the capacity source until the API serves `max_facings` (#92). More facings than that are an overflow, never a valid state: only the capacity is drawn, `SlotMarksLayer` outlines the slot in red, the product card flags it, and `TwinIssuesNotice` lists it (`facingsOverCapacity`). The count still follows twin state. Gondolas, coolers, and chillers show boxes. Produce racks show heaps of fruit. Twin state has no product looks, so each product's color and height come from its id (`stock/catalog.ts`).
+- **Stock models** (issue #29, ADR 0022): products are drawn with low-poly GLB models instead of primitives. Packaging with printed labels comes from Snackies (loafbrr, CC0: cereal boxes, cookie and biscuit packs, chip bags, milk and juice cartons; one file, `snackies.glb`, picked by node name). The rest comes from Kenney's Food Kit (CC0): jars, a can, an oil bottle, paper bags, meat trays, ribs, sausages, a fish, frozen bags, ice cream tubs, ice lollies, apples, oranges, lemons, and hands of bananas (the pack has one banana; four copies fanned from the stem are merged into one mesh when it loads, `clusterOf`). Loose produce may reach past its cell (`grow`) and lies at a random turn, so a hand of bananas is banana-sized in a heap laid out for apples. The named demo catalog has its models listed (`PRODUCT_MODEL` in `stock/models.ts`). Any other product takes one from its surface's pool by its id (`MODEL_POOL`), with a light tint on Kenney's plain packaging so neighbours read apart (printed packaging is never tinted). Once the models have loaded, no item is a plain box or sphere: stable across reloads, but not data, like `productLook`. A model takes the cell its primitive would fill, in its own proportions, standing on the cell's floor (`fitModel`), so item counts, places, slot capacity, and hit boxes are unchanged. A listed model is used only on the surface kind it is listed for, so a SKU that means something else in other state (P003 is a fruit in the tests) keeps its primitive. Where each item goes is `stock/placement.ts`, shared with the demo data. The models load after the scene is up (`useStockModels`); until then, and for any model that fails to load, items are primitives, and the scene never waits or crashes on an asset. They are loaded once per page and shared by every mount, like the primitives. `?assets=primitive` draws every item as a primitive and loads nothing.
+- **Decor and street** (`Decor`, `fixtures/decorFixture.ts`): potted plants in the free corners and by the door, a door mat, a bin, a cart and baskets inside (the railed pocket by the door, between BR02, BR05, and the door divider); trees, bushes, and flowers on the lawn beyond the glass wall. The store stands on a block of a street grid: the two-lane roads round it (a crossing at the door, the lot's driveway beside it) carry on three tiles to an outer ring road, so the town is cut into blocks. Each road tile is a Kenney piece on a 9.5 m grid; where roads meet, `junction` picks a crossroad, a T, or a bend and turns it to the open sides. Every block has a pavement round it, and the ring one round its outside. A low wooden fence keeps to the grass of the store's block: just inside its pavements and round the lot's lawn sides (the lot stays open to the back road), open where each park path and the walk come in; on the back the store's wall is the edge. Traffic lights stand on two corners of each crossroad round the store; across the back road from the store is a bus stop (a shelter drawn by `Decor`, benches, a sign) with a bus pulled in, and another bus runs the ring. On the store's block: on the right, a kerbed parking lot with painted bays and a few cars (drawn by `Decor` as one slab, so it has no seams); on the left, a park with a paved plaza and a fountain whose jet rises and falls (drawn by `Decor`, low-poly and flat-shaded), paths out to each pavement, benches and lamps round the plaza, flower beds, a lily pond, and shade trees; in front, the winding walk past the glass wall with benches and flower beds, kept low in the default view's line of sight. Shopfronts across the back road (held to 9–11 m, so an orbit never puts the camera inside one), houses (drawn at three quarters of the city kits' scale, so they sit with the store) behind fenced front gardens across the front road and on the side blocks, then past the ring towers and offices behind the shops and rows of houses and pines facing it elsewhere. Seeded copses fill the open lawn of the store's block, kept off the lot, the park, and the default view (`CLEAR`). A piece the camera is inside is hidden. Above it all, `Sky`: a gradient dome from the horizon color (`SKY_COLOR`, also the fog color) to `SKY_ZENITH_COLOR`, and a ring of low-poly clouds; the lawn plane reaches past the fog, so its edge never shows. All CC0 low-poly GLBs (Kenney Furniture, Nature, Mini Market, City Kit Roads, Commercial, Suburban, and Car Kit; Tiny Treats house plants; the bus from Daniel Quevedo's Low Poly Vehicles Pack). Each piece is placed in meters and sized by height, width, or a scale per axis (`fitDecor`). Decor is not twin state: it has no entity id and takes no clicks (`prepareDecor` turns off its raycast), so it never blocks a selection. It loads after the scene is up, a file that fails is left out, and `?assets=primitive` hides it with the stock models.
 - **Selection**: fixtures show no labels; the pointer turns into a hand over a selectable one. Clicking an item selects its product: its items glow (`Stock` draws them again in the `--color-selection` theme color, read by `themeColor`) and its card opens. Clicking a gondola or equipment with a card (rack, cooler, chiller, checkout) selects it, lights up its parts (`useSelectionGlow`), and opens its card; a click on one of its own items still selects the product. A press that moves more than `CLICK_SLOP_PX` is a camera drag and selects nothing. Opening `/?product=P001` selects that product on load. Clicking empty space clears the selection.
 - **Anomalies**: every product with an open anomaly in `anomaly.store` gets a see-through halo around its items (`Stock`'s `AnomalyMesh`), selected or not, in its worst severity's color (`--color-anomaly-high|medium|low` theme tokens: red, orange, yellow). The halo pulses at `ANOMALY_PULSE_HZ`, and holds still under reduced motion. It sits outside the selection glow, so a selected product with an anomaly shows both. Only products in the twin state are drawn, so an anomaly on a SKU the twin lacks shows nothing, and an empty slot (a stockout) has no items to put a halo on. `anomaly.store` takes `setAll` (a `GET /anomalies` response), `raise` (an anomaly event; same `anomaly_id` replaces), and `resolve`. The contract is `Anomaly` and `AnomaliesResponse` in `types/anomaly.type.ts`, the FE's proposal. `apps/api` serves no anomalies yet (`TODO(BE)`), so only `?twin=demo` and tests fill the store.
 - **Camera** (`CameraControls`):
   - Left drag orbits around the point under the cursor (`useOrbitAroundPointer`). That point is clamped to the zoom range, so a click never moves the camera.
   - Right drag (or two fingers) pans inside the store bounds.
   - The wheel zooms toward the cursor.
-  - On every resize, `useFitCamera` fits the whole store into the canvas and limits zoom-out to 1.4× that distance.
+  - On every resize, `useFitCamera` fits the whole store into the canvas and limits zoom-out to 2.4× that distance (room to see the store closed up and the town round it).
   - On every new selection, `useFocusSelection` flies the camera to it (`scene/camera/focus.ts`): a product's slot from the side its stock faces, a little above, at the minimum zoom; a piece of equipment centered and fitted, seen from its front (into the room); a gondola the same, from the side the camera is on. The camera always stays inside the walls, and rises (up to `FOCUS_MAX_ELEVATION`) until no other fixture blocks its line of sight, so a slot across a 1.3 m aisle is seen over the next gondola. With the side panel open, the target lands in the middle of the part of the canvas the panel leaves visible (a focal offset, `panelOffset`). Once per selection, so twin updates never move the camera; a `?product=` selection is focused when the twin arrives. The flight is slower than a wheel step (`FOCUS_SMOOTH_TIME`) and instant under reduced motion.
 - **Shadows**: the shadow map is redrawn only when stock changes or a wall hides or shows (`StaticShadows`), not on every frame of an orbit.
 
@@ -162,7 +165,7 @@ For `CHANGE_CUE_MS` (4 s) the hook returns `{ diff, at, before }`, where `before
 
 ### Twin sources
 
-`apiSource` (the Live Twin from `GET /store` on `VITE_API_BASE_URL`) is the default, and the only source of a production build. In development, `?twin=` swaps in a local source:
+`apiSource` (the Live Twin from `GET /store` on `VITE_API_BASE_URL`) is the default, and the only source of a production build unless it is built with `VITE_ALLOW_DEMO=true` (see *Hosted demo* below). In development, `?twin=` swaps in a local source:
 
 | `?twin=` | Source |
 | --- | --- |
@@ -179,11 +182,11 @@ Under `memory` and `demo`, the console also drives simulations (`core/twin/memor
 
 ### Demo data
 
-`?twin=demo` (development builds only, `isDemoMode`) turns on made-up data for the demo, all in `fixtures/demo/`:
+`?twin=demo` (development builds, or a build with `VITE_ALLOW_DEMO=true`; `isDemoMode`) turns on made-up data for the demo, all in `fixtures/demo/`:
 
 | File | What | Read by |
 | --- | --- | --- |
-| `store.ts` | a product on every kind of fixture that holds stock, some out of stock or low | the twin source |
+| `store.ts` | the named catalog (P001–P020, no P017 or P019; P017 because the demand-surge scenario and the SKU lookup use it as a SKU the store lacks), a product on every kind of fixture that holds stock, some out of stock or low; plus unnamed filler stock P101 onward on about 75% of the free slots (`FILLERS`, 537 SKUs), so the store looks trading. Fillers hold a third to all of what their facings take (`slotUnits`) and are never low or out, so the demo's alerts stay the named products'. They leave the simulation's move targets free and have no names, prices, or sales | the twin source |
 | `checkouts.ts` | three lanes (open, paused, closed) and today's sales with receipt lines, from a fixed price list | `useCheckoutSummary`, `useCheckoutTransactions` |
 | `commerce.ts` | Revenue for every window (today adds up the checkout sales) and Promotions in every status | `useRevenue`, `usePromotions` through `demoClient` |
 | `simulation.ts` | `sim-demo-001`: restock P003, one more facing for P004, P007 moved from B02-S20 to B02-S22, and the well-stocked P008 (C01-S21 → A02-S22) and P005 (A03-S22 → B01-S22) moved to another gondola, so a move shows a full facing travel | `twin.store.simulation` on load; `twin.simulate()` in the console |
@@ -192,6 +195,17 @@ Under `memory` and `demo`, the console also drives simulations (`core/twin/memor
 | `anomalies.ts` | open anomalies that agree with the demo store's stock: stockouts and low stock where the shelf says so, and sales drops on full shelves, so a halo shows at every severity | `anomaly.store` on load; `twin.anomalies()`, `twin.raise()` in the console |
 
 The figures agree with each other: a lane's card adds up its sales, each sale its receipt lines, and today's revenue the lanes. Everything else still reads `apps/api`. Without `?twin=demo`, and in tests, none of it is used. The whole demo is one commit, so it can be reverted on its own.
+
+### Hosted demo
+
+A production build ignores `?twin=` unless it is built with `VITE_ALLOW_DEMO=true`. Then `?twin=demo`, and no other dev twin, opens the demo store. The page without it still reads apps/api, and the demo data stays marked **Demo data**. Anyone who adds `?twin=demo` to the URL sees it, so build the hosted site this way only while it serves as a demo:
+
+```bash
+VITE_API_BASE_URL=https://<api-origin> VITE_ALLOW_DEMO=true npm run build
+firebase deploy --only hosting
+```
+
+Share `https://<site>/?twin=demo`.
 ## Source layout
 
 ```text
@@ -232,7 +246,7 @@ src/
     utils/                  groupBy, padId, seeded PRNG, number/money/date formatters
   hooks/                    twinSource, networkStatus, productParam, twinIssues, storeStatus,
                             commerce, hover, fitCamera, orbitPoint, simulationReview, recentChanges,
-                            agentFocus, cameraActivity
+                            agentFocus, cameraActivity, stockModels
   state/                    Zustand stores, read-side copies only
     twin.store.ts           live state, last live change, open simulation, issues, status, stale flag,
                             retry; activeState
@@ -249,9 +263,13 @@ src/
                             HitBox, entity.ts (name + userData), woodTexture.ts
       equipment/            Checkout, Barrier, GlassDoorCooler, OpenChiller, ProduceRack, Crate,
                             Equipment (dispatch by kind), parts.tsx (shared box parts and materials)
-      stock/                Stock (instanced items), catalog.ts (looks), surfaces.ts (display surfaces)
+      stock/                Stock (instanced items), catalog.ts (looks), surfaces.ts (display surfaces),
+                            placement.ts (where a slot's items go, slotUnits),
+                            models.ts (GLB stock models: registry, pools, loading, fit)
+      decor/                Decor (plants, furnishings, street), decorModels.ts (loading, fitDecor)
   fixtures/
     storeFixture.ts         the static layout: gondolas and equipment, no products
+    decorFixture.ts         where each plant, street tile, building, and car stands
     commerceFixture.ts      empty revenue and promotions reports, shown until a read lands
   constants/                <area>.constant.ts: camera, dimensions, scene, twin, app, i18n, commerce
   enums/                    <area>.enum.ts: as-const value sets and their types
@@ -281,6 +299,13 @@ src/
 - Store, shelf, slot, product, and equipment objects set `name` and `userData.entityId` to the domain id, and `userData.entityType` to the entity type (`entityProps`).
 - A fixture faces its local +Z. `rotationY` is one of the `FACING` turns.
 - Slot ids are `<fixtureId>-S<nn>`. This matches `slot_id` in `docs/DOMAIN_AND_DATA_MODEL.md`.
+
+### Adding a stock model
+
+1. Put the `.glb` in `public/models/<pack>/` (several models may share one file; `node` in `MODEL_SPEC` names the mesh), named in kebab case after what it shows (`bottle-oil.glb`). Keep a shared texture at the path the GLB references (Kenney's: `Textures/colormap.png`), and the pack's license next to it. Record the source and license in `assets/3d/README.md`.
+2. Limits: one mesh with one `MeshStandardMaterial`, no more than about 200 triangles and 20 KB, since a full store draws some ten thousand items. Do not run a mesh simplifier over flat-shaded models: meshoptimizer broke Kenney's (holes, loose triangles). Check with `npx @gltf-transform/cli inspect <file>`. When repacking a file with gltf-transform, pass `--vertex-layout separate`: with the default interleaved layout, every mesh in a shared file drew the first mesh's label. No Draco, meshopt, or KTX2 for now: files this size gain less than a decoder costs.
+3. Add its id to `STOCK_MODEL` (`enums/stock.enum.ts`) and its file, surface kinds, and `rotationY` (to turn its broad side to +Z) to `MODEL_SPEC`, then map SKUs to it in `PRODUCT_MODEL`, with a `tint` if it is shared by more than one product.
+4. Check it in `npm run dev` at `/?twin=demo&product=<SKU>`, and against `&assets=primitive`.
 
 ## Tests
 
@@ -335,5 +360,23 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
 - Issue #22: selection, highlight, details cards, the product details dialog, camera focus, and the anomaly halo are done on the FE. A product can be selected from the 3D view, a shelf's card, the Agent Activity timeline, a SKU lookup, Revenue's SKU lists, and a promotion's products. It stays open until `apps/api` serves anomalies (and their events) and checkout data. To check by hand: `npm run dev`, open `/?twin=demo`. P003, P004, P006, P007, P009, P010, and P012 carry demo anomalies and show a halo in their severity's color where the shelf has items (P003 and P010 are empty). Select one, and its card and **Details** list the anomaly. To raise one by hand, run `twin.raise("P001")` in the console; `twin.resolve("P001")` clears it.
 - Issue #27: `twin.store` holds the open run's `candidates` and `selectedCandidateId`; the Simulation view (`shownSimulation`, `activeState`) shows the selected candidate's actions and state, else the run's own. While a proposal is on screen every slot it changes against Live is outlined in `--color-change` (`useProposalChanges`, `SlotMarksLayer`), a move's source slot included, and the banner lists the changed products (*N changes*); one click selects and focuses it. Switching candidates replays the move and facings cues. #39's panel selects candidates and shows KPIs; #93 reads them from `GET /simulations/{id}/candidates`. To check by hand: `npm run dev`, open `/?twin=demo`, switch to Simulation, and run `twin.candidate("cand-b")`, then `"cand-c"`.
 - Issue #28: **Following the agent.** `useAgentFocus` (mounted in `TwinPage`) watches `run.store`: a new entry at INVESTIGATE, ACT, or VERIFY calls `ui.store.focusEntity(id, type, reason)` on its SKU, else on its `shelf_id` (a gondola or a piece of equipment). That selects it with `focusSource: "agent"`, flies the camera there even if it was already selected (`focusSeq`), and `AgentFocusCaption` shows the entry's summary at the bottom of the 3D view until the user selects something else. Nothing moves while **Follow agent** is off. While the user drags the camera, or has moved it or made a selection in the last `AGENT_FOCUS_IDLE_MS` (5 s, from `useCameraActivity`), the focus waits and only the latest one is kept. The controls are never locked. The single Agent Activity panel is `components/layout/AgentActivityPanel.tsx`. #94 fills `run.store` from `GET /agent/events`. To check by hand: `npm run dev`, open `/?twin=demo`, run `twin.agentRun()` in the console, and drag the camera during the run.
+- Issue #29: GLB stock models with the `?assets=primitive` fallback are in. Measured A/B on the dev server at `/?twin=demo` with the filled demo store (555 products, then with a pizza SKU that has since been dropped), in Chrome on an M1 Pro, with `?assets=primitive` as the baseline; two runs each. The mobile profile throttles the CPU only, so it says little about a phone's GPU:
+
+  | | Primitives | GLB models |
+  | --- | --- | --- |
+  | Desktop 1440×900, FPS idle / orbit (120 Hz display) | 104–112 / 112–120 | 89–90 / 90 |
+  | Mobile 390×844, 4× CPU throttle, FPS idle | 59–64 | 50–58 |
+  | Draw calls per frame, idle | about 500 | 530 |
+  | Triangles per frame, idle / orbit | 0.4M / 0.6M | 1.7M / 2.6M |
+  | Until the draw calls settle (load), desktop / mobile | 1.05–1.22 s / 3.0–3.1 s | 1.29–1.31 s / 3.6 s |
+  | Model assets | none | 14 GLBs (215 KB) and one atlas (11 KB) |
+  | JS, gzip | 542 KB before #29 | 545 KB, and `GLTFLoader` (14 KB) loaded on demand |
+
+  The triangle count is the open risk on phones. Simplifying the meshes halved it but broke the models, so it was dropped. The first frame is not delayed: the models swap in once loaded. Not yet checked on a real phone.
+
+  Critical path, rerun on 2026-10-14 against `e2c59a7`:
+  - `pytest tests/e2e/`: 49 passed, as on `main`. The change touches no file under `apps/api`, `tests`, `contracts`, or `data`, so the API path it covers is the same code.
+  - Browser (Chrome headless, 1440×900, dev server): `/?twin=demo` draws the store with models (79 GLB files, none failed); zoomed all the way out, the store is closed up with its roof and "MINI MART" sign, in the town; `/?twin=demo&assets=primitive` draws primitives and requests no GLB; `/` with the API stopped still mounts the scene. No page errors; the only console error is `/favicon.ico` (404), which `main` has too.
+  - The full flagship scenario (20 consecutive runs from reset) is gate G06 (#53), which is not runnable yet. It is still to do for this change once it is.
 - Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.
 // trigger CI re-check

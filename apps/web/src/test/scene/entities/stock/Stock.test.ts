@@ -2,7 +2,7 @@ import { Matrix4, Quaternion, Vector3 } from "three";
 import { describe, expect, it } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import { toSceneStore } from "@/scene/layout";
-import { buildStock } from "@/scene/entities/stock/Stock";
+import { buildStock, unitsHeld } from "@/scene/entities/stock/Stock";
 import { productLook, stockItemFor } from "@/scene/entities/stock/catalog";
 import { surfaceMatrix, surfacesOf } from "@/scene/entities/stock/surfaces";
 import { entityMatrix } from "@/scene/utils/transform";
@@ -29,9 +29,9 @@ describe("buildStock", () => {
 
   it("draws packaged goods as boxes and fruit as a heap of spheres", () => {
     const batches = buildStock(storeFixture);
-    const units = (id: string) => storeFixture.products.find((p) => p.productId === id)!.shelfQuantity;
-    expect(batches.box).toHaveLength(units("P001") + units("P002"));
-    expect(batches.sphere).toHaveLength(units("P003"));
+    const ids = (items: typeof batches.box) => new Set(items.map((item) => item.productId));
+    expect(ids(batches.box)).toEqual(new Set(["P001", "P002"]));
+    expect(ids(batches.sphere)).toEqual(new Set(["P003"]));
     expect(batches.cylinder).toHaveLength(0);
   });
 
@@ -45,16 +45,20 @@ describe("buildStock", () => {
     it("draws its facings at its slot, following twin changes", () => {
       const capacity = (facings: number) => drawn({ facings, shelfQuantity: FULL }).length;
       expect(capacity(1)).toBeGreaterThan(0);
-      // Each extra facing adds the same column of items.
-      expect(capacity(2)).toBe(2 * capacity(1));
+      // More facings take more of the slot.
+      expect(capacity(3)).toBeGreaterThanOrEqual(capacity(1));
+      expect(capacity(5)).toBeGreaterThan(capacity(1));
       // A product moved to a slot that does not exist is not drawn.
       expect(drawn({ slotId: "A01-S99", shelfQuantity: FULL })).toHaveLength(0);
     });
 
-    it("draws one item per unit of shelf stock, up to what the facings hold", () => {
-      const capacity = drawn({ facings: 3, shelfQuantity: FULL }).length;
-      expect(drawn({ facings: 3, shelfQuantity: 5 })).toHaveLength(5);
-      expect(drawn({ facings: 3, shelfQuantity: capacity + 50 })).toHaveLength(capacity);
+    it("draws stock symbolically: fuller as the stock fills what the facings hold, one item for any stock", () => {
+      const held = unitsHeld({ ...storeFixture, products: [{ ...product, facings: 3, shelfQuantity: FULL }] }).get("P001")!;
+      const full = drawn({ facings: 3, shelfQuantity: FULL }).length;
+      expect(full).toBeLessThan(held);
+      expect(drawn({ facings: 3, shelfQuantity: held })).toHaveLength(full);
+      expect(drawn({ facings: 3, shelfQuantity: Math.round(held / 2) }).length).toBeLessThan(full);
+      expect(drawn({ facings: 3, shelfQuantity: 1 })).toHaveLength(1);
       expect(drawn({ facings: 3, shelfQuantity: 0 })).toHaveLength(0);
       expect(drawn({ facings: 0, shelfQuantity: 8 })).toHaveLength(0);
     });

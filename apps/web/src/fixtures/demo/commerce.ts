@@ -40,6 +40,12 @@ export const DEMO_NAMES: Readonly<Record<string, string>> = {
   P010: "Frozen peas 1 kg",
   P011: "Gala apples",
   P012: "Bananas",
+  P013: "Pork ribs 500 g",
+  P014: "Pork sausages 400 g",
+  P015: "Whole trout",
+  P016: "Vanilla ice cream 1 L",
+  P018: "Orange ice lolly",
+  P020: "Frozen fries 1 kg",
 };
 
 const cents = (value: number) => Math.round(value * 100) / 100;

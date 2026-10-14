@@ -24,8 +24,10 @@ export const EQUIPMENT_TITLE: Partial<Record<EquipmentKind, `scene.stock.${Stock
   [EQUIPMENT_KIND.Checkout]: "scene.checkout",
 };
 
-/** Sky color behind the store, also the fog color so the lawn fades into it. */
+/** Sky color at the horizon, also the fog color so the lawn fades into it. */
 export const SKY_COLOR = "#dfe7ec";
+/** Sky color overhead (`Sky`). */
+export const SKY_ZENITH_COLOR = "#7fb2e0";
 
 /** Emissive strength of a selected fixture's parts. */
 export const SELECTION_GLOW = 0.55;
@@ -42,9 +44,9 @@ export const ANOMALY_PULSE_DEPTH = 0.45;
 /** A press that moves the pointer more than this many pixels is a camera drag, not a click. */
 export const CLICK_SLOP_PX = 4;
 
-/** Size of the lawn plane around the store, in meters. */
-export const GROUND_SIZE = 80;
-export const LAWN_COLOR = "#b9c3a8";
+/** Size of the lawn plane around the store, in meters: past the fog's far end, so its edge never shows. */
+export const GROUND_SIZE = 240;
+export const LAWN_COLOR = "#a9c28b";
 
 /** Warm matte white plaster. */
 export const WALL_COLOR = "#f3f1ed";
