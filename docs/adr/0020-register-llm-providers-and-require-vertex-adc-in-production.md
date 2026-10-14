@@ -14,6 +14,8 @@ ADR 0008 keeps agent code on one provider-neutral `LlmProvider`. The factory tha
 
 `create_provider` looks up a registered builder. The shipped adapters are `fake`, `openai_compatible`, and `vertex_gemini`. Another adapter is a `register_provider` call. It is not an edit to the planner, the investigator, or the tool registry. An unknown name fails. A builder that raises is not replaced with the fake provider.
 
+The name `vertex_gemini` always builds the shipped Vertex adapter. `register_provider` and `unregister_provider` cannot replace or remove it. `install_builtin_providers` restores the shipped builders and does not accept a caller-supplied builder. A new provider name can still be registered for development.
+
 Each adapter declares the same capability flags: structured output, tool calling, tool-result continuation, native JSON schema, and usage metadata. Callers read the flags.
 
 `LLM_PROVIDER`, `LLM_MODEL`, and `LLM_TIMEOUT_SECONDS` are the common settings. `LLM_BASE_URL` and `LLM_API_KEY` belong only to `openai_compatible`. Vertex takes `GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` and authenticates with Application Default Credentials.

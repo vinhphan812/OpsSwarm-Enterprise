@@ -240,4 +240,4 @@ In CI and tests, inject the fake provider so no real LLM is called.
 4. Add `test_llm_<provider_name>.py` with coverage for: success, error mapping, tool calls, structured output.
 5. Document in this section and in `.env.example`.
 
-Production (`APP_ENV=production`) can construct only `vertex_gemini` for project `retailtwin-ai-511002` in `us-central1`. The adapter uses Application Default Credentials. A fake provider, a loopback URL, and a Gemini or Google API key are refused. There is no fallback to the fake provider when a real adapter fails. Issue #2 still owns the live tool call.
+Production (`APP_ENV=production`) can construct only `vertex_gemini` for project `retailtwin-ai-511002` in `us-central1`. The adapter uses Application Default Credentials. `register_provider` cannot replace or remove that name. A fake provider, a loopback URL, and a Gemini or Google API key are refused. There is no fallback to the fake provider when a real adapter fails. Issue #2 still owns the live tool call.

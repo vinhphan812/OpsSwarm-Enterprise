@@ -68,6 +68,9 @@ class _ProviderSpec:
 _REGISTRY: dict[str, _ProviderSpec] = {}
 
 
+_PRODUCTION_PROVIDER = "vertex_gemini"
+
+
 def register_provider(
     name: str,
     build: Callable[[LlmConfig], LlmProvider],
@@ -75,27 +78,39 @@ def register_provider(
     *,
     replace: bool = False,
 ) -> None:
-    """Register one adapter. A second registration of the same name is refused."""
+    """Register one adapter. A second registration of the same name is refused.
+
+    ``vertex_gemini`` is the production adapter. This function cannot replace
+    or rebind it, including when ``replace`` is true.
+    """
 
     if not name.strip() or "\n" in name or "\r" in name:
         raise ConfigurationError("provider name is blank.")
+    if name == _PRODUCTION_PROVIDER:
+        raise ConfigurationError(
+            "vertex_gemini is the production Vertex adapter and cannot be replaced."
+        )
     if name in _REGISTRY and not replace:
         raise ConfigurationError(f"LLM provider {name!r} is already registered.")
     _REGISTRY[name] = _ProviderSpec(build, capabilities)
 
 
 def unregister_provider(name: str) -> None:
-    """Drop a test adapter. Built-ins are restored with ``install_builtin_providers``."""
+    """Drop a development adapter. The production Vertex adapter stays registered."""
 
+    if name == _PRODUCTION_PROVIDER:
+        raise ConfigurationError(
+            "vertex_gemini is the production Vertex adapter and cannot be removed."
+        )
     _REGISTRY.pop(name, None)
 
 
 def install_builtin_providers() -> None:
-    """Register the three adapters shipped with the API."""
+    """Restore the shipped adapters. Callers cannot supply a builder."""
 
-    register_provider("fake", _build_fake, STANDARD_CAPABILITIES, replace=True)
-    register_provider("openai_compatible", _build_openai, STANDARD_CAPABILITIES, replace=True)
-    register_provider("vertex_gemini", _build_vertex, STANDARD_CAPABILITIES, replace=True)
+    _REGISTRY["fake"] = _ProviderSpec(_build_fake, STANDARD_CAPABILITIES)
+    _REGISTRY["openai_compatible"] = _ProviderSpec(_build_openai, STANDARD_CAPABILITIES)
+    _REGISTRY[_PRODUCTION_PROVIDER] = _ProviderSpec(_build_vertex, STANDARD_CAPABILITIES)
 
 
 def llm_config_from_settings(settings: Settings) -> LlmConfig:
@@ -117,9 +132,14 @@ def create_provider(config: LlmConfig) -> LlmProvider:
     """Create the configured adapter. A failed build is not replaced with the fake provider."""
 
     _enforce(config)
-    spec = _REGISTRY.get(config.provider)
-    if spec is None:
-        raise ConfigurationError(f"Unknown LLM provider {config.provider!r}.")
+    if config.provider == _PRODUCTION_PROVIDER:
+        # The shipped builder, not whatever a caller stored under this name.
+        spec = _ProviderSpec(_build_vertex, STANDARD_CAPABILITIES)
+    else:
+        found = _REGISTRY.get(config.provider)
+        if found is None:
+            raise ConfigurationError(f"Unknown LLM provider {config.provider!r}.")
+        spec = found
     provider = spec.build(config)
     provider.capabilities = spec.capabilities
     return provider
@@ -148,12 +168,12 @@ def _reject_forbidden_keys() -> None:
 def _enforce(config: LlmConfig) -> None:
     app_env = _app_env(config)
     if config.base_url and _loopback(config.base_url) and (
-        app_env == "production" or config.provider == "vertex_gemini"
+        app_env == "production" or config.provider == _PRODUCTION_PROVIDER
     ):
         raise ConfigurationError("production inference does not accept a loopback endpoint.")
-    if app_env == "production" and config.provider != "vertex_gemini":
+    if app_env == "production" and config.provider != _PRODUCTION_PROVIDER:
         raise ConfigurationError("production LLM_PROVIDER must be vertex_gemini")
-    if config.provider != "vertex_gemini":
+    if config.provider != _PRODUCTION_PROVIDER:
         return
     _reject_forbidden_keys()
     if config.api_key:
