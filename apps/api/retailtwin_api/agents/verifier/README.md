@@ -8,4 +8,4 @@ The report status is `VERIFIED`, `REGRESSION`, or `INCONCLUSIVE`. A row that doe
 
 `expected_impact.kpi_score` of `-1.0` is the planner's unscored sentinel. It is not compared and this package does not recompute the #33 formula. Any other expected score is `REGRESSION` when the caller supplies a different decimal, and `INCONCLUSIVE` when the caller supplies none.
 
-The audit event stores the decision id, correlation id, status, reason, and SKUs in process memory. Logs use those fields and, on a read failure, the exception type. They do not include the exception text. `verify` does not write the Live Twin, does not import a model SDK, and does not import `demo_runtime`. No route calls it. Re-plan remains #20.
+The audit event stores the decision id, correlation id, status, reason, and SKUs in process memory. Logs use those fields and, on a read failure, the exception type. They do not include the exception text. `verify` does not write the Live Twin, does not import a model SDK, and does not import `demo_runtime`. No route calls it. Re-plan is `replan` in the orchestrator (ADR 0018). This check does not call it.

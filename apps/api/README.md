@@ -66,6 +66,7 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 | `RETAILTWIN_DCG_MAX_FACINGS` | `12` | Facings limit per slot |
 | `RETAILTWIN_DCG_MAX_ACTIONS` | `5` | More actions need a person |
 | `RETAILTWIN_DCG_MAX_REPLENISH_UNITS` | `200` | A larger replenishment needs a person |
+| `RETAILTWIN_REPLAN_MAX_REFRESHES` | `1` | Stale-context refreshes before re-plan stops |
 
 Accepted events log `event_id`, `correlation_id`, and `store_id` in process memory only. This demo scaffold does not publish events, connect to Firestore, or interact with BigQuery. Canonical event backbone implementation is out-of-scope for this demo.
 // trigger
