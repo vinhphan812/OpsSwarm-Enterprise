@@ -92,3 +92,7 @@ class StoreRepository:
             backroom_quantity=item.backroom_quantity,
             version=self._version,
         )
+
+    def is_available(self) -> bool:
+        """Return True when the fixture file is present and valid."""
+        return self.loaded

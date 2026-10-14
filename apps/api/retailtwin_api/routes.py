@@ -8,7 +8,20 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 
 from retailtwin_api.errors import ApiError
 from retailtwin_api.events import EventConflict, EventLog, ReviewAuditLog
-from retailtwin_api.schemas import EventReceipt, HealthResponse, ProductInventory, ReadyResponse, StoreEvent, StoreResponse
+from retailtwin_api.schemas import (
+    AnomaliesResponse,
+    AnomalySeverity,
+    AnomalyType,
+    EventReceipt,
+    HealthResponse,
+    ProductInventory,
+    PromotionStatus,
+    PromotionsResponse,
+    ReadyResponse,
+    RevenueResponse,
+    StoreEvent,
+    StoreResponse,
+)
 from retailtwin_api.analytics_repository import AnomalyRepository, RevenueRepository, PromotionRepository
 from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
@@ -218,6 +231,74 @@ def list_agent_events(
     except ValueError as exc:
         raise ApiError(422, "invalid_cursor", str(exc)) from exc
     return AgentEventListResponse(events=events, cursor=cursor)
+
+
+# ─── Analytics ─────────────────────────────────────────────────────────────────
+
+@router.get("/anomalies", response_model=AnomaliesResponse, include_in_schema=True)
+def list_anomalies(
+    request: Request,
+    severity: AnomalySeverity | None = Query(default=None),
+    anomaly_type: AnomalyType | None = Query(default=None),
+    since: datetime | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: AnomalyRepository = Depends(get_anomalies),
+) -> AnomaliesResponse:
+    """Return detected anomalies for a store, newest first."""
+    target_store = store_id or request.app.state.settings.store_id
+    return repo.list_anomalies(
+        store_id=target_store,
+        severity=severity,
+        anomaly_type=anomaly_type,
+        since=since,
+        limit=limit,
+    )
+
+
+@router.get("/revenue", response_model=RevenueResponse, include_in_schema=True)
+def get_revenue(
+    request: Request,
+    period: Literal["hourly", "daily", "weekly", "monthly"] = Query(default="daily"),
+    start: datetime | None = Query(default=None),
+    end: datetime | None = Query(default=None),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: RevenueRepository = Depends(get_revenue_repo),
+) -> RevenueResponse:
+    """Return revenue aggregates for a store over the requested period."""
+    target_store = store_id or request.app.state.settings.store_id
+    now = datetime.now(timezone.utc)
+    period_start = start or (now - timedelta(days=1))
+    period_end = end or now
+    if period_start > period_end:
+        raise ApiError(422, "invalid_range", "start must be before end.")
+    return repo.get_revenue(
+        store_id=target_store,
+        period=period,
+        start=period_start,
+        end=period_end,
+    )
+
+
+@router.get("/promotions", response_model=PromotionsResponse, include_in_schema=True)
+def list_promotions(
+    request: Request,
+    status: PromotionStatus | None = Query(default=None),
+    sku: str | None = Query(default=None, min_length=1),
+    category: str | None = Query(default=None, min_length=1),
+    limit: int = Query(default=100, ge=1, le=500),
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: PromotionRepository = Depends(get_promotions),
+) -> PromotionsResponse:
+    """Return promotions for a store, newest first."""
+    target_store = store_id or request.app.state.settings.store_id
+    return repo.list_promotions(
+        store_id=target_store,
+        status=status,
+        sku=sku,
+        category=category,
+        limit=limit,
+    )
 
 
 # ─── Simulation review ──────────────────────────────────────────────────────────
