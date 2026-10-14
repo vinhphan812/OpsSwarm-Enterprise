@@ -164,18 +164,13 @@ def test_read_routes_validate_pagination_and_status(simulation_client) -> None:
     assert invalid.json()["error"]["code"] == "validation_error"
 
 
-def test_simulation_routes_are_unavailable_without_a_real_adapter(settings) -> None:
+def test_simulation_routes_are_available_with_in_memory_repository(settings) -> None:
+    """The in-memory SimulationRepository is always wired in for development."""
     from fastapi.testclient import TestClient
 
     with TestClient(create_app(settings)) as client:
         response = client.get("/simulations")
-    assert response.status_code == 503
-    assert response.json() == {
-        "error": {
-            "code": "simulations_unavailable",
-            "message": "Simulation read model is not available.",
-        }
-    }
+    assert response.status_code == 200
 
 
 def test_dtos_reject_missing_provenance_and_invalid_cursor() -> None:
