@@ -8,6 +8,9 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  // Imported on demand by the stock models; pre-bundled up front, so the dev server does not
+  // re-optimize on first load and serve a second copy of three.
+  optimizeDeps: { include: ["three/examples/jsm/loaders/GLTFLoader.js"] },
   build: {
     rollupOptions: {
       output: {

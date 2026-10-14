@@ -75,6 +75,12 @@ export const DEMO_PRICES: Readonly<Record<string, number>> = {
   P010: 4.99,
   P011: 0.79,
   P012: 1.29,
+  P013: 7.49,
+  P014: 3.99,
+  P015: 6.49,
+  P016: 4.49,
+  P018: 1.49,
+  P020: 2.79,
 };
 const SKUS = Object.keys(DEMO_PRICES);
 

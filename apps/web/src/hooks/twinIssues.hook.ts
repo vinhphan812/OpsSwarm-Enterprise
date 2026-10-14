@@ -3,7 +3,7 @@ import type { ProductIssue } from "@/core/api/validate";
 import { diffStates } from "@/core/twin/stateDiff";
 import { twinIssues } from "@/core/twin/twinIssues";
 import { useActiveState, useShownSimulation } from "@/hooks/activeTwin.hook";
-import { unitsDrawn } from "@/scene/entities/stock/Stock";
+import { unitsHeld } from "@/scene/entities/stock/Stock";
 import { sceneOf } from "@/scene/layout";
 import { useTwinStore } from "@/state/twin.store";
 
@@ -36,5 +36,5 @@ export function useUnitsNotShown(sku: string | null): number {
   const twin = useActiveState();
   const product = sku ? twin?.products.find((item) => item.sku === sku) : undefined;
   if (!twin || !product) return 0;
-  return Math.max(0, product.shelf_quantity - (unitsDrawn(sceneOf(twin).store).get(product.sku) ?? 0));
+  return Math.max(0, product.shelf_quantity - (unitsHeld(sceneOf(twin).store).get(product.sku) ?? 0));
 }
