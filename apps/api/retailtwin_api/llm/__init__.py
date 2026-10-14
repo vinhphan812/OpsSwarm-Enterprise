@@ -1,6 +1,7 @@
 """Provider-neutral inference runtime and adapters."""
 
 from .contracts import (
+    STANDARD_CAPABILITIES,
     AuthenticationError,
     ConfigurationError,
     InvalidStructuredOutputError,
@@ -11,6 +12,7 @@ from .contracts import (
     LlmResponse,
     LlmTool,
     LlmToolCall,
+    ProviderCapabilities,
     ProviderError,
     RateLimitError,
     RequestCancelled,
@@ -20,7 +22,7 @@ from .contracts import (
     ToolCallError,
     ToolChoicePolicy,
 )
-from .factory import LlmConfig, create_provider
+from .factory import LlmConfig, create_provider, llm_config_from_settings, register_provider
 from .fake import FakeLlmProvider
 from .openai_compatible import OpenAiCompatibleProvider
 from .vertex import VertexProvider
@@ -32,6 +34,8 @@ __all__ = [
     "InvalidStructuredOutputError",
     "LlmConfig",
     "LlmError",
+    "ProviderCapabilities",
+    "STANDARD_CAPABILITIES",
     "LlmMessage",
     "LlmProvider",
     "LlmRequest",
@@ -49,4 +53,6 @@ __all__ = [
     "ToolChoicePolicy",
     "VertexProvider",
     "create_provider",
+    "llm_config_from_settings",
+    "register_provider",
 ]
