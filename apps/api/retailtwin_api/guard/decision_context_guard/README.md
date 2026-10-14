@@ -50,6 +50,10 @@ result = gate.recheck(decision, binding)    # immediately before the commit
 
 `recheck` re-reads the Live Twin. A touched SKU at a new version is `REFRESH_REQUIRED VERSION_STALE`; a decision that no longer hashes to the binding is `DENY BINDING_MISMATCH`. Every call records a `GuardAuditEvent`. The Executor writes with `binding.entity_versions` as expected versions.
 
+## Commit authorization
+
+See [ADR 0016](../../../../../docs/adr/0016-commit-only-through-a-signed-single-use-authorization.md). `CommitAuthorizer` signs a `CommitBinding` with HMAC-SHA256. The token names the decision, the context hash, each action hash in order, the live versions, a one-time nonce and an expiry of `RETAILTWIN_COMMIT_TOKEN_TTL_SECONDS` (default 30), and never outlives the binding. Only the guarded Executor redeems it. The Executor does not learn which model produced the decision.
+
 `contract.schema.json` is the JSON shape of a `RetailTwinDecision`.
 
 Core invariant: **No stale decision may commit to live state.**

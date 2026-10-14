@@ -22,6 +22,7 @@ from retailtwin_api.simulation_repository import SimulationFilters, SimulationLi
 from retailtwin_api.simulation_schemas import (
     SimulationDetail as SimulationDetailSchema,
     SimulationState,
+    SimulationStatus,
     SimulationSummary as SimulationSummarySchema,
 )
 
@@ -219,6 +220,12 @@ class SimulationRepository:
 
     def get_simulation(self, simulation_id: str) -> SimulationDetailSchema | None:
         return self.get(simulation_id)
+
+    def set_status(self, simulation_id: str, status: SimulationStatus, at: datetime) -> None:
+        run = self._runs.get(simulation_id)
+        if run is None:
+            raise KeyError(simulation_id)
+        self._runs[simulation_id] = run.model_copy(update={"status": status, "updated_at": at})
 
     def summary(self, simulation_id: str) -> SimulationSummarySchema | None:
         if not self._available:

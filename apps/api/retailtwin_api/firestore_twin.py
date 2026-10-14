@@ -59,10 +59,11 @@ continue to call the StoreRepository interface defined in store.py.
 NOTE ON FAKE TRANSPORT: FirestoreLiveTwinRepository is exercised against
 FakeFirestoreTransport (defined in test_firestore_twin.py), which fully
 simulates the Firestore REST contract including :commit preconditions,
-optimistic concurrency, and stale-write rejection. Real Firestore requires
-GCP credentials (gcloud auth application-default login) and cannot run in
-CI. See the test file's FAKE TRANSPORT ARCHITECTURAL DECISION block for
-the full rationale.
+optimistic concurrency, and stale-write rejection. Production auth is
+Application Default Credentials (google.auth.default), not a gcloud
+executable. Preconditions are exists or updateTime. Real Firestore is not
+called in CI. See the test file's FAKE TRANSPORT ARCHITECTURAL DECISION
+block for the full rationale.
 
 """
 
@@ -102,6 +103,7 @@ COLLECTION_GROUP_INVENTORY = "inventory"  # collection group query path
 
 ALLOWED_PROJECT = "retailtwin-ai-511002"
 ALLOWED_LOCATION = "us-central1"
+FIRESTORE_SCOPE = "https://www.googleapis.com/auth/datastore"
 
 
 class TwinConfigError(Exception):
@@ -475,6 +477,23 @@ class LiveTwinRepository(ABC):
         """
 
     @abstractmethod
+    def commit_inventory(
+        self, store_id: str, items: Sequence[tuple[InventoryDocument, int]]
+    ) -> StoreDocument:
+        """Atomically write every item and advance the store ``v<N>`` version.
+
+        Each item is written only if its stored version equals the paired
+        expected version. Either every write and the store version change
+        land, or none do.
+
+        Raises:
+            TwinConflict: An item is missing or at another version, or the store
+                changed concurrently. Nothing was written.
+            TwinNotFound: The store document does not exist.
+            TwinUnavailable: The store is unreachable.
+        """
+
+    @abstractmethod
     def is_available(self) -> bool:
         """Return True when the underlying store is reachable."""
 
@@ -489,7 +508,7 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
 
     Uses the Firestore REST API directly (no Google client library).
     Implements bounded versioned mutation via optimistic concurrency control
-    (requireVersion-based compare-and-swap).
+    (compare-and-swap on the document updateTime read with its version).
 
     Canonical paths:
         /stores/{store_id}                  – Store metadata
@@ -506,6 +525,7 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
         self._runner = runner
         self._transport = transport or UrllibTransport()
         self._token: str | None = None
+        self._credentials: Any = None
         self._token_lock = threading.Lock()
 
     # ------------------------------------------------------------------
@@ -513,24 +533,8 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
     # ------------------------------------------------------------------
 
     def get_store(self, store_id: str) -> StoreDocument | None:
-        url = _doc_name(self._config, COLLECTION_STORE, store_id)
-        response = self._call("GET", url, None)
-        if response.status == 404:
-            return None
-        if response.status != 200:
-            raise _http_error("get_store", response.status, response.body)
-        try:
-            payload = json.loads(response.body)
-        except json.JSONDecodeError as exc:
-            raise TwinUnavailable("Store document response is not JSON.") from exc
-        if not isinstance(payload, dict):
-            raise TwinUnavailable("Store document response is malformed.")
-        name = payload.get("name", "")
-        fields = payload.get("fields", {})
-        if not isinstance(fields, dict):
-            raise TwinUnavailable("Store document has no fields.")
-        doc = _FirestoreDocument(name=name, fields={k: _FirestoreField(**v) for k, v in fields.items()})
-        return _parse_store_doc(doc)
+        read = self._read_document(_doc_name(self._config, COLLECTION_STORE, store_id), "get_store")
+        return _parse_store_doc(read[0]) if read is not None else None
 
     def list_inventory(self, store_id: str) -> Sequence[InventoryDocument]:
         # Use the subcollection path: /stores/{store_id}/inventory
@@ -575,63 +579,38 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
 
     def get_inventory(self, store_id: str, sku: str) -> InventoryDocument | None:
         url = _doc_name(self._config, COLLECTION_STORE, store_id, "inventory", sku)
-        response = self._call("GET", url, None)
-        if response.status == 404:
-            return None
-        if response.status != 200:
-            raise _http_error("get_inventory", response.status, response.body)
-        try:
-            payload = json.loads(response.body)
-        except json.JSONDecodeError as exc:
-            raise TwinUnavailable("Inventory document response is not JSON.") from exc
-        if not isinstance(payload, dict):
-            raise TwinUnavailable("Inventory document response is malformed.")
-        name = payload.get("name", "")
-        fields = payload.get("fields", {})
-        if not isinstance(fields, dict):
-            raise TwinUnavailable("Inventory document has no fields.")
-        doc = _FirestoreDocument(name=name, fields={k: _FirestoreField(**v) for k, v in fields.items()})
-        return _parse_inventory_doc(doc)
+        read = self._read_document(url, "get_inventory")
+        return _parse_inventory_doc(read[0]) if read is not None else None
 
     def upsert_inventory(
         self, item: InventoryDocument, expected_version: int | None
     ) -> InventoryDocument:
-        now = datetime.now(timezone.utc)
-        fields = {
-            "store_id": {"stringValue": item.store_id},
-            "sku": {"stringValue": item.sku},
-            "shelf_id": {"stringValue": item.shelf_id},
-            "slot_id": {"stringValue": item.slot_id},
-            "facings": {"integerValue": str(item.facings)},
-            "shelf_quantity": {"integerValue": str(item.shelf_quantity)},
-            "backroom_quantity": {"integerValue": str(item.backroom_quantity)},
-            "version": {"integerValue": str(item.version)},
-            "updated_at": {"timestampValue": now.isoformat()},
-        }
         doc_name = _doc_name(self._config, COLLECTION_STORE, item.store_id, "inventory", item.sku)
-        writes: list[dict[str, Any]] = [
-            {"update": {"name": doc_name, "fields": fields}}
-        ]
-        if expected_version is not None:
-            # Optimistic concurrency control: the write succeeds only if the
-            # stored document's version field matches the expected value.
-            # A mismatch returns FAILED_PRECONDITION and the TwinConflict
-            # is re-raised after reading the current state.
-            writes[0]["currentDocument"] = {
-                "exists": True,
-                "requireVersion": expected_version,
-            }
+        write: dict[str, Any] = {
+            "update": {"name": doc_name, "fields": _inventory_fields(item, datetime.now(timezone.utc))}
+        }
+        if expected_version is None:
+            # Create only: never overwrite a document whose version was not checked.
+            write["currentDocument"] = {"exists": False}
         else:
-            writes[0]["currentDocument"] = {"exists": False}
-
-        payload: dict[str, Any] = {"writes": writes}
-        response = self._call("POST", f"{_database_root(self._config.project)}:commit", payload)
+            # Firestore preconditions are `exists` or `updateTime`; there is no
+            # field-value precondition. Read the version with its updateTime and
+            # make the write conditional on that updateTime.
+            read = self._read_document(doc_name, "get_inventory")
+            if read is None:
+                write["currentDocument"] = {"exists": False}
+            else:
+                current = _parse_inventory_doc(read[0])
+                if current.version != expected_version:
+                    raise TwinConflict(item.sku, current.version, item.version)
+                write["currentDocument"] = {"updateTime": read[1]}
+        response = self._call("POST", f"{_database_root(self._config.project)}:commit", {"writes": [write]})
         if response.status == 200:
             return item
         if _precondition_conflict(response.status, response.body):
-            current = self.get_inventory(item.store_id, item.sku)
-            if current is not None:
-                raise TwinConflict(item.sku, current.version, item.version)
+            latest = self.get_inventory(item.store_id, item.sku)
+            if latest is not None:
+                raise TwinConflict(item.sku, latest.version, item.version)
             raise TwinConflict(item.sku, -1, item.version)
         raise _http_error("upsert_inventory", response.status, response.body)
 
@@ -720,6 +699,58 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
         if response.status != 200:
             raise _http_error("reset", response.status, response.body)
 
+    def commit_inventory(
+        self, store_id: str, items: Sequence[tuple[InventoryDocument, int]]
+    ) -> StoreDocument:
+        # One :commit is atomic in Firestore. Each document is guarded by the
+        # updateTime read together with its version, so a write that lands
+        # after the read fails the whole commit with FAILED_PRECONDITION.
+        store_url = _doc_name(self._config, COLLECTION_STORE, store_id)
+        store_read = self._read_document(store_url, "get_store")
+        if store_read is None:
+            raise TwinNotFound(_doc_path(COLLECTION_STORE, store_id))
+        current_store = _parse_store_doc(store_read[0])
+        now = datetime.now(timezone.utc)
+        writes: list[dict[str, Any]] = []
+        for item, expected_version in items:
+            url = _doc_name(self._config, COLLECTION_STORE, store_id, "inventory", item.sku)
+            read = self._read_document(url, "get_inventory")
+            if read is None:
+                raise TwinConflict(item.sku, -1, item.version)
+            current = _parse_inventory_doc(read[0])
+            if current.version != expected_version:
+                raise TwinConflict(item.sku, current.version, item.version)
+            writes.append(
+                {
+                    "update": {"name": url, "fields": _inventory_fields(item, now)},
+                    "currentDocument": {"updateTime": read[1]},
+                }
+            )
+        bumped = StoreDocument(store_id=store_id, version=_bump_version(current_store.version), updated_at=now)
+        writes.append(
+            {
+                "update": {
+                    "name": store_url,
+                    "fields": {
+                        "store_id": {"stringValue": store_id},
+                        "version": {"stringValue": bumped.version},
+                        "updated_at": {"timestampValue": now.isoformat()},
+                    },
+                },
+                "currentDocument": {"updateTime": store_read[1]},
+            }
+        )
+        response = self._call("POST", f"{_database_root(self._config.project)}:commit", {"writes": writes})
+        if response.status == 200:
+            return bumped
+        if _precondition_conflict(response.status, response.body):
+            for item, expected_version in items:
+                latest = self.get_inventory(store_id, item.sku)
+                if latest is None or latest.version != expected_version:
+                    raise TwinConflict(item.sku, latest.version if latest else -1, item.version)
+            raise TwinConflict(store_id, -1, -1)
+        raise _http_error("commit_inventory", response.status, response.body)
+
     def is_available(self) -> bool:
         url = f"{_database_root(self._config.project)}/stores"
         try:
@@ -743,29 +774,98 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
         except Exception as exc:
             raise TwinUnavailable(f"Firestore request failed: {exc}") from exc
 
+    def _read_document(self, url: str, action: str) -> tuple[_FirestoreDocument, str] | None:
+        """GET one document. Returns it with its server ``updateTime``, or None when missing."""
+        response = self._call("GET", url, None)
+        if response.status == 404:
+            return None
+        if response.status != 200:
+            raise _http_error(action, response.status, response.body)
+        try:
+            payload = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise TwinUnavailable("Firestore document response is not JSON.") from exc
+        if not isinstance(payload, dict):
+            raise TwinUnavailable("Firestore document response is malformed.")
+        fields = payload.get("fields", {})
+        if not isinstance(fields, dict):
+            raise TwinUnavailable("Firestore document has no fields.")
+        doc = _FirestoreDocument(
+            name=payload.get("name", ""), fields={k: _FirestoreField(**v) for k, v in fields.items()}
+        )
+        return doc, str(payload.get("updateTime", ""))
+
     def _headers(self) -> dict[str, str]:
-        with self._token_lock:
-            if self._token is None:
-                token = self._get_token()
-                if not token or any(c in token for c in "\n\r\t "):
-                    raise TwinUnavailable("Could not read an access token.")
-                self._token = token
-            token = self._token
+        token = self._get_token()
+        if not token or any(c in token for c in "\n\r\t "):
+            raise TwinUnavailable("Could not read an access token.")
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     def _get_token(self) -> str:
-        import subprocess
+        """Access token from Application Default Credentials (the Cloud Run service identity).
 
-        if self._runner is not None:
-            return self._runner.run(["gcloud", "auth", "print-access-token", "--quiet"]).strip()
-        completed = subprocess.run(
-            ["gcloud", "auth", "print-access-token", "--quiet"],
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode != 0:
-            raise TwinUnavailable(f"gcloud auth failed: {completed.stderr.strip()}")
-        return completed.stdout.strip()
+        Credentials are refreshed when they expire. An injected ``runner`` keeps the
+        local ``gcloud`` path for tooling; the service never needs a ``gcloud`` executable.
+        """
+        with self._token_lock:
+            if self._runner is not None:
+                if self._token is None:
+                    self._token = self._runner.run(["gcloud", "auth", "print-access-token", "--quiet"]).strip()
+                return self._token
+            try:
+                if self._credentials is None:
+                    import google.auth
+
+                    self._credentials, _ = google.auth.default(scopes=[FIRESTORE_SCOPE])
+                if not self._credentials.valid:
+                    self._credentials.refresh(_UrllibAuthRequest())
+                token = self._credentials.token
+            except Exception as exc:
+                raise TwinUnavailable(
+                    f"Application Default Credentials are not available: {type(exc).__name__}"
+                ) from None
+            return str(token or "")
+
+
+class _UrllibAuthResponse:
+    def __init__(self, status: int, headers: Mapping[str, str], data: bytes) -> None:
+        self.status = status
+        self.headers = headers
+        self.data = data
+
+
+class _UrllibAuthRequest:
+    """A google-auth transport on urllib, so refreshing a token needs no extra HTTP library."""
+
+    def __call__(
+        self,
+        url: str,
+        method: str = "GET",
+        body: bytes | None = None,
+        headers: Mapping[str, str] | None = None,
+        timeout: float | None = None,
+        **_: Any,
+    ) -> _UrllibAuthResponse:
+        request = urllib.request.Request(url, data=body, method=method, headers=dict(headers or {}))
+        try:
+            with urllib.request.urlopen(request, timeout=timeout or 10) as response:
+                return _UrllibAuthResponse(response.status, dict(response.headers), response.read())
+        except urllib.error.HTTPError as exc:
+            return _UrllibAuthResponse(exc.code, dict(exc.headers or {}), exc.read())
+
+
+def _inventory_fields(item: InventoryDocument, now: datetime) -> dict[str, Any]:
+    return {
+        "store_id": {"stringValue": item.store_id},
+        "sku": {"stringValue": item.sku},
+        "shelf_id": {"stringValue": item.shelf_id},
+        "slot_id": {"stringValue": item.slot_id},
+        "facings": {"integerValue": str(item.facings)},
+        "shelf_quantity": {"integerValue": str(item.shelf_quantity)},
+        "backroom_quantity": {"integerValue": str(item.backroom_quantity)},
+        "version": {"integerValue": str(item.version)},
+        "updated_at": {"timestampValue": now.isoformat()},
+    }
 
 
 def _bump_version(version: str) -> str:
@@ -876,6 +976,25 @@ class InMemoryTwinRepository(LiveTwinRepository):
                 version=new_version,
                 updated_at=datetime.now(timezone.utc),
             )
+
+    def commit_inventory(
+        self, store_id: str, items: Sequence[tuple[InventoryDocument, int]]
+    ) -> StoreDocument:
+        with self._lock:
+            current = self._stores.get(store_id)
+            if current is None:
+                raise TwinNotFound(f"stores/{store_id}")
+            stored = self._inventory.setdefault(store_id, {})
+            for item, expected_version in items:
+                existing = stored.get(item.sku)
+                if existing is None or existing.version != expected_version:
+                    raise TwinConflict(item.sku, existing.version if existing else -1, item.version)
+            now = datetime.now(timezone.utc)
+            for item, _expected in items:
+                stored[item.sku] = item.model_copy(update={"updated_at": now})
+            bumped = StoreDocument(store_id=store_id, version=_bump_version(current.version), updated_at=now)
+            self._stores[store_id] = bumped
+            return bumped
 
     def is_available(self) -> bool:
         return True

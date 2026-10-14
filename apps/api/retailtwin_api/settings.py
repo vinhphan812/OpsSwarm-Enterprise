@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,9 @@ class Settings(BaseSettings):
     # ── Store ────────────────────────────────────────────────────────────────
     store_id: str = Field(default="store-001")
     store_fixture_path: Path = Field(default=DEFAULT_FIXTURE)
+    # fixture: read-only day-0 fixture, no commits. memory: in-process Live Twin
+    # seeded from the fixture. firestore: the Firestore Live Twin (#6).
+    live_twin_backend: Literal["fixture", "memory", "firestore"] = Field(default="memory")
 
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")

@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
-from retailtwin_api.contracts import ControlStage, MoveProduct
+from retailtwin_api.contracts import ControlStage, Decision, EvidenceBundle, ExpectedImpact, MoveProduct
+from retailtwin_api.decisions import InMemoryDecisionSource
 from retailtwin_api.main import create_app
 from retailtwin_api.schemas import ProductInventory, StoreResponse
 from retailtwin_api.settings import Settings
@@ -283,13 +284,44 @@ def _simulation_evaluated() -> SimulationDetail:
     return sim
 
 
+def _decision(simulation_id: str) -> Decision:
+    """The planner's decision behind a review simulation: P001 read at version 1, just now."""
+    now = datetime.now(timezone.utc)
+    return Decision(
+        decision_id=f"dec-{simulation_id}",
+        agent_id="planner",
+        context_version="store-001:v1",
+        context_timestamp=now,
+        evidence=[
+            EvidenceBundle(
+                bundle_id=f"bundle-{simulation_id}",
+                provenance="tool-registry",
+                source="investigator",
+                entity_versions={"P001": "1"},
+                collected_at=now,
+                freshness=now,
+                store_id="store-001",
+                correlation_id=f"corr-{simulation_id}",
+                is_sufficient=True,
+            )
+        ],
+        proposed_actions=[MoveProduct(sku="P001", from_slot="A01-S01", to_slot="A02-S01")],
+        simulation_id=simulation_id,
+        expected_impact=ExpectedImpact(kpi_score=0.1, description="closer to the entrance"),
+    )
+
+
 @pytest.fixture
 def review_client(simulation_client, settings) -> TestClient:
-    """Test client with a simulation repo containing pending/evaluated sims."""
+    """Test client with pending/evaluated sims and the decisions behind them."""
     sim_pending = _simulation_pending()
     sim_evaluated = _simulation_evaluated()
     repo = InMemorySimulationRepository([sim_pending, sim_evaluated])
     simulation_client.app.state.simulations = repo
+    decisions = InMemoryDecisionSource()
+    for simulation_id in ("sim-review-001", "sim-review-002"):
+        decisions.put(simulation_id, _decision(simulation_id))
+    simulation_client.app.state.decisions = decisions
     # Set live_context_version to match the fixture
     simulation_client.app.state.live_context_version = "store-001:v1"
     return simulation_client
@@ -308,7 +340,14 @@ class TestApproveSimulation:
         assert body["status"] == "committed"
         assert body["verdict"] == "ALLOW"
         assert body["reason_code"] == "APPROVED"
-        assert body["live_context_version"] == "store-001:v1"
+        assert body["detail_code"] == "COMMITTED"
+        assert body["guard"]["verdict"] == "ALLOW"
+        # The commit moved P001 and advanced the store version.
+        assert body["live_context_version"] == "store-001:v2"
+        product = review_client.get("/inventory/P001").json()
+        assert (product["slot_id"], product["version"]) == ("A02-S01", 2)
+        assert review_client.get("/store").json()["context_version"] == "store-001:v2"
+        assert review_client.app.state.simulations.get_simulation("sim-review-001").status == "committed"
 
     def test_approve_evaluated_simulation_also_commits(self, review_client: TestClient) -> None:
         response = review_client.post(
