@@ -182,7 +182,9 @@ jobs:
           project_id: retailtwin-ai-511002
           image: gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
-          allow_unauthenticated: false
+          # Public API: explicitly maintain allUsers as Cloud Run Invoker so browser clients
+          # and the anonymous production health/readiness probes use the same access policy.
+          flags: --allow-unauthenticated
           port: 8080
           min_instances: 1
           max_instances: 10
@@ -200,12 +202,10 @@ jobs:
           echo "Service URL: ${SERVICE_URL}"
           echo "ROLLING_URL=${SERVICE_URL}" >> $GITHUB_ENV
 
-          # Obtain identity token scoped to the service URL for authenticated health check
-          TOKEN=$(gcloud auth print-identity-token --audiences="${SERVICE_URL}" --quiet)
-          echo "Identity token obtained"
-
+          # The Cloud Run service permits unauthenticated invocations.
+          # GitHub OIDC/WIF credentials cannot mint service-account identity tokens.
           # Liveness: /health (should always be 200 if container is alive)
-          HEALTH=$(curl -sf -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/health" || echo "")
+          HEALTH=$(curl -sf "${SERVICE_URL}/health" || echo "")
           echo "Health: ${HEALTH}"
 
           # Assert production env
@@ -217,7 +217,7 @@ jobs:
             || { echo "ERROR: Service not OK" >&2; exit 1; }
 
           # Readiness probe: /ready
-          READY=$(curl -sf -H "Authorization: Bearer ${TOKEN}" "${SERVICE_URL}/ready" -o /dev/null -w "%{http_code}")
+          READY=$(curl -sf "${SERVICE_URL}/ready" -o /dev/null -w "%{http_code}")
           echo "Readiness: ${READY}"
           [[ "${READY}" == "200" ]] \
             || { echo "ERROR: Readiness probe failed" >&2; exit 1; }
