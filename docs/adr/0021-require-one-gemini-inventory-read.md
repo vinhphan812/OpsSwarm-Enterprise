@@ -26,7 +26,7 @@ The Vertex adapter maps an absent tool choice to no `toolConfig`. `required_tool
 
 One SKU can be proven against the twin the model was not allowed to paraphrase. Write tools are not on this request. The module does not import a model SDK and does not write Firestore, BigQuery, or the Live Twin. The day-0 Cloud Run service still does not construct a provider. Issue #136 remains a separate pull request. No API key is read or committed. Passing this read does not pass gate #10 or G02–G06.
 
-- Pull request:
+- Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/179
 - Issue: #2
 - Supersedes:
 - Superseded by:
