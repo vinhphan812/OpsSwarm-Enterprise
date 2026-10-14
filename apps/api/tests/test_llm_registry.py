@@ -111,20 +111,65 @@ def test_vertex_config_api_key_is_refused() -> None:
 
 def test_a_failed_adapter_does_not_fall_back_to_fake() -> None:
     def boom(_config: LlmConfig) -> LlmProvider:
-        raise ConfigurationError("vertex unavailable")
+        raise ConfigurationError("adapter unavailable")
 
-    register_provider("vertex_gemini", boom, STANDARD_CAPABILITIES, replace=True)
+    register_provider("failing_adapter", boom, STANDARD_CAPABILITIES)
     try:
-        with pytest.raises(ConfigurationError, match="vertex unavailable"):
-            create_provider(
-                LlmConfig(
-                    provider="vertex_gemini",
-                    model="gemini-2.5-flash",
-                    project_id="other-project",
-                )
-            )
+        with pytest.raises(ConfigurationError, match="adapter unavailable"):
+            create_provider(LlmConfig(provider="failing_adapter", model="m"))
+    finally:
+        unregister_provider("failing_adapter")
+
+
+def test_production_vertex_cannot_be_replaced_or_removed() -> None:
+    def boom(config: LlmConfig) -> LlmProvider:
+        return FakeLlmProvider(default_model=config.model)
+
+    with pytest.raises(ConfigurationError, match="cannot be replaced"):
+        register_provider("vertex_gemini", boom, STANDARD_CAPABILITIES, replace=True)
+    with pytest.raises(ConfigurationError, match="cannot be removed"):
+        unregister_provider("vertex_gemini")
+    provider = create_provider(_production_vertex())
+    assert isinstance(provider, VertexProvider)
+    assert not isinstance(provider, FakeLlmProvider)
+
+
+def test_overwritten_vertex_slot_still_builds_the_shipped_adapter() -> None:
+    from retailtwin_api.llm import factory as factory_module
+
+    def boom(config: LlmConfig) -> LlmProvider:
+        return FakeLlmProvider(default_model=config.model)
+
+    factory_module._REGISTRY["vertex_gemini"] = factory_module._ProviderSpec(
+        boom, STANDARD_CAPABILITIES
+    )
+    try:
+        provider = create_provider(_production_vertex())
+        assert isinstance(provider, VertexProvider)
+        assert not isinstance(provider, FakeLlmProvider)
     finally:
         install_builtin_providers()
+
+
+def test_a_development_adapter_can_be_replaced() -> None:
+    def first(config: LlmConfig) -> LlmProvider:
+        return FakeLlmProvider(default_model=config.model)
+
+    def second(_config: LlmConfig) -> LlmProvider:
+        return FakeLlmProvider(default_model="second")
+
+    register_provider("probe_replace", first, STANDARD_CAPABILITIES)
+    try:
+        register_provider("probe_replace", second, STANDARD_CAPABILITIES, replace=True)
+        provider = create_provider(LlmConfig(provider="probe_replace", model="first"))
+        assert isinstance(provider, FakeLlmProvider)
+        assert provider.default_model == "second"
+        with pytest.raises(ConfigurationError, match="vertex_gemini"):
+            create_provider(
+                LlmConfig(provider="probe_replace", model="second", app_env="production")
+            )
+    finally:
+        unregister_provider("probe_replace")
 
 
 def test_a_new_adapter_does_not_require_an_agent_edit() -> None:
