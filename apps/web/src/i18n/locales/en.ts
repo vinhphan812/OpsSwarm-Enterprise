@@ -268,6 +268,19 @@ export const en = {
       failed: "Could not send the review",
     },
   },
+  proposal: {
+    candidate: {
+      label: "Candidate details",
+      title: "Candidate {{id}}",
+      kpis: "KPI scores",
+      noKpis: "No KPI scores available yet",
+      justification: "Why this plan",
+      selector: "Compare candidates",
+      switchHint: "Switch to {{id}}",
+      showSimulation: "Show the original proposal",
+      simulationProposal: "Original",
+    },
+  },
   lens: {
     label: "View",
     operations: "Operations",

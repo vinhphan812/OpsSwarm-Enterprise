@@ -113,3 +113,28 @@ export function CloseIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function CandidateIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M12 2l3 7h7l-5.5 4.5 2 7L12 16l-6.5 4.5 2-7L2 9h7z" />
+    </svg>
+  );
+}
+
+export function KpiIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M3 3v18h18" />
+      <path d="M7 16l4-4 4 4 5-6" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}

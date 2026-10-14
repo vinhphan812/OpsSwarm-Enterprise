@@ -13,7 +13,8 @@ from retailtwin_api.middleware import CorrelationMiddleware
 from retailtwin_api.routes import router
 from retailtwin_api.settings import Settings, get_settings
 from retailtwin_api.simulation import SimulationRepository
-from retailtwin_api.store import open_store
+from retailtwin_api.firestore_twin import FirestoreLiveTwinRepository, StoreRepository as FirestoreStoreRepository, TwinUnavailable
+from retailtwin_api.store import StoreRepository as FixtureStoreRepository, open_store
 from retailtwin_api.analytics_repository import unavailable_analytics_repositories
 
 logger = logging.getLogger(__name__)
@@ -30,11 +31,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = resolved
 
-    store = open_store(resolved.store_fixture_path, resolved.store_id)
+    # Primary: try Firestore. Fall back to local fixture when unavailable (local dev / CI).
+    try:
+        live_twin = FirestoreLiveTwinRepository()
+        store: FixtureStoreRepository | FirestoreStoreRepository = FirestoreStoreRepository(
+            live_twin, resolved.store_id
+        )
+        if not store.loaded:
+            raise TwinUnavailable(store.error or "Firestore store not found")
+        logger.info(
+            "store.initialized_from_firestore",
+            extra={"store_id": resolved.store_id, "source": "firestore"},
+        )
+    except Exception:  # noqa: BLE001 — TwinUnavailable and network errors land here
+        fixture_store = open_store(resolved.store_fixture_path, resolved.store_id)
+        store = fixture_store
+        if not fixture_store.loaded:
+            logger.error(
+                "fixture.unavailable",
+                extra={"store_error": fixture_store.error, "fixture_path": str(resolved.store_fixture_path)},
+            )
+        else:
+            logger.info(
+                "store.initialized_from_fixture",
+                extra={"store_id": resolved.store_id, "source": "fixture"},
+            )
     app.state.store = store
     app.state.events = EventLog()
     app.state.review_audit = ReviewAuditLog()
-    app.state.live_context_version = store.view().context_version if store.loaded else ""
+    app.state.live_context_version = store.view().context_version if store.loaded else ""  # type: ignore[union-attr]
     # Production has no implicit demo fixture. An integration injects a real adapter.
     app.state.simulations = SimulationRepository(store.view, resolved.store_id)
     # Analytics repositories: GCP-backed (BigQuery + Firestore); empty adapters in dev.
@@ -43,11 +68,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.anomalies = anomalies
     app.state.revenue = revenue
     app.state.promotions = promotions
-    if not store.loaded:
-        logger.error(
-            "fixture.unavailable",
-            extra={"store_error": store.error, "fixture_path": str(resolved.store_fixture_path)},
-        )
 
     # Correlation + structured logging middleware (must be outermost)
     app.add_middleware(CorrelationMiddleware)

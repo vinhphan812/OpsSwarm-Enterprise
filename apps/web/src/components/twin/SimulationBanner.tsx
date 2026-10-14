@@ -10,6 +10,7 @@ import { useSimulationReview } from "@/hooks/simulationReview.hook";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { SimulationAction } from "@/types/simulation.type";
+import { CandidatePanel } from "./CandidatePanel";
 
 /** One action as the run serves it, so the reviewer sees what Accept would commit. */
 function useActionLabel() {
@@ -96,6 +97,7 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
           <ProposalChanges />
           {behind ? <span className="simulation-banner-stale">{t("simulation.liveMoved", { version: liveVersion })}</span> : null}
           {settled ? <span className="simulation-banner-meta">{t("simulation.review.waiting")}</span> : null}
+          <CandidatePanel />
         </div>
         {canReview ? (
           <div className="simulation-banner-actions" role="group" aria-label={t("simulation.review.label")}>
