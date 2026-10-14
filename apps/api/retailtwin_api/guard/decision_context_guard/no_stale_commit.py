@@ -57,7 +57,7 @@ class GuardAuditSink(Protocol):
 
 
 class InMemoryGuardAudit:
-    """Process-memory audit sink. The BigQuery trail is #35."""
+    """Process-memory audit sink. The BigQuery trail is `retailtwin_api.audit.trail`."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
