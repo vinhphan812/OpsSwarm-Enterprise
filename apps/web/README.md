@@ -372,6 +372,11 @@ Vitest runs in the `node` environment. Scene tests use `@react-three/test-render
   | Model assets | none | 14 GLBs (215 KB) and one atlas (11 KB) |
   | JS, gzip | 542 KB before #29 | 545 KB, and `GLTFLoader` (14 KB) loaded on demand |
 
-  The triangle count is the open risk on phones. Simplifying the meshes halved it but broke the models, so it was dropped. The first frame is not delayed: the models swap in once loaded. Not yet checked on a real phone, and the flagship E2E has not been rerun against this change.
+  The triangle count is the open risk on phones. Simplifying the meshes halved it but broke the models, so it was dropped. The first frame is not delayed: the models swap in once loaded. Not yet checked on a real phone.
+
+  Critical path, rerun on 2026-10-14 against `e2c59a7`:
+  - `pytest tests/e2e/`: 49 passed, as on `main`. The change touches no file under `apps/api`, `tests`, `contracts`, or `data`, so the API path it covers is the same code.
+  - Browser (Chrome headless, 1440×900, dev server): `/?twin=demo` draws the store with models (79 GLB files, none failed); zoomed all the way out, the store is closed up with its roof and "MINI MART" sign, in the town; `/?twin=demo&assets=primitive` draws primitives and requests no GLB; `/` with the API stopped still mounts the scene. No page errors; the only console error is `/favicon.ico` (404), which `main` has too.
+  - The full flagship scenario (20 consecutive runs from reset) is gate G06 (#53), which is not runnable yet. It is still to do for this change once it is.
 - Issue #58 stays open until a GitHub Actions CI gate runs `npm ci`, the build, and the tests.
 // trigger CI re-check
