@@ -8,7 +8,7 @@ export const STORE_FLOOR = {
   thickness: 0.08,
 } as const;
 
-/** U-shaped shell: back wall at -Z, side walls at ±X, front (+Z) left open for the camera. */
+/** Four walls: back at -Z (the door), sides at ±X, front at +Z; each hides while it is between the camera and the shelves. */
 export const STORE_WALL = {
   height: 3.2,
   thickness: 0.25,
