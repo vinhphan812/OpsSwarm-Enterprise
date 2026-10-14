@@ -1,0 +1,329 @@
+"""Score planner decisions on a clone of one live snapshot.
+
+The clone and the KPI formula belong to the injected evaluator from issue
+#33. This module checks that every decision matches the snapshot, copies the
+returned score onto a new decision, and does not write the live snapshot.
+"""
+
+from __future__ import annotations
+
+import copy
+import logging
+import time
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any, Protocol
+
+from retailtwin_api.contracts import (
+    ChangeFacings,
+    Decision,
+    ExpectedImpact,
+    MoveProduct,
+    ReplenishShelf,
+    SimulationKPIResult,
+)
+
+log = logging.getLogger(__name__)
+
+FORMULA_ID = "simulation-kpi-v1"
+
+INVALID_SNAPSHOT = "invalid_snapshot"
+INVALID_REQUEST = "invalid_request"
+CONTEXT_MISMATCH = "context_mismatch"
+EVALUATION_FAILED = "evaluation_failed"
+
+
+class SimulationError(Exception):
+    """Simulation failed. The message does not include the evaluator error."""
+
+    def __init__(self, correlation_id: str, reason: str) -> None:
+        self.correlation_id = correlation_id
+        self.reason = reason
+        super().__init__(f"Simulation failed for {correlation_id}.")
+
+
+class CandidateEvaluator(Protocol):
+    """Deterministic scorer. Implementations must not call a model."""
+
+    def __call__(
+        self,
+        snapshot: Mapping[str, Any],
+        candidate_id: str,
+        actions: Sequence[Mapping[str, Any]],
+    ) -> Mapping[str, Any]: ...
+
+
+@dataclass(frozen=True)
+class SlotView:
+    sku: str
+    slot_id: str
+    shelf_quantity: int
+    backroom_quantity: int
+    facings: int
+    sales_velocity_units_per_hour: str
+    price: str
+
+
+@dataclass(frozen=True)
+class LiveView:
+    """Caller-owned live snapshot. ``simulate`` does not modify it."""
+
+    store_id: str
+    context_version: str
+    correlation_id: str
+    observed_at: datetime
+    slots: tuple[SlotView, ...]
+
+
+@dataclass(frozen=True)
+class ScoredCandidate:
+    decision: Decision
+    kpi: SimulationKPIResult
+    evaluation: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SimulationResult:
+    simulation_id: str
+    context_version: str
+    correlation_id: str
+    candidates: tuple[ScoredCandidate, ...]
+
+
+def _reject(correlation_id: str, reason: str) -> SimulationError:
+    log.info(
+        "simulation rejected correlation_id=%s reason=%s",
+        correlation_id,
+        reason,
+    )
+    return SimulationError(correlation_id, reason)
+
+
+def _text(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _whole(value: object, minimum: int) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        return None
+    return value
+
+
+def _decimal(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        number = Decimal(value.strip())
+    except InvalidOperation:
+        return None
+    if not number.is_finite() or number < 0:
+        return None
+    return value.strip()
+
+
+def _checked_live(live: LiveView) -> str:
+    if not isinstance(live, LiveView):
+        raise _reject("unknown", INVALID_SNAPSHOT)
+    correlation_id = _text(live.correlation_id)
+    if (
+        correlation_id is None
+        or _text(live.store_id) is None
+        or _text(live.context_version) is None
+        or not isinstance(live.observed_at, datetime)
+        or live.observed_at.tzinfo is None
+        or live.observed_at.utcoffset() is None
+        or not isinstance(live.slots, tuple)
+        or not live.slots
+    ):
+        raise _reject(correlation_id or "unknown", INVALID_SNAPSHOT)
+    seen_sku: set[str] = set()
+    seen_slot: set[str] = set()
+    for slot in live.slots:
+        if not isinstance(slot, SlotView):
+            raise _reject(correlation_id, INVALID_SNAPSHOT)
+        sku = _text(slot.sku)
+        slot_id = _text(slot.slot_id)
+        if (
+            sku is None
+            or slot_id is None
+            or sku in seen_sku
+            or slot_id in seen_slot
+            or _whole(slot.shelf_quantity, 0) is None
+            or _whole(slot.backroom_quantity, 0) is None
+            or _whole(slot.facings, 1) is None
+            or _decimal(slot.sales_velocity_units_per_hour) is None
+            or _decimal(slot.price) is None
+        ):
+            raise _reject(correlation_id, INVALID_SNAPSHOT)
+        seen_sku.add(sku)
+        seen_slot.add(slot_id)
+    return correlation_id
+
+
+def _snapshot(live: LiveView, simulation_id: str) -> dict[str, Any]:
+    return {
+        "simulation_id": simulation_id,
+        "store_id": live.store_id.strip(),
+        "context_version": live.context_version.strip(),
+        "correlation_id": live.correlation_id.strip(),
+        "observed_at": live.observed_at.isoformat(),
+        "slots": [
+            {
+                "sku": slot.sku.strip(),
+                "slot_id": slot.slot_id.strip(),
+                "shelf_quantity": slot.shelf_quantity,
+                "backroom_quantity": slot.backroom_quantity,
+                "facings": slot.facings,
+                "sales_velocity_units_per_hour": slot.sales_velocity_units_per_hour.strip(),
+                "price": slot.price.strip(),
+            }
+            for slot in live.slots
+        ],
+    }
+
+
+def _action(action: MoveProduct | ChangeFacings | ReplenishShelf) -> dict[str, Any]:
+    if isinstance(action, MoveProduct):
+        return {
+            "type": "move_product",
+            "sku": action.sku,
+            "from_slot": action.from_slot,
+            "to_slot": action.to_slot,
+        }
+    if isinstance(action, ChangeFacings):
+        return {"type": "change_facings", "sku": action.sku, "facings": action.facings}
+    if isinstance(action, ReplenishShelf):
+        return {"type": "replenish_shelf", "sku": action.sku, "quantity": action.quantity}
+    raise TypeError
+
+
+def _matches(decision: Decision, live: LiveView, correlation_id: str) -> None:
+    if decision.context_version.strip() != live.context_version.strip():
+        raise _reject(correlation_id, CONTEXT_MISMATCH)
+    if not decision.evidence:
+        raise _reject(correlation_id, CONTEXT_MISMATCH)
+    correlations = {item.correlation_id for item in decision.evidence}
+    stores = {item.store_id for item in decision.evidence}
+    if correlations != {correlation_id} or stores != {live.store_id.strip()}:
+        raise _reject(correlation_id, CONTEXT_MISMATCH)
+
+
+def _score(value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, str):
+        raise ValueError
+    number = Decimal(value)
+    if not number.is_finite():
+        raise ValueError
+    return float(number)
+
+
+def _checked_evaluation(
+    raw: object,
+    *,
+    simulation_id: str,
+    candidate_id: str,
+    correlation_id: str,
+) -> tuple[dict[str, Any], float]:
+    if not isinstance(raw, Mapping):
+        raise _reject(correlation_id, EVALUATION_FAILED)
+    evaluation = copy.deepcopy(dict(raw))
+    if (
+        evaluation.get("formula_id") != FORMULA_ID
+        or evaluation.get("simulation_id") != simulation_id
+        or evaluation.get("candidate_id") != candidate_id
+        or evaluation.get("correlation_id") != correlation_id
+    ):
+        raise _reject(correlation_id, EVALUATION_FAILED)
+    try:
+        score = _score(evaluation.get("business_score"))
+    except (InvalidOperation, ValueError):
+        raise _reject(correlation_id, EVALUATION_FAILED) from None
+    return evaluation, score
+
+
+def simulate(
+    decisions: Sequence[Decision],
+    live: LiveView,
+    *,
+    evaluate: CandidateEvaluator,
+) -> SimulationResult:
+    """Score each decision on a clone of ``live``.
+
+    The returned decisions carry ``simulation_id`` and the evaluator's
+    business score. ``live`` is not changed. A failed candidate returns no
+    partial result.
+    """
+
+    correlation_id = _checked_live(live)
+    if not isinstance(decisions, Sequence) or isinstance(decisions, (str, bytes)) or not decisions:
+        raise _reject(correlation_id, INVALID_REQUEST)
+    if any(not isinstance(decision, Decision) for decision in decisions):
+        raise _reject(correlation_id, INVALID_REQUEST)
+    identities = [decision.decision_id for decision in decisions]
+    if any(not _text(decision_id) for decision_id in identities) or len(set(identities)) != len(identities):
+        raise _reject(correlation_id, INVALID_REQUEST)
+    for decision in decisions:
+        _matches(decision, live, correlation_id)
+        try:
+            [_action(action) for action in decision.proposed_actions]
+        except TypeError:
+            raise _reject(correlation_id, INVALID_REQUEST) from None
+    simulation_id = f"sim-{correlation_id}"
+    payload = _snapshot(live, simulation_id)
+    scored: list[ScoredCandidate] = []
+    for decision in decisions:
+        actions = [_action(action) for action in decision.proposed_actions]
+        started = time.perf_counter()
+        try:
+            raw = evaluate(copy.deepcopy(payload), decision.decision_id, actions)
+        except Exception:
+            log.info(
+                "simulation rejected correlation_id=%s reason=%s",
+                correlation_id,
+                EVALUATION_FAILED,
+            )
+            raise SimulationError(correlation_id, EVALUATION_FAILED) from None
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        evaluation, score = _checked_evaluation(
+            raw,
+            simulation_id=simulation_id,
+            candidate_id=decision.decision_id,
+            correlation_id=correlation_id,
+        )
+        updated = decision.model_copy(
+            update={
+                "simulation_id": simulation_id,
+                "expected_impact": ExpectedImpact(
+                    kpi_score=score,
+                    description=decision.expected_impact.description,
+                ),
+            }
+        )
+        scored.append(
+            ScoredCandidate(
+                decision=updated,
+                kpi=SimulationKPIResult(
+                    simulation_id=simulation_id,
+                    kpi_score=score,
+                    duration_ms=duration_ms,
+                ),
+                evaluation=evaluation,
+            )
+        )
+    log.info(
+        "simulation scored correlation_id=%s simulation_id=%s candidates=%s",
+        correlation_id,
+        simulation_id,
+        len(scored),
+    )
+    return SimulationResult(
+        simulation_id=simulation_id,
+        context_version=live.context_version.strip(),
+        correlation_id=correlation_id,
+        candidates=tuple(scored),
+    )
