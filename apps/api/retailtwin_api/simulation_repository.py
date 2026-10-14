@@ -9,6 +9,7 @@ from typing import Protocol
 
 from retailtwin_api.simulation_schemas import (
     AgentActivityEntry,
+    SimulationStatus,
     CandidateListResponse,
     CursorParameters,
     PageParameters,
@@ -35,6 +36,10 @@ class SimulationReadRepository(Protocol):
     ) -> CandidateListResponse | None: ...  # pragma: no branch
 
     def list_agent_events(self, cursor: CursorParameters) -> tuple[list[AgentActivityEntry], str | None]: ...  # pragma: no branch
+
+    def set_status(self, simulation_id: str, status: SimulationStatus, at: datetime) -> None:
+        """Record the outcome of a review. Only the review routes call this."""
+        ...  # pragma: no branch
 
 
 class InMemorySimulationRepository:
@@ -131,6 +136,13 @@ class InMemorySimulationRepository:
             offset = start + len(window)
             next_cursor = str(offset) if offset < len(self._agent_events) else None
             return [item.model_copy(deep=True) for item in window], next_cursor
+
+    def set_status(self, simulation_id: str, status: SimulationStatus, at: datetime) -> None:
+        with self._lock:
+            item = self._simulations.get(simulation_id)
+            if item is None:
+                raise KeyError(simulation_id)
+            self._simulations[simulation_id] = item.model_copy(update={"status": status, "updated_at": at})
 
 
 def unavailable_simulation_repository() -> SimulationReadRepository:

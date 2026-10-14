@@ -17,7 +17,7 @@ FakeFirestoreTransport for repository-level contract testing.
     - Document CRUD (GET, DELETE)
     - :commit endpoint with precondition enforcement
     - Optimistic concurrency control (exists:false, exists:true,
-      requireVersion)
+      updateTime), one precondition per write, atomic multi-write commits
     - Stale-write rejection with data preservation
     - Subcollection listing
     - Monotonic clock for updateTime
@@ -425,9 +425,11 @@ class FakeFirestoreTransport:
     - Document CRUD (GET, DELETE)
     - Transactional writes via :commit with preconditions
     - Optimistic concurrency control: exists:false prevents overwrites
-    - Version precondition: when currentDocument.exists:true, the stored
-      document's version field is checked against the precondition's
-      requireVersion. A mismatch returns FAILED_PRECONDITION.
+    - updateTime precondition: the write applies only if the stored document's
+      updateTime equals currentDocument.updateTime; otherwise FAILED_PRECONDITION.
+      Like Firestore, a precondition is `exists` or `updateTime`, never both, and
+      any other key (e.g. `requireVersion`) is INVALID_ARGUMENT.
+    - Atomic commit: when one write fails its precondition, none apply.
     - Collection queries for /inventory/{store_id} subcollections
     - Stale-write rejection: a write with a wrong expected version is rejected
       while preserving the original document.
@@ -558,10 +560,15 @@ class FakeFirestoreTransport:
             data = json.loads(payload.decode())
             results: list[dict[str, object]] = []
             with FakeFirestoreTransport._LOCK:
+                # A Firestore :commit is atomic: one failed precondition applies nothing.
+                docs_before = dict(self._docs)
+                times_before = dict(self._update_times)
                 try:
                     for write in data.get("writes", []):
                         results.append(self._apply_write(write))
                 except _PreconditionFailed as exc:
+                    self._docs = docs_before
+                    self._update_times = times_before
                     return FakeHttpResponse(exc.status, exc.body)
             return FakeHttpResponse(200, json.dumps({"writeResults": results}))
 
@@ -612,59 +619,39 @@ class FakeFirestoreTransport:
             name = self._doc_name_to_relative(full_name)
             fields = write["update"].get("fields", {})
             precondition = write.get("currentDocument", {})
+            # Firestore's Precondition is a oneof: `exists` or `updateTime`, nothing else.
+            if len(precondition) > 1 or set(precondition) - {"exists", "updateTime"}:
+                raise _PreconditionFailed(
+                    400,
+                    json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT"}}),
+                )
             exists_required = precondition.get("exists")
-            require_version = precondition.get("requireVersion")
+            required_update_time = precondition.get("updateTime")
 
-            # Enforce exists precondition.
-            # The Firestore REST API returns exists as a JSON boolean (true/false),
-            # parsed by json.loads() as Python True/False.
             doc_exists = name in self._docs
-            if exists_required is False or exists_required == "False":
-                # exists:false → fail if the document already exists
-                if doc_exists:
-                    raise _PreconditionFailed(
-                        409,
-                        json.dumps({"error": {"code": 409, "status": "ALREADY_EXISTS"}}),
-                    )
-                # else: doc missing → allowed, fall through to write
-            elif exists_required is True or exists_required == "True":
-                # exists:true → fail if the document does NOT exist
-                if not doc_exists:
-                    raise _PreconditionFailed(
-                        404,
-                        json.dumps({"error": {"code": 404, "status": "NOT_FOUND"}}),
-                    )
-                # else: doc exists → fall through to version check
-            # else: no exists precondition → always allowed, fall through to version check
-
-            # Enforce version precondition (optimistic concurrency control)
-            if require_version is not None and doc_exists:
-                stored = self._docs[name]
-                version_field = stored.get("fields", {}).get("version", {})
-                # Version can be stored as integerValue, stringValue, or a raw int
-                if isinstance(version_field, dict):
-                    version_str = (
-                        version_field.get("integerValue")
-                        or version_field.get("stringValue")
-                        or None
-                    )
-                else:
-                    version_str = str(version_field) if version_field is not None else None
-                try:
-                    stored_version = int(version_str) if version_str else 0
-                except (ValueError, TypeError):
-                    stored_version = 0
-                if stored_version != require_version:
-                    raise _PreconditionFailed(
-                        400,
-                        json.dumps({
-                            "error": {
-                                "code": 400,
-                                "status": "FAILED_PRECONDITION",
-                                "message": f"Document {name} has version {stored_version}, expected {require_version}",
-                            }
-                        }),
-                    )
+            if exists_required is False and doc_exists:
+                raise _PreconditionFailed(
+                    409,
+                    json.dumps({"error": {"code": 409, "status": "ALREADY_EXISTS"}}),
+                )
+            if exists_required is True and not doc_exists:
+                raise _PreconditionFailed(
+                    404,
+                    json.dumps({"error": {"code": 404, "status": "NOT_FOUND"}}),
+                )
+            if required_update_time is not None and (
+                not doc_exists or self._update_times.get(name) != required_update_time
+            ):
+                raise _PreconditionFailed(
+                    400,
+                    json.dumps({
+                        "error": {
+                            "code": 400,
+                            "status": "FAILED_PRECONDITION",
+                            "message": f"Document {name} was updated after {required_update_time}",
+                        }
+                    }),
+                )
 
             # Commit the write
             update_time = self._tick()
@@ -952,8 +939,8 @@ class TestFakeFirestoreTransportContract:
         assert response.status == 200
         assert "test/new" in transport._docs
 
-    def test_commit_enforces_require_version_on_stale_write(self) -> None:
-        """A write with requireVersion mismatching the stored version is rejected."""
+    def test_commit_enforces_update_time_on_stale_write(self) -> None:
+        """A write whose updateTime precondition is older than the stored document is rejected."""
         transport = FakeFirestoreTransport()
         transport._docs["stores/store-001/inventory/P001"] = {
             "fields": {
@@ -980,7 +967,7 @@ class TestFakeFirestoreTransportContract:
                         "updated_at": {"timestampValue": "t2"},
                     },
                 },
-                "currentDocument": {"exists": True, "requireVersion": 3},
+                "currentDocument": {"updateTime": "t0"},
             }]
         }).encode()
         response = transport.request(
@@ -994,8 +981,8 @@ class TestFakeFirestoreTransportContract:
         # Original document is preserved
         assert transport._docs["stores/store-001/inventory/P001"]["fields"]["facings"]["integerValue"] == "3"
 
-    def test_commit_accepts_matching_require_version(self) -> None:
-        """A write with requireVersion matching the stored version succeeds."""
+    def test_commit_accepts_matching_update_time(self) -> None:
+        """A write whose updateTime precondition matches the stored document succeeds."""
         transport = FakeFirestoreTransport()
         transport._docs["stores/store-001/inventory/P001"] = {
             "fields": {
@@ -1022,7 +1009,7 @@ class TestFakeFirestoreTransportContract:
                         "updated_at": {"timestampValue": "t2"},
                     },
                 },
-                "currentDocument": {"exists": True, "requireVersion": 3},
+                "currentDocument": {"updateTime": "t1"},
             }]
         }).encode()
         response = transport.request(
@@ -1033,6 +1020,55 @@ class TestFakeFirestoreTransportContract:
         )
         assert response.status == 200
         assert transport._docs["stores/store-001/inventory/P001"]["fields"]["facings"]["integerValue"] == "9"
+
+    def test_commit_rejects_a_field_value_precondition(self) -> None:
+        """Firestore has no `requireVersion`; the real API rejects unknown precondition fields."""
+        transport = FakeFirestoreTransport()
+        transport._docs["stores/store-001/inventory/P001"] = {"fields": {"version": {"integerValue": "3"}}}
+        transport._update_times["stores/store-001/inventory/P001"] = "t1"
+        payload = json.dumps({
+            "writes": [{
+                "update": {
+                    "name": "projects/p/databases/(default)/documents/stores/store-001/inventory/P001",
+                    "fields": {"version": {"integerValue": "4"}},
+                },
+                "currentDocument": {"exists": True, "requireVersion": 3},
+            }]
+        }).encode()
+        response = transport.request(
+            "POST",
+            "https://firestore.googleapis.com/v1/projects/p/databases/(default)/documents:commit",
+            payload,
+            {},
+        )
+        assert response.status == 400
+        assert "INVALID_ARGUMENT" in response.body
+        assert transport._docs["stores/store-001/inventory/P001"]["fields"]["version"]["integerValue"] == "3"
+
+    def test_commit_is_atomic_across_writes(self) -> None:
+        """When the second write fails its precondition, the first one is not applied."""
+        transport = FakeFirestoreTransport()
+        for sku in ("P001", "P002"):
+            transport._docs[f"stores/store-001/inventory/{sku}"] = {"fields": {"version": {"integerValue": "1"}}}
+            transport._update_times[f"stores/store-001/inventory/{sku}"] = "t1"
+        base = "projects/p/databases/(default)/documents/stores/store-001/inventory/"
+        payload = json.dumps({
+            "writes": [
+                {"update": {"name": base + "P001", "fields": {"version": {"integerValue": "2"}}},
+                 "currentDocument": {"updateTime": "t1"}},
+                {"update": {"name": base + "P002", "fields": {"version": {"integerValue": "2"}}},
+                 "currentDocument": {"updateTime": "stale"}},
+            ]
+        }).encode()
+        response = transport.request(
+            "POST",
+            "https://firestore.googleapis.com/v1/projects/p/databases/(default)/documents:commit",
+            payload,
+            {},
+        )
+        assert response.status == 400
+        assert transport._docs["stores/store-001/inventory/P001"]["fields"]["version"]["integerValue"] == "1"
+        assert transport._update_times["stores/store-001/inventory/P001"] == "t1"
 
     def test_delete_removes_document(self) -> None:
         """DELETE removes the document from the store."""
@@ -1334,8 +1370,8 @@ class TestSeedReadMutateStaleRejectLifecycle:
         p001 = twin.read_inventory("P001")
         assert p001.version == 2
 
-    def test_lifecycle_mutation_uses_currentDocument_requireVersion(self) -> None:
-        """Verify upsert_inventory sends requireVersion in the commit precondition."""
+    def test_lifecycle_mutation_uses_currentDocument_update_time(self) -> None:
+        """Verify upsert_inventory sends the read updateTime as the commit precondition."""
         twin = _FirestoreTwinRepoUnderTest()
         twin.seed()  # uses repo.seed() via twin.repo
 
@@ -1360,7 +1396,7 @@ class TestSeedReadMutateStaleRejectLifecycle:
             if "commit" in c[1]
         ]
         assert len(commit_calls) >= 1
-        # The commit should include requireVersion in currentDocument
+        # The commit is conditional on the updateTime read with version 1
         payload = json.loads(cast(bytes, commit_calls[-1][2]))
         writes = payload.get("writes", [])
         inv_write = next(
@@ -1368,7 +1404,7 @@ class TestSeedReadMutateStaleRejectLifecycle:
             None,
         )
         assert inv_write is not None
-        assert "currentDocument" in inv_write
+        assert set(inv_write["currentDocument"]) == {"updateTime"}
 
 
 class TestFakeFirestoreTransportConcurrency:
@@ -1409,3 +1445,237 @@ class TestFakeFirestoreTransportConcurrency:
         assert len(transport._docs) == 4
 
 
+
+
+def _doc(sku: str, version: int, **changes: int) -> InventoryDocument:
+    fields: dict[str, Any] = {
+        "store_id": "store-001", "sku": sku, "shelf_id": "A01", "slot_id": f"{sku}-S",
+        "facings": 3, "shelf_quantity": 8, "backroom_quantity": 42, "version": version,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    fields.update(changes)
+    return InventoryDocument(**fields)
+
+
+def _in_memory() -> InMemoryTwinRepository:
+    repo = InMemoryTwinRepository()
+    repo.seed("store-001", "v1", [
+        InventorySeed(sku="P001", shelf_id="A01", slot_id="P001-S", facings=3, shelf_quantity=8, backroom_quantity=42),
+        InventorySeed(sku="P002", shelf_id="A01", slot_id="P002-S", facings=3, shelf_quantity=8, backroom_quantity=42),
+    ])
+    return repo
+
+
+def _firestore() -> LiveTwinRepository:
+    harness = _FirestoreTwinRepoUnderTest()
+    harness.seed()
+    return harness.repo
+
+
+@pytest.fixture(params=["memory", "firestore"])
+def live_twin(request: pytest.FixtureRequest) -> LiveTwinRepository:
+    return _in_memory() if request.param == "memory" else _firestore()
+
+
+class TestCommitInventory:
+    """The guarded Executor writes every touched SKU and the store version in one atomic commit (#18)."""
+
+    def test_commit_writes_all_items_and_advances_the_store(self, live_twin: LiveTwinRepository) -> None:
+        store = live_twin.commit_inventory("store-001", [(_doc("P001", 2, facings=5), 1), (_doc("P002", 2), 1)])
+        assert store.version == "v2"
+        stored = live_twin.get_store("store-001")
+        assert stored is not None and stored.version == "v2"
+        p001 = live_twin.get_inventory("store-001", "P001")
+        assert p001 is not None and (p001.facings, p001.version) == (5, 2)
+
+    def test_stale_item_writes_nothing(self, live_twin: LiveTwinRepository) -> None:
+        with pytest.raises(TwinConflict) as caught:
+            live_twin.commit_inventory("store-001", [(_doc("P001", 2, facings=9), 1), (_doc("P002", 6), 5)])
+        assert caught.value.sku == "P002"
+        p001 = live_twin.get_inventory("store-001", "P001")
+        assert p001 is not None and (p001.facings, p001.version) == (3, 1)
+        stored = live_twin.get_store("store-001")
+        assert stored is not None and stored.version == "v1"
+
+    def test_missing_item_is_a_conflict(self, live_twin: LiveTwinRepository) -> None:
+        with pytest.raises(TwinConflict):
+            live_twin.commit_inventory("store-001", [(_doc("P404", 2), 1)])
+
+    def test_missing_store_is_not_found(self) -> None:
+        for repo in (InMemoryTwinRepository(), _FirestoreTwinRepoUnderTest().repo):
+            with pytest.raises(TwinNotFound):
+                repo.commit_inventory("store-001", [(_doc("P001", 2), 1)])
+
+    def test_firestore_commit_is_conditional_on_update_times(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        harness.repo.commit_inventory("store-001", [(_doc("P001", 2), 1)])
+        payload = json.loads(cast(bytes, [c for c in harness._transport.calls if "commit" in c[1]][-1][2]))
+        assert [set(w["currentDocument"]) for w in payload["writes"]] == [{"updateTime"}, {"updateTime"}]
+
+    def _racing(self, harness: _FirestoreTwinRepoUnderTest, key: str) -> None:
+        """Change ``key`` on the server between the repository's reads and its commit."""
+        original = harness._transport.request
+
+        def request(method: str, url: str, payload: bytes | None, headers: Mapping[str, str]) -> HttpResponse:
+            if url.endswith(":commit") and payload and b"P001" in payload:
+                harness._transport._update_times[key] = "changed-by-someone-else"
+            return original(method, url, payload, headers)
+
+        harness._transport.request = request  # type: ignore[method-assign]
+
+    def test_firestore_write_landing_after_the_read_writes_nothing(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        self._racing(harness, "stores/store-001/inventory/P001")
+        with pytest.raises(TwinConflict):
+            harness.repo.commit_inventory("store-001", [(_doc("P001", 2, facings=9), 1), (_doc("P002", 2), 1)])
+        assert harness.read_inventory("P002").version == 1
+        assert harness.read_store().version == "v1"
+
+    def test_firestore_store_change_after_the_read_is_a_conflict(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        self._racing(harness, "stores/store-001")
+        with pytest.raises(TwinConflict) as caught:
+            harness.repo.commit_inventory("store-001", [(_doc("P001", 2), 1)])
+        assert caught.value.sku == "store-001"
+        assert harness.read_inventory("P001").version == 1
+
+    def test_firestore_commit_reports_a_failed_write(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        original = harness._transport.request
+
+        def failing(method: str, url: str, payload: bytes | None, headers: Mapping[str, str]) -> HttpResponse:
+            if url.endswith(":commit"):
+                return FakeHttpResponse(500, "boom")
+            return original(method, url, payload, headers)
+
+        harness._transport.request = failing  # type: ignore[method-assign]
+        with pytest.raises(TwinUnavailable):
+            harness.repo.commit_inventory("store-001", [(_doc("P001", 2), 1)])
+
+
+class TestFirestoreUpsertPreconditions:
+    def test_stale_expected_version_is_refused_before_any_write(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        commits_before = sum("commit" in c[1] for c in harness._transport.calls)
+        with pytest.raises(TwinConflict):
+            harness.repo.upsert_inventory(_doc("P001", 6), expected_version=5)
+        assert sum("commit" in c[1] for c in harness._transport.calls) == commits_before
+
+    def test_expected_version_for_a_missing_document_creates_it(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        harness.repo.upsert_inventory(_doc("P009", 1), expected_version=1)
+        assert harness.read_inventory("P009").version == 1
+
+    def test_write_landing_after_the_read_is_a_conflict(self) -> None:
+        harness = _FirestoreTwinRepoUnderTest()
+        harness.seed()
+        original = harness._transport.request
+
+        def request(method: str, url: str, payload: bytes | None, headers: Mapping[str, str]) -> HttpResponse:
+            if url.endswith(":commit"):
+                harness._transport._update_times["stores/store-001/inventory/P001"] = "changed"
+            return original(method, url, payload, headers)
+
+        harness._transport.request = request  # type: ignore[method-assign]
+        with pytest.raises(TwinConflict):
+            harness.repo.upsert_inventory(_doc("P001", 2, facings=9), expected_version=1)
+        assert harness.read_inventory("P001").facings == 3
+
+
+class TestFirestoreCredentials:
+    """The service authenticates with ADC; no gcloud executable is needed (#18)."""
+
+    class _Credentials:
+        def __init__(self, token: str | None = "ya29.token", valid: bool = False) -> None:
+            self.token = token
+            self.valid = valid
+            self.refreshes = 0
+
+        def refresh(self, request: object) -> None:
+            self.refreshes += 1
+            self.valid = True
+
+    def _repo(self) -> FirestoreLiveTwinRepository:
+        return FirestoreLiveTwinRepository(transport=FakeFirestoreTransport())
+
+    def test_adc_token_is_used_and_refreshed_when_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import google.auth
+
+        credentials = self._Credentials()
+        seen: list[object] = []
+
+        def default(scopes: list[str] | None = None, **_: object) -> tuple[object, str]:
+            seen.append(scopes)
+            return credentials, "project"
+
+        monkeypatch.setattr(google.auth, "default", default)
+        repo = self._repo()
+        assert repo._headers()["Authorization"] == "Bearer ya29.token"
+        assert repo._headers()["Authorization"] == "Bearer ya29.token"
+        assert credentials.refreshes == 1
+        assert seen == [["https://www.googleapis.com/auth/datastore"]]
+
+    def test_missing_adc_is_unavailable_without_leaking_detail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import google.auth
+
+        def default(**_: object) -> tuple[object, str]:
+            raise RuntimeError("secret path /home/me/key.json")
+
+        monkeypatch.setattr(google.auth, "default", default)
+        with pytest.raises(TwinUnavailable) as caught:
+            self._repo()._headers()
+        assert "secret" not in str(caught.value)
+
+    def test_blank_token_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import google.auth
+
+        monkeypatch.setattr(google.auth, "default", lambda **_: (self._Credentials(token=None, valid=True), "p"))
+        with pytest.raises(TwinUnavailable):
+            self._repo()._headers()
+
+    def test_injected_runner_keeps_the_local_gcloud_path(self) -> None:
+        class Runner:
+            calls = 0
+
+            def run(self, args: list[str]) -> str:
+                Runner.calls += 1
+                return "local-token\n"
+
+        repo = FirestoreLiveTwinRepository(runner=Runner(), transport=FakeFirestoreTransport())
+        assert repo._headers()["Authorization"] == "Bearer local-token"
+        repo._headers()
+        assert Runner.calls == 1
+
+    def test_urllib_auth_request_returns_status_headers_and_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import io
+        import urllib.error
+        import urllib.request
+
+        from retailtwin_api.firestore_twin import _UrllibAuthRequest
+
+        class Response(io.BytesIO):
+            status = 200
+            headers = {"content-type": "application/json"}
+
+            def __enter__(self) -> "Response":
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                return None
+
+        monkeypatch.setattr(urllib.request, "urlopen", lambda request, timeout: Response(b'{"ok":1}'))
+        ok = _UrllibAuthRequest()("https://oauth2.googleapis.com/token", method="POST", body=b"x", headers={"a": "b"})
+        assert (ok.status, ok.data) == (200, b'{"ok":1}')
+
+        def denied(request: object, timeout: float) -> object:
+            raise urllib.error.HTTPError("https://x", 401, "no", {}, io.BytesIO(b"denied"))  # type: ignore[arg-type]
+
+        monkeypatch.setattr(urllib.request, "urlopen", denied)
+        refused = _UrllibAuthRequest()("https://oauth2.googleapis.com/token")
+        assert (refused.status, refused.data) == (401, b"denied")

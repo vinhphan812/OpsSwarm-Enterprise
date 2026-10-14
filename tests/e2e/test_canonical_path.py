@@ -166,7 +166,14 @@ class TestCanonicalStages:
     def test_agent_markers_respect_demo_runtime_isolation(
         self, run_id: str, env_info: dict
     ) -> None:
-        """Demo-only agent implementations live exclusively under demo_runtime."""
+        """Demo-only agent implementations live exclusively under demo_runtime.
+
+        ``agents/executor`` is the production guarded Executor (ADR 0016), not
+        the deleted demo alias. The demo executor stays under ``demo_runtime``
+        and the production module does not import it. The verifier has no
+        production package yet.
+        """
+        import ast
         import pathlib
 
         repo_root = pathlib.Path(__file__).parent.parent.parent
@@ -174,8 +181,26 @@ class TestCanonicalStages:
         demo_agents = package_root / "demo_runtime" / "agents"
         for module in ("executor.py", "verifier.py"):
             assert (demo_agents / module).exists(), f"Missing demo_runtime agent {module}"
-        for legacy in ("executor", "verifier"):
-            assert not (package_root / "agents" / legacy).exists()
+        assert not (package_root / "agents" / "verifier").exists()
+        production_executor = package_root / "agents" / "executor" / "executor.py"
+        assert production_executor.is_file()
+        tree = ast.parse(production_executor.read_text(encoding="utf-8"), filename=str(production_executor))
+        imported = [
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        ]
+        imported.extend(
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        )
+        assert not any(
+            name == "retailtwin_api.demo" or name.startswith("retailtwin_api.demo_runtime")
+            for name in imported
+        )
+        assert any(isinstance(node, ast.ClassDef) and node.name == "GuardedExecutor" for node in tree.body)
 
         # env_info documents the target canonical path (contract presence check)
         assert env_info["canonical_path"] == "EVENT -> AI -> INVESTIGATE -> SIMULATE -> GUARD -> LIVE -> VERIFY"

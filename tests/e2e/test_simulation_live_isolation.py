@@ -95,15 +95,28 @@ class TestSimulationServiceContract:
 
 
 class TestExecutorIsolation:
-    """Executor is the sole live mutation path (stub at day-0)."""
+    """Executor is the sole live mutation path."""
 
-    def test_executor_is_sealed_under_demo_runtime(self) -> None:
-        """Executor implementation is isolated from production namespaces."""
+    def test_only_the_guarded_executor_writes_the_live_twin(self) -> None:
+        """No production module other than the guarded Executor calls a Live Twin write."""
+        import ast
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
         package_root = repo_root / "apps" / "api" / "retailtwin_api"
-        assert (package_root / "demo_runtime" / "agents" / "executor.py").exists()
-        assert not (package_root / "agents" / "executor").exists()
+        writers = {"upsert_inventory", "commit_inventory"}
+        allowed = {
+            package_root / "agents" / "executor" / "executor.py",
+            package_root / "firestore_twin.py",
+            package_root / "store.py",  # seeds the in-process twin from the fixture at startup
+        }
+        offenders = []
+        for path in package_root.rglob("*.py"):
+            if "demo_runtime" in path.parts or path in allowed:
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if isinstance(node, ast.Attribute) and node.attr in writers:
+                    offenders.append(f"{path.relative_to(package_root)}:{node.lineno}")
+        assert not offenders, offenders
 
     def test_guard_readme_mentions_outcomes(self) -> None:
         """DCG README documents ALLOW / DENY / REFRESH_REQUIRED outcomes."""

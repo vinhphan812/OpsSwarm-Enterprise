@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from retailtwin_api.contracts import ActionUnion, ControlStage
+from retailtwin_api.contracts import ActionUnion, ControlStage, DCGVerdictResult
 from retailtwin_api.schemas import StoreResponse
 
 SimulationStatus = Literal["pending", "evaluated", "committed", "rejected"]
@@ -160,6 +160,8 @@ class DecisionReviewReasonCode(str, Enum):
     SIMULATION_NOT_FOUND = "SIMULATION_NOT_FOUND"
     DCG_DENY = "DCG_DENY"
     DCG_HUMAN_REVIEW = "DCG_HUMAN_REVIEW"
+    DECISION_UNAVAILABLE = "DECISION_UNAVAILABLE"
+    EXECUTION_FAILED = "EXECUTION_FAILED"
 
 
 class SimulationReviewRequest(BaseModel):
@@ -180,6 +182,10 @@ class SimulationReviewResponse(BaseModel):
     verdict: DecisionReviewVerdict
     reason_code: DecisionReviewReasonCode
     live_context_version: str
+    # The guard or Executor code behind ``reason_code`` (e.g. VERSION_STALE, TOKEN_REUSED).
+    detail_code: str | None = None
+    # The Decision Context Guard result with its per-gate checks, when the guard ran.
+    guard: DCGVerdictResult | None = None
 
 
 class ReviewAuditRecord(BaseModel):
