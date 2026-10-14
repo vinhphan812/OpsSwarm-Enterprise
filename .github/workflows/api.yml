@@ -176,7 +176,7 @@ jobs:
           region: us-central1
           project_id: retailtwin-ai-511002
           image: gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}
-          service_account: github-actions@retailtwin-ai-511002.iam.gserviceaccount.com
+          service_account: ${{ secrets.GCP_RUNTIME_SA }}
           allow_unauthenticated: false
           port: 8080
           min_instances: 1
