@@ -1,4 +1,4 @@
-name: Web CI
+name: Web CI / CD
 
 on:
   push:
@@ -6,16 +6,23 @@ on:
     paths:
       - 'apps/web/**'
       - 'package.json'
+      - 'firebase.json'
+      - '.firebaserc'
       - '.github/workflows/web.yml'
   pull_request:
     paths:
       - 'apps/web/**'
       - 'package.json'
+      - 'firebase.json'
+      - '.firebaserc'
       - '.github/workflows/web.yml'
 
 concurrency:
   group: web-ci-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  VITE_API_BASE_URL: https://retailtwin-api-5rgtvr4gpa-uc.a.run.app
 
 jobs:
   build-test:
@@ -42,6 +49,8 @@ jobs:
 
       - name: TypeScript & build
         run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
 
       - name: Run tests
         run: npm test
@@ -61,6 +70,35 @@ jobs:
           echo "## Web Coverage" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          # Read the text summary produced by @vitest/coverage-v8 (always generated)
           cat apps/web/coverage/coverage-summary.json 2>/dev/null || cat apps/web/coverage/text-summary.txt 2>/dev/null || echo "(run npm run test:coverage locally for details)"
           echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload web dist artifact
+        uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: web-dist
+          path: apps/web/dist/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Firebase Hosting
+    needs: build-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: apps/web/dist/
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: retailtwin-ai-511002
