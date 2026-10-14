@@ -9,18 +9,17 @@ import pytest
 
 API_ROOT = Path(__file__).resolve().parents[1] / "retailtwin_api"
 DEMO_RUNTIME = API_ROOT / "demo_runtime"
-# agents/executor is the production guarded Executor (ADR 0016). The demo
-# executor stays under demo_runtime and must not be imported from production.
+# agents/executor is the production guarded Executor (ADR 0016).
+# agents/verifier is the production post-action verifier (ADR 0017).
+# The demo copies stay under demo_runtime and must not be imported from production.
 DELETED_CANONICAL_PATHS = (
     API_ROOT / "demo.py",
-    API_ROOT / "agents" / "verifier",
     API_ROOT / "services" / "twin",
     API_ROOT / "services" / "simulation",
 )
 FORBIDDEN_IMPORT_PREFIXES = (
     "retailtwin_api.demo_runtime",
     "retailtwin_api.demo",
-    "retailtwin_api.agents.verifier",
     "retailtwin_api.services.twin",
     "retailtwin_api.services.simulation",
 )

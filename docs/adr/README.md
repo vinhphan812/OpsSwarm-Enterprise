@@ -47,3 +47,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0014](0014-guard-each-decision-with-deterministic-gates.md) | Guard each decision with deterministic gates | Accepted |
 | [0015](0015-recheck-live-versions-before-every-commit.md) | Recheck live versions before every commit | Accepted |
 | [0016](0016-commit-only-through-a-signed-single-use-authorization.md) | Commit only through a signed single-use authorization | Accepted |
+| [0017](0017-verify-post-action-state-by-rereading-live-inventory.md) | Verify post-action state by rereading live inventory | Accepted |
