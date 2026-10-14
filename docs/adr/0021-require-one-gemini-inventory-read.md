@@ -10,7 +10,7 @@ Accepted
 
 Issue #2 asks Gemini on Vertex AI to call one real read tool and return the current Live Twin document. A prose answer would be a chatbot. The allow-listed registry already serves `get_inventory` (ADR 0009), and the provider-neutral runtime already has a Vertex adapter (ADR 0008). That adapter sends `functionDeclarations` and does not send `toolConfig`, so Gemini can ignore the tool and answer in text.
 
-The store registry also names simulation and commit tools. Those handlers do not mutate the twin, but this proof must not offer them. Issue #136 (ADR 0020, open PR #178) chooses which provider may be constructed in production. This record does not decide that policy and does not supersede ADR 0008 or ADR 0009.
+The store registry also names simulation and commit tools. Those handlers do not mutate the twin, but this proof must not offer them. Issue #136 (ADR 0020) chooses which provider may be constructed in production. This record does not decide that policy and does not supersede ADR 0008 or ADR 0009.
 
 A missing SKU has to be a controlled tool error. A missing tool call has to fail closed. Credentials and chain-of-thought must not be stored. Gates G02–G06 and foundation gate #10 are separate evidence and stay unpassed.
 
@@ -24,7 +24,7 @@ The Vertex adapter maps an absent tool choice to no `toolConfig`. `required_tool
 
 ## Consequences
 
-One SKU can be proven against the twin the model was not allowed to paraphrase. Write tools are not on this request. The module does not import a model SDK and does not write Firestore, BigQuery, or the Live Twin. The day-0 Cloud Run service still does not construct a provider. Issue #136 remains a separate pull request. No API key is read or committed. Passing this read does not pass gate #10 or G02–G06.
+One SKU can be proven against the twin the model was not allowed to paraphrase. Write tools are not on this request. The module does not import a model SDK and does not write Firestore, BigQuery, or the Live Twin. The day-0 Cloud Run service still does not construct a provider. ADR 0020 is on main and is unchanged by this record. No API key is read or committed. Passing this read does not pass gate #10 or G02–G06.
 
 - Pull request: https://github.com/vinhphan812/retailtwin-ai/pull/179
 - Issue: #2
