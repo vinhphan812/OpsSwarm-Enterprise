@@ -140,6 +140,10 @@ jobs:
     # Separate environment enforces protection: no direct push-to-main without CI green.
     environment: production
 
+    permissions:
+      id-token: write
+      contents: read
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
