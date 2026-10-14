@@ -69,6 +69,36 @@ Test:
 
 PASS only if the old decision cannot alter Live Twin.
 
+### Reproducible run (API path)
+
+```bash
+cd apps/api && pip install -e ".[dev]" && cd ../..
+python tests/e2e/gates/g04_guard_gate.py --out g04-evidence.json   # exit 0 only on PASS
+pytest tests/e2e/test_g04_guard_gate.py                            # also proves a bypassed guard FAILs
+```
+
+The harness builds the real app (`LIVE_TWIN_BACKEND=memory`, seeded from the fixture) and sends every live action through `POST /simulations/{id}/approve`:
+
+- The investigator and planner build D1 from Live Twin reads at version N.
+- A controlled concurrent write moves the SKU to N+1.
+- D1 is submitted and must be refused.
+- `replan` then refreshes evidence, and D2 is approved through the same route.
+
+The evidence JSON holds:
+
+- the run id, which is also the correlation id of every request;
+- the git SHA;
+- D1 and D2 ids and versions;
+- the approve responses with the per-gate guard checks;
+- before and after Live Twin state;
+- the guard audit chain and the review audit;
+- the structured API logs;
+- one pass/fail entry per step above.
+
+The model is a scripted `FakeLlmProvider`. Its tool calls execute against the Live Twin, and the guard, token and Executor are production code. Repeat the run with a real provider for the model-driven proof.
+
+Step 8 is covered by the API audit only. The UI view of the rejection is #40.
+
 ## 5. G05 valid commit acceptance
 
 1. Candidate is simulated.
