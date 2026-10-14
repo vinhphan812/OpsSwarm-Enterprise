@@ -16,22 +16,29 @@ ADR: `docs/adr/0003-serve-store-reads-through-the-api.md`
 
 | Method | Path | Success | Failure |
 | --- | --- | --- | --- |
-| GET | `/health` | `200` with `status` `ok` or `degraded` | The process is up even when the fixture did not load |
+| GET | `/health` | `200` with `status` `ok` or `degraded` | The process remains up for liveness probes even when store fixtures or dependencies fail |
+| GET | `/ready` | `200` readiness status (`ready: true`) | `503` `store_unavailable` when store fixture is not loaded |
 | GET | `/store` | `200` typed store view | `503` `store_unavailable` |
 | GET | `/inventory/{sku}` | `200` one product | `404` `sku_not_found`, `503` `store_unavailable` |
 | POST | `/events` | `201` first accept, `200` identical duplicate | `409` `event_id_conflict`, `404` `sku_not_found` or `store_not_found`, `422` `validation_error`, `503` `store_unavailable` |
 | POST | `/simulations/{id}/approve` | `200` with the guard `verdict`; `ALLOW` means committed | `404` `simulation_not_found`, `503` `simulations_unavailable`, `commit_unavailable` or `decisions_unavailable` |
 | POST | `/simulations/{id}/reject` | `200`, status `rejected`; Live is not touched | `404` `simulation_not_found`, `503` `simulations_unavailable` |
 
+### Observable Health & Degradation Semantics (`/health` & `/ready`)
+- **`/health` (Liveness probe):** Returns `200` with `status="ok"` when the store is loaded and downstream analytics integrations (anomalies, revenue, promotions repositories) execute successfully without raising exceptions. Returns `status="degraded"` **only** when the store fixture is not loaded OR when an analytics repository call actually raises an exception (e.g., database connection loss or GCP unreachable). Empty analytics datasets (e.g., zero anomalies for today) are valid operational states and return `ok`, not degraded.
+- **`/ready` (Readiness probe):** Returns `200` with `ready=true` when the service is ready to accept traffic (`store.loaded == True`). Returns `503` with code `store_unavailable` when the store fixture is unavailable, signaling orchestrators/load balancers to drain traffic.
+
 `GET /store` for the committed fixture returns `store-001`, `context_version` `store-001:v1`, and product `P001` on shelf `A01` / slot `A01-S01` with 3 facings, 8 on shelf, and 42 in the backroom. Product `version` is the fixture version as an integer (`1`). Ids are case-sensitive.
 
-Errors use one envelope and do not echo the request body:
+### Error Boundary & Failure-Safe Behavior
+Errors adhere to a stable, non-sensitive JSON envelope and **never** echo raw request bodies or internal traceback paths:
 
 ```json
 {"error": {"code": "sku_not_found", "message": "SKU 'P017' is not in store store-001."}}
 ```
 
-Validation errors add `error.details`: a list of `{field, message}`.
+- **Validation Errors (`HTTP 422`):** Include `error.details`, a structured list of `{field, message}` pairs detailing validation failures.
+- **Client & Server Errors:** Return precise error codes (`sku_not_found`, `store_unavailable`, `event_id_conflict`, `validation_error`) ensuring predictable failure handling across UI and client SDK boundaries.
 
 ## Run locally
 
