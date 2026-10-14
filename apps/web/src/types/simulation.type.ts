@@ -64,10 +64,14 @@ export type Candidate = {
   kpis: CandidateKPI[];
   /** Version of the evaluator that produced these KPIs. */
   evaluator_version: string;
-  /** Human-readable justification from the agent that generated this candidate. */
-  justification: string;
+  /** Provenance of this candidate. */
+  provenance: string;
 };
 
+/** `GET /simulations/{simulation_id}/candidates`. */
+export type CandidatesResponse = {
+  candidates: Candidate[];
+};
 /** One row of `GET /simulations?status=open`. TODO(BE): FE proposal (#26). */
 export type SimulationSummary = Pick<Simulation, "simulation_id" | "store_id" | "base_context_version" | "status">;
 

@@ -17,8 +17,8 @@ function formatKpiValue(value: number, unit: string): string {
   return `${value} ${unit}`;
 }
 
-/** The justification section of a candidate, collapsible to keep it out of the way. */
-function JustificationSection({ text }: { text: string }) {
+/** The provenance section of a candidate, collapsible to keep it out of the way. */
+function ProvenanceSection({ text }: { text: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   return (
@@ -29,7 +29,7 @@ function JustificationSection({ text }: { text: string }) {
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
       >
-        <span>{t("proposal.candidate.justification")}</span>
+        <span>{t("proposal.candidate.provenance")}</span>
         <ChevronDownIcon className={`candidate-justification-chevron${expanded ? " expanded" : ""}`} />
       </button>
       {expanded ? <p className="candidate-justification-text">{text}</p> : null}
@@ -37,7 +37,7 @@ function JustificationSection({ text }: { text: string }) {
   );
 }
 
-/** Shows the selected candidate's KPI scores and agent justification. Only renders when a
+/** Shows the selected candidate's KPI scores and provenance. Only renders when a
  * candidate is selected (not the simulation's own proposal) and the Simulation view is active.
  * Keeps simulation state strictly isolated from live state — all data comes from the candidate,
  * never writes back.
@@ -77,7 +77,7 @@ export function CandidatePanel() {
         )}
       </div>
 
-      <JustificationSection text={candidate.justification} />
+      <ProvenanceSection text={candidate.provenance} />
 
       <div className="candidate-selector" role="group" aria-label={t("proposal.candidate.selector")}>
         {candidates.map((c) => (

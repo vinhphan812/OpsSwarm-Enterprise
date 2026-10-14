@@ -36,8 +36,8 @@ const DEMO_CANDIDATE_KPIS: Record<string, CandidateKPI[]> = {
   ],
 };
 
-/** Agent justifications for demo candidates. */
-const DEMO_CANDIDATE_JUSTIFICATIONS: Record<string, string> = {
+/** Agent provenances for demo candidates. */
+const DEMO_CANDIDATE_PROVENANCES: Record<string, string> = {
   "cand-a":
     "Full restocking and shelf optimization — maximizes revenue with moderate stockout risk. " +
     "Prioritizes high-velocity SKUs and clears low-facings dead stock.",
@@ -67,7 +67,7 @@ export function candidateOf(
     state: { ...state, context_version: `${simulationId}:${candidateId}` },
     kpis: structuredClone(DEMO_CANDIDATE_KPIS[candidateId] ?? []),
     evaluator_version: "evaluator-v1",
-    justification: DEMO_CANDIDATE_JUSTIFICATIONS[candidateId] ?? "No justification provided.",
+    provenance: DEMO_CANDIDATE_PROVENANCES[candidateId] ?? "No provenance provided.",
   };
 }
 
