@@ -1,148 +1,123 @@
 #!/usr/bin/env bash
-# =============================================================================
-# deploy-cloudrun.sh — Production Cloud Run deployment for retailtwin-api
-# =============================================================================
-# Prerequisites (must run once before first deploy):
-#   1. gcloud auth configure-docker gcr.io
-#   2. gcloud services enable run.googleapis.com  --project=retailtwin-ai-511002
-#   3. WORKLOAD_IDENTITY_FEDERATION configured for CI (see GitHub Actions)
+# Deploy the fixture API to Cloud Run.
 #
-# Usage:
-#   PROJECT=retailtwin-ai-511002 REGION=us-central1 ./deploy-cloudrun.sh [--verify]
+# Matches ADR 0004: project retailtwin-ai-511002, region us-central1,
+# Artifact Registry repository retailtwin, minimum instances 0, and the
+# retailtwin-api runtime identity. The image contains the committed store
+# fixture, so this script does not read Secret Manager.
 #
-# Production flags used:
-#   --min-instances=1          Prevents cold-start latency for user-facing API
-#   --max-instances=10         Caps cost; adjust per actual load testing
-#   --port=8080               Cloud Run sets PORT; uvicorn reads it
-#   --memory=512Mi             Verified sufficient for day-0 fixture load
-#   --cpu=1                    Default; burst CPU OK with Cloud Run billing
-#   --timeout=60               Matches gcloud --timeout (startup probe limit)
-#   --concurrency=80           Max one request per instance at a time
-#   --set-env-vars=APP_ENV=production
+# Usage, from the repository root, with Docker running:
+#   scripts/deploy-cloudrun.sh
+#   VERIFY=false scripts/deploy-cloudrun.sh
 #
 # Rollback:
 #   gcloud run services update-traffic retailtwin-api \
-#     --to-revisions=<previous-revision>=100 --region=us-central1
-# =============================================================================
+#     --to-revisions=REVISION=100 --region=us-central1 --project=retailtwin-ai-511002
 
 set -euo pipefail
 
-# ── Defaults ─────────────────────────────────────────────────────────────────
 PROJECT="${PROJECT:-retailtwin-ai-511002}"
 REGION="${REGION:-us-central1}"
 SERVICE="retailtwin-api"
-IMAGE="gcr.io/${PROJECT}/${SERVICE}"
+REPOSITORY="retailtwin"
+REGISTRY="${REGION}-docker.pkg.dev/${PROJECT}/${REPOSITORY}"
+IMAGE="${REGISTRY}/${SERVICE}"
 TAG="${TAG:-$(git rev-parse --short HEAD)}"
 VERIFY="${VERIFY:-true}"
+API_SA="retailtwin-api@${PROJECT}.iam.gserviceaccount.com"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ── Guards ───────────────────────────────────────────────────────────────────
-if [[ ! "${PROJECT}" =~ ^retailtwin-ai-511002$ ]]; then
-  echo "ERROR: PROJECT must be 'retailtwin-ai-511002', got '${PROJECT}'" >&2
+if [[ "${PROJECT}" != "retailtwin-ai-511002" ]]; then
+  echo "ERROR: PROJECT must be retailtwin-ai-511002, got '${PROJECT}'" >&2
   exit 1
 fi
 
-if [[ ! "${REGION}" =~ ^us-central1$ ]]; then
-  echo "ERROR: REGION must be 'us-central1', got '${REGION}'" >&2
+if [[ "${REGION}" != "us-central1" ]]; then
+  echo "ERROR: REGION must be us-central1, got '${REGION}'" >&2
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "ERROR: Docker is not running. Start Docker Desktop, then run this script again." >&2
   exit 1
 fi
 
 echo "=== RetailTwin API — Cloud Run Deployment ==="
-echo "  Project  : ${PROJECT}"
-echo "  Region   : ${REGION}"
-echo "  Service  : ${SERVICE}"
-echo "  Image    : ${IMAGE}:${TAG}"
-echo "  Time     : $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "  Project : ${PROJECT}"
+echo "  Region  : ${REGION}"
+echo "  Service : ${SERVICE}"
+echo "  Image   : ${IMAGE}:${TAG}"
+echo "  Account : ${API_SA}"
 
-# ── 1. Build ─────────────────────────────────────────────────────────────────
 echo ""
-echo "[1/5] Building container image..."
+echo "[1/5] Checking Artifact Registry credentials..."
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+echo ""
+echo "[2/5] Building ${IMAGE}:${TAG}"
 docker build \
+  --platform linux/amd64 \
   --tag "${IMAGE}:${TAG}" \
-  --tag "${IMAGE}:latest" \
-  --progress=plain \
-  .
+  --file "${ROOT}/Dockerfile" \
+  "${ROOT}"
 
-# ── 2. Push ──────────────────────────────────────────────────────────────────
 echo ""
-echo "[2/5] Pushing to Artifact Registry..."
+echo "[3/5] Pushing image"
 docker push "${IMAGE}:${TAG}"
-docker push "${IMAGE}:latest"
 
-# ── 3. Deploy ────────────────────────────────────────────────────────────────
 echo ""
-echo "[3/5] Deploying to Cloud Run (min-instances=1 for production)..."
+echo "[4/5] Deploying with minimum instances 0"
 gcloud run deploy "${SERVICE}" \
   --image "${IMAGE}:${TAG}" \
   --platform managed \
   --region "${REGION}" \
   --project "${PROJECT}" \
+  --service-account "${API_SA}" \
   --allow-unauthenticated \
   --port 8080 \
-  --min-instances 1 \
-  --max-instances 10 \
+  --min-instances 0 \
+  --max-instances 2 \
   --memory 512Mi \
   --cpu 1 \
   --timeout 60 \
   --concurrency 80 \
-  --set-env-vars "APP_ENV=production,LOG_LEVEL=INFO" \
-  --set-secrets "STORE_FIXTURE_PATH=store-fixture:latest" \
-  --no-csek-key-file
+  --set-env-vars "^|^APP_ENV=production|LOG_LEVEL=INFO|CORS_ORIGINS=https://retailtwin-ai-511002.web.app,https://retailtwin-ai-511002.firebaseapp.com,http://localhost:5173,http://127.0.0.1:5173"
 
-# ── 4. Capture revision ──────────────────────────────────────────────────────
-REVISION=$(gcloud run services describe "${SERVICE}" \
+REVISION="$(gcloud run services describe "${SERVICE}" \
   --region "${REGION}" \
-  --format="value(status.latestCreatedRevisionName)" \
-  --project "${PROJECT}")
+  --project "${PROJECT}" \
+  --format='value(status.latestCreatedRevisionName)')"
+SERVICE_URL="$(gcloud run services describe "${SERVICE}" \
+  --region "${REGION}" \
+  --project "${PROJECT}" \
+  --format='value(status.url)')"
 
 echo ""
-echo "[4/5] Deployed revision: ${REVISION}"
+echo "Revision ${REVISION}"
+echo "URL      ${SERVICE_URL}"
 
-# ── 5. Verify ────────────────────────────────────────────────────────────────
-if [[ "${VERIFY}" == "true" ]]; then
-  echo ""
-  echo "[5/5] Verifying deployment..."
-  SERVICE_URL=$(gcloud run services describe "${SERVICE}" \
-    --region "${REGION}" \
-    --format="value(status.url)" \
-    --project "${PROJECT}")
-
-  # Health check
-  HEALTH_STATUS=$(curl -sf "${SERVICE_URL}/health" -o /dev/null -w "%{http_code}" || echo "000")
-  if [[ "${HEALTH_STATUS}" == "200" ]]; then
-    echo "  ✓ /health returned 200"
-  else
-    echo "  ✗ /health returned ${HEALTH_STATUS} — DEPLOYMENT MAY BE UNSTABLE" >&2
-    exit 1
-  fi
-
-  # Readiness check
-  READY_STATUS=$(curl -sf "${SERVICE_URL}/ready" -o /dev/null -w "%{http_code}" || echo "000")
-  if [[ "${READY_STATUS}" == "200" ]]; then
-    echo "  ✓ /ready returned 200"
-  else
-    echo "  ✗ /ready returned ${READY_STATUS} — NOT READY FOR TRAFFIC" >&2
-    exit 1
-  fi
-
-  # Verify response contains production env flag
-  HEALTH_BODY=$(curl -sf "${SERVICE_URL}/health")
-  if echo "${HEALTH_BODY}" | grep -q '"app_env":"production"'; then
-    echo "  ✓ APP_ENV=production confirmed in /health response"
-  else
-    echo "  ✗ APP_ENV not set to 'production' — check env var injection" >&2
-    echo "  Health body: ${HEALTH_BODY}" >&2
-    exit 1
-  fi
-
-  echo ""
-  echo "=== Deployment successful ==="
-  echo "  Service URL : ${SERVICE_URL}"
-  echo "  Revision    : ${REVISION}"
-  echo ""
-  echo "Rollback command:"
-  echo "  gcloud run services update-traffic ${SERVICE} \\"
-  echo "    --to-revisions=${REVISION}=100 --region=${REGION} --project=${PROJECT}"
-else
-  echo ""
-  echo "[5/5] Skipped verification (VERIFY=false)"
+if [[ "${VERIFY}" != "true" ]]; then
+  echo "[5/5] Skipped verification"
+  exit 0
 fi
+
+echo ""
+echo "[5/5] Verifying deployment..."
+HEALTH_BODY="$(curl -sf "${SERVICE_URL}/health")"
+printf '%s\n' "${HEALTH_BODY}" | grep -q '"app_env":"production"'
+printf '%s\n' "${HEALTH_BODY}" | grep -q '"fixture_loaded":true'
+READY_STATUS="$(curl -sf -o /dev/null -w '%{http_code}' "${SERVICE_URL}/ready")"
+if [[ "${READY_STATUS}" != "200" ]]; then
+  echo "ERROR: /ready returned ${READY_STATUS}" >&2
+  exit 1
+fi
+STORE_STATUS="$(curl -sf -o /dev/null -w '%{http_code}' "${SERVICE_URL}/store")"
+if [[ "${STORE_STATUS}" != "200" ]]; then
+  echo "ERROR: /store returned ${STORE_STATUS}" >&2
+  exit 1
+fi
+
+echo "Health, readiness, and /store passed."
+echo "This revision is ${REVISION}. To roll back, send traffic to the previous revision:"
+echo "  gcloud run services update-traffic ${SERVICE} \\"
+echo "    --to-revisions=PREVIOUS_REVISION=100 --region=${REGION} --project=${PROJECT}"
