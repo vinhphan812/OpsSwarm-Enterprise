@@ -84,3 +84,15 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 
 Accepted events log `event_id`, `correlation_id`, and `store_id` in process memory only. This demo scaffold does not publish events, connect to Firestore, or interact with BigQuery. Canonical event backbone implementation is out-of-scope for this demo.
 // trigger
+
+## Gemini inventory read
+
+ADR 0021. `read_inventory` asks the injected provider for one `get_inventory` call and returns the typed Live Twin document. A missing SKU is `not_found`. Model prose is not inventory. The API process does not construct a provider, and this does not pass foundation gate #10 or gates G02–G06.
+
+CI uses `FakeLlmProvider`. A live call is opt-in. Use Application Default Credentials for `retailtwin-ai-511002` (`gcloud auth application-default login`, then `gcloud auth application-default set-quota-project retailtwin-ai-511002`). Do not create a service-account key and do not set an API key. From this directory:
+
+```bash
+RETAILTWIN_VERTEX_LIVE=1 .venv/bin/python -m pytest tests/test_vertex_inventory_live.py -q
+```
+
+The test reads `store-001` / `P001` with `gemini-2.5-flash` in `us-central1`, then asks for one SKU that is not in the store. It does not write Firestore. Do not set `RETAILTWIN_VERTEX_LIVE` in CI.

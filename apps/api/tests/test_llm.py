@@ -447,6 +447,114 @@ def test_vertex_sends_tool_definitions(monkeypatch: pytest.MonkeyPatch) -> None:
     sent_payload = client.calls[0][1]["json"]
     assert "tools" in sent_payload
     assert sent_payload["tools"][0]["functionDeclarations"][0]["name"] == "get_inventory"
+    assert "toolConfig" not in sent_payload
+
+
+def _vertex_payload(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    tools: list[LlmTool],
+    tool_choice: ToolChoicePolicy | None = None,
+    metadata: dict[str, str] | None = None,
+) -> dict[str, object]:
+    client = MockClient(
+        MockResponse({
+            "candidates": [{
+                "content": {"parts": [{"text": "Inventory fetched."}]},
+                "finishReason": "STOP",
+            }],
+            "usage": {"promptTokens": 5, "candidatesTokens": 3, "totalTokens": 8},
+        })
+    )
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: client)
+    provider = VertexProvider(
+        project_id="my-project",
+        location="us-central1",
+        model="gemini-2.0-flash",
+        timeout=30,
+    )
+    request = make_request(
+        model="gemini-2.0-flash",
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+    if metadata is not None:
+        request = request.model_copy(update={"metadata": metadata})
+    asyncio.run(provider.complete(request))
+    payload = client.calls[0][1]["json"]
+    assert isinstance(payload, dict)
+    return payload
+
+
+@pytest.mark.parametrize(
+    ("tool_names", "policy", "expected"),
+    [
+        (
+            ["get_inventory", "get_weather"],
+            ToolChoicePolicy(mode="required_tool", name="get_inventory"),
+            {"mode": "ANY", "allowedFunctionNames": ["get_inventory"]},
+        ),
+        (
+            ["get_inventory", "get_weather"],
+            ToolChoicePolicy(mode="required_tool"),
+            {"mode": "ANY", "allowedFunctionNames": ["get_inventory"]},
+        ),
+        (
+            ["get_inventory", "get_weather"],
+            ToolChoicePolicy(mode="tool_choice", name="get_weather"),
+            {"mode": "ANY", "allowedFunctionNames": ["get_weather"]},
+        ),
+        (
+            ["get_inventory"],
+            ToolChoicePolicy(mode="tool_choice"),
+            {"mode": "AUTO"},
+        ),
+        (
+            ["get_inventory"],
+            ToolChoicePolicy(mode="none"),
+            {"mode": "NONE"},
+        ),
+    ],
+)
+def test_vertex_maps_tool_choice_to_function_calling_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_names: list[str],
+    policy: ToolChoicePolicy,
+    expected: dict[str, object],
+) -> None:
+    payload = _vertex_payload(
+        monkeypatch,
+        tools=[LlmTool(name=name) for name in tool_names],
+        tool_choice=policy,
+    )
+    assert payload["toolConfig"] == {"functionCallingConfig": expected}
+
+
+def test_vertex_omits_tool_config_without_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _vertex_payload(
+        monkeypatch,
+        tools=[],
+        tool_choice=ToolChoicePolicy(mode="required_tool", name="get_inventory"),
+    )
+    assert "tools" not in payload
+    assert "toolConfig" not in payload
+
+
+def test_vertex_sends_thinking_budget_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
+    plain = _vertex_payload(monkeypatch, tools=[])
+    assert "generationConfig" not in plain
+    budgeted = _vertex_payload(
+        monkeypatch,
+        tools=[],
+        metadata={"vertex_thinking_budget": "0"},
+    )
+    assert budgeted["generationConfig"] == {"thinkingConfig": {"thinkingBudget": 0}}
+    ignored = _vertex_payload(
+        monkeypatch,
+        tools=[],
+        metadata={"vertex_thinking_budget": "nope"},
+    )
+    assert "generationConfig" not in ignored
 
 
 def test_vertex_sends_structured_output(monkeypatch: pytest.MonkeyPatch) -> None:

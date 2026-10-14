@@ -118,7 +118,9 @@ All adapters implement `LlmProvider.complete(request: LlmRequest) -> LlmResponse
 | `openai_compatible` | `LLM_PROVIDER=openai_compatible` | `LLM_BASE_URL`, `LLM_API_KEY` | Local proxies, OpenAI, Azure |
 | `vertex_gemini` | `LLM_PROVIDER=vertex_gemini` | GCP ADC | Production Gemini on Vertex AI |
 
-The fake provider is the default in `.env.example` and is the only provider used in CI. `create_provider` selects a registered adapter (ADR 0020). In production that call accepts only `vertex_gemini` on `retailtwin-ai-511002` in `us-central1`, with Application Default Credentials. That name cannot be replaced or removed, and the call uses the shipped Vertex builder. A fake provider, a loopback endpoint, and an API key are refused. The day-0 API does not construct a provider. A live Gemini tool call remains issue #2.
+The fake provider is the default in `.env.example` and is the only provider used in CI. `create_provider` selects a registered adapter (ADR 0020). In production that call accepts only `vertex_gemini` on `retailtwin-ai-511002` in `us-central1`, with Application Default Credentials. That name cannot be replaced or removed, and the call uses the shipped Vertex builder. A fake provider, a loopback endpoint, and an API key are refused. The day-0 API does not construct a provider.
+
+Issue #2 (ADR 0021) is the one production read: Gemini on Vertex AI must call `get_inventory` for a named SKU. The Live Twin document is the result. Model prose is not inventory. That read does not pass foundation gate #10 or gates G02–G06.
 
 ## 3. Component responsibilities
 

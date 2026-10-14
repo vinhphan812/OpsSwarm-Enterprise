@@ -83,6 +83,32 @@ def _convert_tools_vertex(tools: list[LlmTool]) -> list[dict[str, Any]]:
     ]
 
 
+def _function_calling_config(request: LlmRequest) -> dict[str, Any] | None:
+    """Map tool choice onto Vertex functionCallingConfig.
+
+    An absent policy sends no toolConfig. ``required_tool`` and a named
+    ``tool_choice`` force one function. An unnamed ``tool_choice`` is AUTO.
+    ``none`` is NONE.
+    """
+    policy = request.tool_choice
+    if policy is None or not request.tools:
+        return None
+    if policy.mode == "none":
+        return {"mode": "NONE"}
+    if policy.mode == "required_tool" or policy.name:
+        name = policy.name or request.tools[0].name
+        return {"mode": "ANY", "allowedFunctionNames": [name]}
+    return {"mode": "AUTO"}
+
+
+def _thinking_budget(request: LlmRequest) -> int | None:
+    """Read an explicit non-negative budget. Other requests omit the key."""
+    raw = request.metadata.get("vertex_thinking_budget")
+    if raw is None or not raw.isdigit():
+        return None
+    return int(raw)
+
+
 def _normalize_vertex_tool_calls(
     candidates: list[dict[str, Any]],
 ) -> tuple[list[LlmToolCall], str | None]:
@@ -265,11 +291,17 @@ class VertexProvider(LlmProvider):
         if request.structured_output:
             generation_config["responseMimeType"] = "application/json"
             generation_config["responseSchema"] = request.structured_output.json_schema
+        budget = _thinking_budget(request)
+        if budget is not None:
+            generation_config["thinkingConfig"] = {"thinkingBudget": budget}
         if generation_config:
             payload["generationConfig"] = generation_config
 
         if request.tools:
             payload["tools"] = [{"functionDeclarations": _convert_tools_vertex(request.tools)}]
+            calling = _function_calling_config(request)
+            if calling is not None:
+                payload["toolConfig"] = {"functionCallingConfig": calling}
 
         return payload
 

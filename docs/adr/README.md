@@ -52,3 +52,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0018](0018-refresh-evidence-and-replan-after-a-stale-rejection.md) | Refresh evidence and replan after a stale rejection | Accepted |
 | [0019](0019-record-agent-action-provenance-in-bigquery.md) | Record agent-action provenance in BigQuery | Accepted |
 | [0020](0020-register-llm-providers-and-require-vertex-adc-in-production.md) | Register LLM providers and require Vertex ADC in production | Accepted |
+| [0021](0021-require-one-gemini-inventory-read.md) | Require one Gemini inventory read | Accepted |
