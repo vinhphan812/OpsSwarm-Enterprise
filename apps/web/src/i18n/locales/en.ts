@@ -43,6 +43,12 @@ export const en = {
     invalid: "Cannot be shown",
     shelfSlot: "Shelf / slot",
     facings: "Facings",
+    facingsChange: "Facings {{before}} → {{after}}",
+    overCapacity: "Over slot capacity",
+    inconsistentTransfer: "Inconsistent transfer",
+    shelfDelta: "Shelf {{delta}}",
+    backroomDelta: "Backroom {{delta}}",
+    notShown: "+{{count}} not shown",
     onShelf: "On shelf",
     backroom: "Backroom",
     version: "Version",
@@ -59,6 +65,7 @@ export const en = {
     selectProduct: "Select {{sku}}",
     details: "Details",
     detailsOf: "Details of {{sku}}",
+    movedFrom: "Moved from {{slot}}",
     state: {
       ok: "OK",
       low: "Low",
@@ -165,6 +172,8 @@ export const en = {
     unknownShelf: "shelf {{shelfId}} is not in the layout",
     slotNotOnShelf: "slot {{slotId}} is not on shelf {{shelfId}}",
     slotTaken: "slot {{slotId}} already holds {{owner}}",
+    facingsOverCapacity: "{{facings}} facings, but slot {{slotId}} holds {{capacity}}",
+    inconsistentTransfer: "shelf {{shelf}} but backroom {{backroom}}: not a matching transfer",
   },
   invalidState: {
     title: "Invalid Digital Twin data: {{reason}}",
@@ -194,6 +203,11 @@ export const en = {
     timeline: "Agent activity timeline",
     section: "Activity",
     selectProduct: "Show {{sku}} in the store",
+    followAgent: "Follow agent",
+    followAgentHint: "Fly the camera to what the agent works on, unless you are using it",
+  },
+  agentFocus: {
+    source: "Agent",
   },
   panel: {
     close: "Close the {{title}} panel",
@@ -226,6 +240,11 @@ export const en = {
       move_product: "Move {{sku}} {{from}} → {{to}}",
       change_facings: "{{sku}} to {{facings}} facings",
       replenish_shelf: "Restock {{sku}} +{{quantity}}",
+    },
+    changes: {
+      count_one: "{{count}} change",
+      count_other: "{{count}} changes",
+      focus: "Show {{sku}} in 3D",
     },
     review: {
       label: "Review this proposal",
