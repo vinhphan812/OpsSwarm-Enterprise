@@ -39,16 +39,33 @@ export type Simulation = {
 };
 
 /**
- * One alternative proposal of a simulation run, named as in `SimulationCandidateResponse`
- * of `GET /simulations/{simulation_id}/candidates` (#83). The FE shows its state; KPI
- * values and provenance come with the binding (#93) and are never computed here.
+ * One alternative proposal of a simulation run, matching `SimulationCandidateResponse`
+ * from `GET /simulations/{simulation_id}/candidates` (#83). KPI values and provenance
+ * come from the evaluator (bound in #93) and are never computed locally.
  */
+export type CandidateKPI = {
+  /** Human-readable KPI name, e.g. "Revenue Impact". */
+  name: string;
+  /** Numeric value of the KPI. */
+  value: number;
+  /** Unit of the value, e.g. "$" or "%". */
+  unit: string;
+  /** Which evaluator produced this KPI. */
+  source: string;
+};
+
 export type Candidate = {
   candidate_id: string;
   simulation_id: string;
   proposed_actions: SimulationAction[];
   /** The proposed store with `proposed_actions` applied. Never Live truth. */
   state: StoreResponse;
+  /** Evaluator-produced KPIs for this candidate. Empty when no evaluator has scored it. */
+  kpis: CandidateKPI[];
+  /** Version of the evaluator that produced these KPIs. */
+  evaluator_version: string;
+  /** Human-readable justification from the agent that generated this candidate. */
+  justification: string;
 };
 
 /** One row of `GET /simulations?status=open`. TODO(BE): FE proposal (#26). */

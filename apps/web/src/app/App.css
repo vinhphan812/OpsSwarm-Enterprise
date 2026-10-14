@@ -631,3 +631,147 @@ tr[data-open="true"] .receipt-caret {
   text-transform: uppercase;
   color: var(--color-accent);
 }
+
+/* ─── Candidate Panel ─────────────────────────────────────────────────────────── */
+
+.candidate-panel {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 40%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-panel) 60%, transparent);
+}
+
+.candidate-panel-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.candidate-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-simulation);
+}
+
+.candidate-panel-kpis {
+  margin-top: 4px;
+}
+
+.candidate-kpi-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.candidate-kpi-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
+}
+
+.candidate-kpi-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--color-ink-muted);
+}
+
+.candidate-kpi-name {
+  flex: 1;
+  font-size: 12px;
+  color: var(--color-ink);
+}
+
+.candidate-kpi-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.candidate-kpi-source {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-line) 40%, transparent);
+  color: var(--color-ink-muted);
+}
+
+.candidate-panel-no-kpis {
+  font-size: 12px;
+  font-style: italic;
+  color: var(--color-ink-muted);
+}
+
+.candidate-justification {
+  margin-top: 8px;
+}
+
+.candidate-justification-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.candidate-justification-toggle:hover {
+  color: var(--color-ink);
+}
+
+.candidate-justification-chevron {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s ease;
+}
+
+.candidate-justification-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.candidate-justification-text {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-muted);
+}
+
+.candidate-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--color-line) 30%, transparent);
+}
+
+.candidate-selector-btn {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.candidate-selector-btn.active {
+  border-color: var(--color-simulation);
+}
+
+.simulation-btn {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
