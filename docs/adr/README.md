@@ -43,5 +43,6 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0009](0009-expose-one-allow-listed-tool-registry.md) | Expose one allow-listed tool registry | Accepted |
 | [0010](0010-start-one-investigation-per-sale.md) | Start one investigation per new sale | Accepted |
 | [0011](0011-collect-versioned-evidence-from-the-tool-registry.md) | Collect versioned evidence from the tool registry | Accepted |
+| [0012](0012-bind-candidate-plans-to-the-evidence-context.md) | Bind candidate plans to the evidence context | Accepted |
 | [0014](0014-guard-each-decision-with-deterministic-gates.md) | Guard each decision with deterministic gates | Accepted |
 | [0015](0015-recheck-live-versions-before-every-commit.md) | Recheck live versions before every commit | Accepted |
