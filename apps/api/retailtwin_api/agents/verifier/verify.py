@@ -88,7 +88,7 @@ class VerificationAudit(Protocol):
 
 
 class InMemoryVerificationAudit:
-    """Process-memory audit. The BigQuery trail is issue #35."""
+    """Process-memory audit. The BigQuery trail is `retailtwin_api.audit.trail`."""
 
     def __init__(self) -> None:
         self.events: list[VerificationAuditEvent] = []

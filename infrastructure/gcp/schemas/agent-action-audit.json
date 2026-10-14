@@ -1,0 +1,116 @@
+[
+  {
+    "name": "record_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Immutable id of one audit stage. A replay of the same payload is a duplicate."
+  },
+  {
+    "name": "correlation_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Id that ties every stage of one autonomous run together."
+  },
+  {
+    "name": "decision_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Decision this stage belongs to. Empty on the trigger row."
+  },
+  {
+    "name": "action_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Executor action id, decision_id plus the action index. Empty except on execution."
+  },
+  {
+    "name": "store_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Store the run belongs to."
+  },
+  {
+    "name": "sku",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "SKU the stage names, when the stage has one."
+  },
+  {
+    "name": "stage",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "trigger, evidence, decision, guard, execution, or observed."
+  },
+  {
+    "name": "trigger_ref",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "Event id that started the run."
+  },
+  {
+    "name": "evidence_refs",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "JSON array of bundle id, sku, and entity version. Not the evidence payload."
+  },
+  {
+    "name": "reason_summary",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Short reason. Not a prompt and not a chain of thought."
+  },
+  {
+    "name": "tool_params",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Canonical JSON of the validated action parameters."
+  },
+  {
+    "name": "simulation_id",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Simulation that scored the decision, when one did."
+  },
+  {
+    "name": "predicted_impact",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "The decision kpi_score as JSON. -1.0 is unscored and is not a new formula."
+  },
+  {
+    "name": "guard_verdict",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "ALLOW, DENY, REFRESH_REQUIRED, or HUMAN_REVIEW."
+  },
+  {
+    "name": "guard_reason",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Guard reason code."
+  },
+  {
+    "name": "execution_status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Executor status for this action, such as applied or not_applied."
+  },
+  {
+    "name": "observed_status",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "Verifier status: VERIFIED, REGRESSION, or INCONCLUSIVE."
+  },
+  {
+    "name": "recorded_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the trace was recorded. Partition field. Not the ingest time."
+  },
+  {
+    "name": "ingested_at",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "When the row was written. Not part of the trace identity."
+  }
+]
