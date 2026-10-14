@@ -60,7 +60,21 @@ ADR 0009. The registry in `tool_registry.py` is the only tool list the orchestra
 
 None of those handlers change the store or issue a commit authorization. `forecast_demand`, `get_stockout_risk`, `get_promotions`, and the other analytical catalog names stay off this list until a deterministic port is bound with `bind_catalog_tool`. A call also needs the matching capability in `granted`. Unknown names, invalid arguments, missing permission, and timeouts return a controlled `ToolResult`.
 
-The live Vertex proof that Gemini calls `get_inventory` stays with issue #2. Tests use `FakeLlmProvider` and the same `LlmTool` list.
+`read_inventory` (ADR 0021) is the one Gemini read. Tests of this registry still use `FakeLlmProvider`.
+
+## One Gemini inventory read
+
+ADR 0021. Import `read_inventory` from `retailtwin_api.agents.orchestrator.inventory_read`.
+
+The injected provider is asked for exactly one `get_inventory` call. The request lists that tool only. The typed Live Twin document is the result. Model prose is ignored. A missing SKU returns `error_code` `not_found`. No call, another tool, or another SKU fails closed and is not executed. The function does not write the twin.
+
+CI injects `FakeLlmProvider`. A live call is opt-in and is not part of CI. From `apps/api`, after `gcloud auth application-default login` and `gcloud auth application-default set-quota-project retailtwin-ai-511002`:
+
+```bash
+RETAILTWIN_VERTEX_LIVE=1 .venv/bin/python -m pytest tests/test_vertex_inventory_live.py -q
+```
+
+That test reads `store-001` / `P001` on project `retailtwin-ai-511002` in `us-central1` with model `gemini-2.5-flash` and Application Default Credentials. It also asks for one SKU that is not in the store. It does not write Firestore. Do not set `RETAILTWIN_VERTEX_LIVE` in CI, and do not commit an API key. This does not pass foundation gate #10 or gates G02–G06. The Cloud Run service still does not call Vertex.
 
 ## Stale recovery
 
