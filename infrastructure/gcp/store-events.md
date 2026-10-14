@@ -19,6 +19,8 @@ The message body is the normalized store event in [data/schemas/store-event.sche
 | `inventory.*` | `inventory_events` |
 | `agent.*` | `agent_actions` |
 
+Agent-action provenance (issue #35) is not this envelope. It is the separate table `agent_action_audit`, described in [agent-action-audit.md](agent-action-audit.md).
+
 Attributes are exactly `event_id`, `correlation_id`, `event_type`, and `store_id`, and each value matches the body. A missing, extra, or mismatched attribute is rejected. The ordering key is `event_id`. Ordered publish and pull use the `us-central1` Pub/Sub endpoint, because the global endpoint rejects an ordering key when the topic stores messages only in that region.
 
 The event-id owner is the Firestore document `store_event_claims/{event_id}` in the existing `(default)` database. The lander creates it only when the document is absent. One create wins. The same normalized payload is a duplicate. A different payload does not replace the claim. BigQuery is derived history. The claim moves `claimed → landing → landed`. The 120 second landing lease chooses who may submit the insert. The BigQuery job id comes from the event id and the claim's insert generation. A takeover submits that same job id and waits for the existing job, so lease expiry during a slow job does not start a second insert. A new generation is written only after that job has finished with an error. `correlation_id` on the row is the published value. These claim documents are not Live Twin state. Issue #6 still owns the Live Twin.

@@ -50,3 +50,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0016](0016-commit-only-through-a-signed-single-use-authorization.md) | Commit only through a signed single-use authorization | Accepted |
 | [0017](0017-verify-post-action-state-by-rereading-live-inventory.md) | Verify post-action state by rereading live inventory | Accepted |
 | [0018](0018-refresh-evidence-and-replan-after-a-stale-rejection.md) | Refresh evidence and replan after a stale rejection | Accepted |
+| [0019](0019-record-agent-action-provenance-in-bigquery.md) | Record agent-action provenance in BigQuery | Accepted |
