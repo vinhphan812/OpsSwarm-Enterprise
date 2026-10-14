@@ -168,10 +168,10 @@ class TestCanonicalStages:
     ) -> None:
         """Demo-only agent implementations live exclusively under demo_runtime.
 
-        ``agents/executor`` is the production guarded Executor (ADR 0016), not
-        the deleted demo alias. The demo executor stays under ``demo_runtime``
-        and the production module does not import it. The verifier has no
-        production package yet.
+        ``agents/executor`` is the production guarded Executor (ADR 0016) and
+        ``agents/verifier`` is the production post-action verifier (ADR 0017).
+        The demo copies stay under ``demo_runtime``. Neither production module
+        imports it.
         """
         import ast
         import pathlib
@@ -181,26 +181,34 @@ class TestCanonicalStages:
         demo_agents = package_root / "demo_runtime" / "agents"
         for module in ("executor.py", "verifier.py"):
             assert (demo_agents / module).exists(), f"Missing demo_runtime agent {module}"
-        assert not (package_root / "agents" / "verifier").exists()
-        production_executor = package_root / "agents" / "executor" / "executor.py"
-        assert production_executor.is_file()
-        tree = ast.parse(production_executor.read_text(encoding="utf-8"), filename=str(production_executor))
-        imported = [
-            alias.name
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Import)
-            for alias in node.names
-        ]
-        imported.extend(
-            node.module
-            for node in ast.walk(tree)
-            if isinstance(node, ast.ImportFrom) and node.module is not None
-        )
-        assert not any(
-            name == "retailtwin_api.demo" or name.startswith("retailtwin_api.demo_runtime")
-            for name in imported
-        )
-        assert any(isinstance(node, ast.ClassDef) and node.name == "GuardedExecutor" for node in tree.body)
+        production = {
+            package_root / "agents" / "executor" / "executor.py": "GuardedExecutor",
+            package_root / "agents" / "verifier" / "verify.py": "verify",
+        }
+        for path, marker in production.items():
+            assert path.is_file(), path
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            imported = [
+                alias.name
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Import)
+                for alias in node.names
+            ]
+            imported.extend(
+                node.module
+                for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom) and node.module is not None
+            )
+            assert not any(
+                name == "retailtwin_api.demo" or name.startswith("retailtwin_api.demo_runtime")
+                for name in imported
+            ), path
+            names = [
+                node.name
+                for node in tree.body
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+            ]
+            assert marker in names, path
 
         # env_info documents the target canonical path (contract presence check)
         assert env_info["canonical_path"] == "EVENT -> AI -> INVESTIGATE -> SIMULATE -> GUARD -> LIVE -> VERIFY"
