@@ -12,6 +12,9 @@ import { useTwinStore } from "@/state/twin.store";
 export function useSimulationSource(source: SimulationSource | null) {
   useEffect(() => {
     if (!source) return;
-    return source.subscribe((simulation) => useTwinStore.getState().setSimulation(simulation));
+    return source.subscribe((simulation, candidates = []) => {
+      useTwinStore.getState().setSimulation(simulation);
+      useTwinStore.getState().setCandidates(candidates);
+    });
   }, [source]);
 }

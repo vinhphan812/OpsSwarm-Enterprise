@@ -1,7 +1,7 @@
 import i18n from "@/i18n";
 import type { Messages } from "@/i18n/locales/en";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
-import type { ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
+import type { Candidate, CandidateKPI, ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
 import { ACTION_TYPE, GUARD_VERDICT, REVIEW_DECISION, SIMULATION_STATUS } from "@/enums/simulation.enum";
 
 /** Why a product is not drawn: a key under `issue` in the locale files. */
@@ -128,7 +128,10 @@ export function parseSimulation(raw: unknown): Simulation {
   if (!Array.isArray(actions) || !actions.every((action) => isObject(action) && ACTION_TYPES.includes(action.type) && isText(action.sku))) {
     throw new InvalidTwinStateError("invalidField", { field: "actions" });
   }
-  const { state } = parseStoreState(raw.state);
+  const storeRaw = isObject(raw.state) && "store" in raw.state && isObject(raw.state.store)
+    ? raw.state.store
+    : raw.state;
+  const { state } = parseStoreState(storeRaw);
   if (state.store_id !== raw.store_id) throw new InvalidTwinStateError("invalidField", { field: "state.store_id" });
   return {
     simulation_id: raw.simulation_id as string,
@@ -175,5 +178,44 @@ export function parseReviewResult(raw: unknown): ReviewResult {
     verdict: verdict as ReviewResult["verdict"],
     reason_code: (raw.reason_code as string | null | undefined) ?? null,
     live_context_version: (raw.live_context_version as string | null | undefined) ?? null,
+  };
+}
+
+/** Checks a candidate from `GET /simulations/{simulation_id}/candidates`. */
+export function parseCandidate(raw: unknown): Candidate {
+  if (!isObject(raw)) throw new InvalidTwinStateError("notObject");
+  for (const field of ["candidate_id", "simulation_id", "evaluator_version", "provenance"] as const) {
+    if (!isText(raw[field])) throw new InvalidTwinStateError("missingField", { field });
+  }
+  const actions = raw.proposed_actions;
+  if (!Array.isArray(actions) || !actions.every((action) => isObject(action) && ACTION_TYPES.includes(action.type) && isText(action.sku))) {
+    throw new InvalidTwinStateError("invalidField", { field: "proposed_actions" });
+  }
+  const storeRaw = isObject(raw.state) && "store" in raw.state && isObject(raw.state.store)
+    ? raw.state.store
+    : raw.state;
+  const { state } = parseStoreState(storeRaw);
+  const kpisRaw = raw.kpis;
+  const kpis: CandidateKPI[] = [];
+  if (Array.isArray(kpisRaw)) {
+    for (const kpi of kpisRaw) {
+      if (isObject(kpi) && isText(kpi.name) && typeof kpi.value === "number" && isText(kpi.unit) && isText(kpi.source)) {
+        kpis.push({
+          name: kpi.name as string,
+          value: kpi.value as number,
+          unit: kpi.unit as string,
+          source: kpi.source as string,
+        });
+      }
+    }
+  }
+  return {
+    candidate_id: raw.candidate_id as string,
+    simulation_id: raw.simulation_id as string,
+    proposed_actions: actions as SimulationAction[],
+    state,
+    kpis,
+    evaluator_version: raw.evaluator_version as string,
+    provenance: raw.provenance as string,
   };
 }

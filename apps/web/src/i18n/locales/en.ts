@@ -157,9 +157,9 @@ export const en = {
     },
   },
   issues: {
-    title: "Products that cannot be shown as they are: {{count}}",
+    title: "Products that cannot be shown: {{count}}",
     more: "and {{count}} more",
-    console: "Digital Twin: products that cannot be shown as they are",
+    console: "Digital Twin: products that cannot be shown",
   },
   issue: {
     missingSku: "missing sku",
@@ -274,7 +274,7 @@ export const en = {
       title: "Candidate {{id}}",
       kpis: "KPI scores",
       noKpis: "No KPI scores available yet",
-      justification: "Why this plan",
+      provenance: "Provenance",
       selector: "Compare candidates",
       switchHint: "Switch to {{id}}",
       showSimulation: "Show the original proposal",

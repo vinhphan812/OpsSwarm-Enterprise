@@ -55,9 +55,8 @@ function ProposalChanges() {
 
 /**
  * While the Simulation view is on: a frame around the 3D view and a label naming the run,
- * the live state it started from, its proposed actions, the products they change, and
- * that nothing in it has been executed. With a candidate selected, these are the
- * candidate's. Says so when Live has moved on since. With a `reviewer`, an evaluated run gets
+ * the live state it started from, its proposed actions, and that nothing in it has been
+ * executed. Says so when Live has moved on since. With a `reviewer`, an evaluated run gets
  * Accept and Reject, which only send the review; see `useSimulationReview`. Renders
  * nothing in the Live view.
  */
