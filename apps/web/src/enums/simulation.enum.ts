@@ -45,3 +45,35 @@ export const REVIEW_REASON = {
   ProposalChanged: "proposal_changed",
 } as const;
 export type ReviewReason = (typeof REVIEW_REASON)[keyof typeof REVIEW_REASON];
+
+/**
+ * KPI names a candidate is scored on: the fields of the `simulation-kpi-v1` evaluator
+ * (services/simulation, #33), each a share of horizon demand. TODO(BE): FE proposal for
+ * `CandidateKPI.name` in `GET /simulations/{simulation_id}/candidates` (#83).
+ */
+export const KPI_NAME = {
+  StockoutRisk: "stockout_risk",
+  ServiceLevel: "service_level",
+  MovementCost: "movement_cost",
+  RevenueBenefit: "revenue_benefit",
+  MarginBenefit: "margin_benefit",
+  BusinessScore: "business_score",
+} as const;
+export type KpiName = (typeof KPI_NAME)[keyof typeof KPI_NAME];
+
+/** KPIs where a lower value is the better one; every other KPI is better higher. */
+export const LOWER_IS_BETTER_KPIS: readonly string[] = [KPI_NAME.StockoutRisk, KPI_NAME.MovementCost];
+
+/**
+ * The candidate with no actions, scored on the run's base state: the "before" of every
+ * other candidate. TODO(BE): FE proposal; the evaluator already scores it under this id.
+ */
+export const BASELINE_CANDIDATE_ID = "baseline";
+
+/** How a KPI moved against the baseline, in the KPI's own direction. */
+export const KPI_TREND = {
+  Better: "better",
+  Worse: "worse",
+  Same: "same",
+} as const;
+export type KpiTrend = (typeof KPI_TREND)[keyof typeof KPI_TREND];

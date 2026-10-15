@@ -180,6 +180,28 @@ describe("simulationSource", () => {
     expect(onSimulation).toHaveBeenCalledTimes(1);
   });
 
+  it("calls onRead after every good read, changed or not, and not after a failed one", async () => {
+    const simulations = vi
+      .fn<RetailTwinClient["simulations"]>()
+      .mockResolvedValueOnce(listOf(run()))
+      .mockRejectedValueOnce(new Error("503"))
+      .mockResolvedValue(listOf(run()));
+    const simulation = vi.fn<RetailTwinClient["simulation"]>().mockResolvedValue(run());
+    const onUpdate = vi.fn();
+    const onError = vi.fn();
+    const onRead = vi.fn();
+    createSimulationSource(fakeClient(simulations, simulation), 1000).subscribe(onUpdate, onError, onRead);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onRead).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1000); // fails
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onRead).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2000); // same run again: no update, but a good read
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(onRead).toHaveBeenCalledTimes(2);
+  });
+
   it("parses nested state contract and detects updated candidate KPIs/provenance or mismatched simulation_id", async () => {
     const r = run("sim-001");
     // Nested state contract: { store: StoreResponse, context_version: string }

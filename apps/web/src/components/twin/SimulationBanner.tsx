@@ -96,7 +96,6 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
           <ProposalChanges />
           {behind ? <span className="simulation-banner-stale">{t("simulation.liveMoved", { version: liveVersion })}</span> : null}
           {settled ? <span className="simulation-banner-meta">{t("simulation.review.waiting")}</span> : null}
-          <CandidatePanel />
         </div>
         {canReview ? (
           <div className="simulation-banner-actions" role="group" aria-label={t("simulation.review.label")}>
@@ -128,6 +127,7 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
             </Tooltip>
           </div>
         ) : null}
+        <CandidatePanel />
       </div>
     </>
   );
