@@ -96,6 +96,8 @@ class EventReceipt(BaseModel):
     accepted: Literal[True] = True
     duplicate: bool
     event: StoreEvent
+    # Set when this event started an autonomous investigation (AUTONOMY_ENABLED).
+    investigation_id: str | None = None
 
 
 # ─── Anomaly schemas ──────────────────────────────────────────────────────────

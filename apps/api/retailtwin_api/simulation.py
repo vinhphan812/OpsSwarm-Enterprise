@@ -18,8 +18,13 @@ from pydantic import BaseModel, Field
 
 from retailtwin_api.contracts import ActionUnion, ChangeFacings, MoveProduct, ReplenishShelf
 from retailtwin_api.schemas import ProductInventory, StoreResponse
+from retailtwin_api.agent_activity import AgentActivityLog
 from retailtwin_api.simulation_repository import SimulationFilters, SimulationListResponse
 from retailtwin_api.simulation_schemas import (
+    AgentActivityEntry,
+    CandidateListResponse,
+    CursorParameters,
+    PageParameters,
     SimulationDetail as SimulationDetailSchema,
     SimulationState,
     SimulationStatus,
@@ -112,9 +117,10 @@ class SimulationRepository:
     the repository enters a degraded state: list returns empty and get returns None.
     """
 
-    def __init__(self, store_view_fn, store_id: str) -> None:
+    def __init__(self, store_view_fn, store_id: str, activity: AgentActivityLog | None = None) -> None:
         self._store_view_fn = store_view_fn
         self._store_id = store_id
+        self._activity = activity or AgentActivityLog()
         self._runs: dict[str, SimulationDetailSchema] = {}
         self._available = False
         self._seed()
@@ -242,3 +248,17 @@ class SimulationRepository:
             updated_at=run.updated_at,
             provenance=run.provenance,
         )
+
+    def record(self, run: SimulationDetailSchema) -> None:
+        """Add or replace one simulation run, e.g. a proposal from an autonomous investigation."""
+        self._runs[run.simulation_id] = run.model_copy(deep=True)
+        self._available = True
+
+    def list_candidates(self, simulation_id: str, page: PageParameters) -> CandidateListResponse | None:
+        """Scored candidates are not stored here yet, so a known run has none; an unknown run is None."""
+        if self.get(simulation_id) is None:
+            return None
+        return CandidateListResponse(candidates=[], page=page.page, page_size=page.page_size, total=0, next_cursor=None)
+
+    def list_agent_events(self, cursor: CursorParameters) -> tuple[list[AgentActivityEntry], str | None]:
+        return self._activity.page(cursor)
