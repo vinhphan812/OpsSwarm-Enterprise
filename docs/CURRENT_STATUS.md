@@ -92,7 +92,7 @@ Do not infer implementation merely because a component is documented in the targ
 | G02 Twin Control #49 | NOT PASSED | agent tool changes Simulation Twin + 3D while Live remains unchanged |
 | G03 Autonomous #50 | NOT PASSED | store event starts agent without prompt |
 | G04 Guard #51 | NOT PASSED (API evidence harness: `tests/e2e/gates/g04_guard_gate.py`) | stale decision is rejected and cannot mutate Live Twin; UI view of the rejection is #40 |
-| G05 Live Commit #52 | NOT PASSED | valid guarded decision changes Live Twin and 3D |
+| G05 Live Commit #52 | NOT PASSED (API evidence harness: `tests/e2e/gates/g05_live_commit_gate.py`) | valid guarded decision changes Live Twin and 3D; rendered 3D frame and observed post-action KPI not yet captured |
 | G06 Submission #53 | NOT PASSED | 20 consecutive flagship E2E runs |
 
 Gate status changes only when the corresponding issue contains reproducible evidence and is closed intentionally.
