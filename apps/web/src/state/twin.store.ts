@@ -27,6 +27,8 @@ type TwinStore = {
   selectedCandidateId: string | null;
   /** When the proposal on screen in the Simulation view last changed or was switched; 0 before any. */
   simulationChangedAt: number;
+  /** The last read of the open run and its candidates failed; `simulation` and `candidates` are the last served. */
+  simulationReadFailed: boolean;
   /**
    * The proposal the scene showed when its run was rejected or discarded, and when, so the
    * scene can carry its changes back to Live. Never set for an approval: Live then changes
@@ -47,6 +49,7 @@ type TwinStore = {
   setCandidates: (candidates: Candidate[]) => void;
   /** Shows candidate `id` in the Simulation view; null goes back to the simulation's own proposal. */
   selectCandidate: (id: string | null) => void;
+  setSimulationReadFailed: (failed: boolean) => void;
   leaveProposal: (state: StoreResponse) => void;
   setStatus: (status: TwinStatus, error?: string | null) => void;
   setStale: (stale: boolean) => void;
@@ -62,6 +65,7 @@ export const useTwinStore = create<TwinStore>()((set) => ({
   candidates: [],
   selectedCandidateId: null,
   simulationChangedAt: 0,
+  simulationReadFailed: false,
   leftProposal: null,
   status: TWIN_STATUS.Loading,
   error: null,
@@ -103,6 +107,8 @@ export const useTwinStore = create<TwinStore>()((set) => ({
     set((twin) =>
       twin.selectedCandidateId === selectedCandidateId ? {} : { selectedCandidateId, simulationChangedAt: Date.now() },
     ),
+  setSimulationReadFailed: (simulationReadFailed) =>
+    set((twin) => (twin.simulationReadFailed === simulationReadFailed ? {} : { simulationReadFailed })),
   leaveProposal: (state) => set({ leftProposal: { state, at: Date.now() } }),
   setStatus: (status, error = null) => set({ status, error }),
   setStale: (stale) => set({ stale }),

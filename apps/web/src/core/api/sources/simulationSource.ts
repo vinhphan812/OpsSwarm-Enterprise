@@ -9,12 +9,14 @@ import type { Candidate, Simulation } from "@/types/simulation.type";
 /** Read-only feed of the open Simulation Twin run and its candidates. The web app never writes through it. */
 export interface SimulationSource {
   /**
-   * Calls `onUpdate` with the open simulation and its candidates, or null and [] once none is open, and
-   * `onError` when a read fails. Returns the unsubscribe function.
+   * Calls `onUpdate` with the open simulation and its candidates, or null and [] once none is open,
+   * `onError` when a read fails, and `onRead` after every good read, changed or not, so a caller can
+   * tell a failure has passed. Returns the unsubscribe function.
    */
   subscribe(
     onUpdate: (simulation: Simulation | null, candidates?: Candidate[]) => void,
-    onError?: (error: unknown) => void
+    onError?: (error: unknown) => void,
+    onRead?: () => void,
   ): () => void;
 }
 
@@ -46,7 +48,7 @@ export function createSimulationSource(
   maxIntervalMs = TWIN_POLL_MAX_MS,
 ): SimulationSource {
   return {
-    subscribe: (onUpdate, onError) => {
+    subscribe: (onUpdate, onError, onRead) => {
       let active = true;
       let delay = intervalMs;
       let currentSim: Simulation | null = null;
@@ -85,6 +87,7 @@ export function createSimulationSource(
               delivered = true;
               onUpdate(next.simulation, next.candidates);
             }
+            onRead?.();
           } catch (error) {
             if (!active) return;
             delay = Math.min(delay * 2, maxIntervalMs);

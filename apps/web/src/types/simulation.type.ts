@@ -41,14 +41,18 @@ export type Simulation = {
 /**
  * One alternative proposal of a simulation run, matching `SimulationCandidateResponse`
  * from `GET /simulations/{simulation_id}/candidates` (#83). KPI values and provenance
- * come from the evaluator (bound in #93) and are never computed locally.
+ * come from the evaluator (bound in #93) and are never computed locally. The candidate
+ * `BASELINE_CANDIDATE_ID` has no actions: its KPIs are the "before" of the comparison (#39).
  */
 export type CandidateKPI = {
-  /** Human-readable KPI name, e.g. "Revenue Impact". */
+  /**
+   * The evaluator's field name, a `KPI_NAME` such as `stockout_risk`; the panel labels the
+   * ones it knows and shows any other as served. TODO(BE): FE proposal (#83).
+   */
   name: string;
   /** Numeric value of the KPI. */
   value: number;
-  /** Unit of the value, e.g. "$" or "%". */
+  /** Unit of the value: "share" (of horizon demand, `simulation-kpi-v1`), "$" or "%". */
   unit: string;
   /** Which evaluator produced this KPI. */
   source: string;

@@ -5,7 +5,7 @@ import { SimulationBanner } from "@/components/twin/SimulationBanner";
 import { createMemoryTwin } from "@/core/api/sources/memorySource";
 import { reviewOnTwin } from "@/core/twin/memorySimulation";
 import { changedSkus, diffStates } from "@/core/twin/stateDiff";
-import { GUARD_VERDICT, REVIEW_DECISION, REVIEW_REASON, SIMULATION_STATUS } from "@/enums/simulation.enum";
+import { BASELINE_CANDIDATE_ID, GUARD_VERDICT, KPI_NAME, REVIEW_DECISION, REVIEW_REASON, SIMULATION_STATUS } from "@/enums/simulation.enum";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { demoCandidates } from "@/fixtures/demo/candidates";
@@ -42,8 +42,10 @@ afterEach(() => {
 });
 
 describe("demo candidates", () => {
+  const proposals = () => demoCandidates(live).filter((item) => item.candidate_id !== BASELINE_CANDIDATE_ID);
+
   it("are 2–3 different proposals of the demo simulation, each with a version of its own", () => {
-    const candidates = demoCandidates(live);
+    const candidates = proposals();
     expect(candidates.length).toBeGreaterThanOrEqual(2);
     expect(candidates.length).toBeLessThanOrEqual(3);
     expect(new Set(candidates.map((item) => item.simulation_id))).toEqual(new Set(["sim-demo-001"]));
@@ -52,6 +54,22 @@ describe("demo candidates", () => {
     expect(new Set(changes).size).toBe(candidates.length);
     expect(live).toEqual(demoStoreState());
   });
+
+  it("include a baseline with no actions on the base state", () => {
+    const baseline = demoCandidates(live).find((item) => item.candidate_id === BASELINE_CANDIDATE_ID)!;
+    expect(baseline.proposed_actions).toEqual([]);
+    expect(changedSkus(diffStates(live, baseline.state))).toEqual([]);
+  });
+
+  it("score every candidate on the simulation-kpi-v1 fields, with the evaluator's business score formula", () => {
+    for (const item of demoCandidates(live)) {
+      const value = Object.fromEntries(item.kpis.map((kpi) => [kpi.name, kpi.value]));
+      expect(Object.keys(value).sort()).toEqual(Object.values(KPI_NAME).sort());
+      const score = value.revenue_benefit + 0 * value.margin_benefit + value.service_level - value.stockout_risk - value.movement_cost;
+      expect(value.business_score).toBeCloseTo(score, 10);
+      expect(item.evaluator_version).toBe("simulation-kpi-v1");
+    }
+  });
 });
 
 describe("selected candidate", () => {
@@ -59,13 +77,14 @@ describe("selected candidate", () => {
 
   it("drives the Simulation view, and falls back to the simulation's own proposal", () => {
     const { simulation, candidates } = open();
+    const byId = (id: string) => candidates.find((item) => item.candidate_id === id)!;
     expect(shown()).toBe(simulation.state);
 
     act(() => useTwinStore.getState().selectCandidate("cand-b"));
-    expect(shown()).toBe(candidates[1]!.state);
+    expect(shown()).toBe(byId("cand-b").state);
     expect(shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation)).toMatchObject({
       simulation_id: simulation.simulation_id,
-      actions: candidates[1]!.proposed_actions,
+      actions: byId("cand-b").proposed_actions,
     });
     // One object per selection, so selectors stay stable.
     expect(shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation)).toBe(
@@ -73,7 +92,7 @@ describe("selected candidate", () => {
     );
 
     act(() => useTwinStore.getState().selectCandidate("cand-c"));
-    expect(shown()).toBe(candidates[2]!.state);
+    expect(shown()).toBe(byId("cand-c").state);
     act(() => useTwinStore.getState().selectCandidate(null));
     expect(shown()).toBe(simulation.state);
   });

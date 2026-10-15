@@ -754,8 +754,10 @@ tr[data-open="true"] .receipt-caret {
 
 /* ─── Candidate Panel ─────────────────────────────────────────────────────────── */
 
+/* A row of its own under the run details and Accept / Reject, so every column fits. */
 .candidate-panel {
-  margin-top: 10px;
+  flex: 1 1 100%;
+  min-width: 0;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--color-simulation) 40%, transparent);
   border-radius: 8px;
@@ -779,51 +781,116 @@ tr[data-open="true"] .receipt-caret {
   color: var(--color-simulation);
 }
 
-.candidate-panel-kpis {
-  margin-top: 4px;
-}
-
-.candidate-kpi-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.candidate-kpi-cell {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
-}
-
-.candidate-kpi-icon {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+.candidate-panel-meta {
+  font-size: 11px;
   color: var(--color-ink-muted);
 }
 
-.candidate-kpi-name {
-  flex: 1;
+.candidate-panel-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.candidate-panel-note.warning {
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+/* The comparison scrolls inside the banner on a narrow screen instead of widening it. */
+.candidate-table-wrap {
+  margin-top: 6px;
+  overflow-x: auto;
+}
+
+.candidate-table {
+  width: 100%;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  border-collapse: collapse;
+}
+
+.candidate-table th,
+.candidate-table td {
+  padding: 3px 8px;
+  text-align: right;
+  white-space: nowrap;
+  vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-line) 40%, transparent);
+}
+
+.candidate-table th:first-child {
+  font-weight: 500;
+  text-align: left;
+  color: var(--color-ink-muted);
+}
+
+.candidate-table thead th {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-ink-muted);
+}
+
+/* The selected candidate's column, the one on screen in 3D. */
+.candidate-table .selected {
+  background: color-mix(in srgb, var(--color-simulation) 14%, transparent);
+}
+
+.candidate-column-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 35%, transparent);
+  border-radius: 999px;
+}
+
+.candidate-column-btn[aria-pressed="true"] {
+  border-color: var(--color-simulation);
+  background: color-mix(in srgb, var(--color-simulation) 24%, transparent);
+}
+
+.candidate-column-btn:focus-visible {
+  outline: 2px solid var(--color-simulation);
+  outline-offset: 2px;
+}
+
+.candidate-top {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-good);
+}
+
+.candidate-cell-value {
+  display: block;
+  font-weight: 600;
   color: var(--color-ink);
 }
 
-.candidate-kpi-value {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-accent);
-  font-variant-numeric: tabular-nums;
+.candidate-cell-delta {
+  display: block;
+  font-size: 10px;
+  color: var(--color-ink-muted);
 }
 
-.candidate-kpi-source {
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--color-line) 40%, transparent);
-  color: var(--color-ink-muted);
+.candidate-cell-delta[data-trend="better"] {
+  color: var(--color-good);
+}
+
+.candidate-cell-delta[data-trend="worse"] {
+  color: var(--color-alert);
+}
+
+.candidate-cell-missing {
+  font-style: italic;
+  color: var(--color-ink-faint);
 }
 
 .candidate-panel-no-kpis {
