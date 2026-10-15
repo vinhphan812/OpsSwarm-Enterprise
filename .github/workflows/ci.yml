@@ -50,18 +50,30 @@ jobs:
           set -euo pipefail
 
           # ── Collect changed file list ──────────────────────────────────────────
+          # From git, not the REST API: the PR files endpoint returned no list on
+          # this private repository, so every PR skipped API and Web tests.
+          # The checkout has full history (fetch-depth: 0).
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            CHANGED_FILES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-              "${{ github.api_url }}/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files?per_page=100" | \
-              jq -r '.[].filename' 2>/dev/null || echo "")
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+            CHANGED_FILES=$(git diff --name-only "$BASE_SHA...$HEAD_SHA" 2>/dev/null) || CHANGED_FILES=""
           else
-            # push to main or a branch — compare against its parent
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD 2>/dev/null || echo "")
+            # push to main — compare against its parent
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD 2>/dev/null) || CHANGED_FILES=""
           fi
 
           echo "Changed files:"
           echo "$CHANGED_FILES"
           echo ""
+
+          # Fail closed: when the list cannot be determined, run every gate.
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "::warning::Changed files could not be determined; running API and Web gates."
+            echo "api_changed=true" >> $GITHUB_OUTPUT
+            echo "web_changed=true" >> $GITHUB_OUTPUT
+            echo "contracts_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           # ── Path pattern sets ─────────────────────────────────────────────────
           # API_PATTERNS  — any file under these paths triggers API Build & Test.
@@ -69,8 +81,8 @@ jobs:
           # CONTRACT_PATHS — the authoritative contract boundary directory.
           #                 Changing a file here means both API and Web CI run
           #                 AND contracts_changed is TRUE.
-          API_PATTERNS="apps/api services/forecasting tests/e2e .github/workflows/api.yml"
-          WEB_PATTERNS="apps/web .github/workflows/web.yml"
+          API_PATTERNS="apps/api services/forecasting services/simulation tests/e2e .github/workflows/api.yml .github/workflows/ci.yml"
+          WEB_PATTERNS="apps/web .github/workflows/web.yml .github/workflows/ci.yml"
           CONTRACT_PATHS="contracts/"
 
           API_CHANGED="false"
@@ -326,6 +338,10 @@ jobs:
       run:
         working-directory: apps/web
 
+    # Job level, so the validation step and the build see the same value.
+    env:
+      VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -354,8 +370,6 @@ jobs:
 
       - name: TypeScript & build
         run: npm run build
-        env:
-          VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
 
       - name: Run tests
         run: npm test
