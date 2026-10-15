@@ -2,13 +2,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { parseStoreState } from "@/core/api/validate";
 import { isDemoMode } from "@/core/twin/demoMode";
-import { ANOMALY_KIND, ANOMALY_SEVERITIES } from "@/enums/anomaly.enum";
+import { ANOMALY_SEVERITIES, ANOMALY_TYPE } from "@/enums/anomaly.enum";
 import { PAYMENT_METHODS } from "@/enums/checkout.enum";
+import { DEMO_RUN_ID, demoAgentRun } from "@/fixtures/demo/agentRun";
 import { demoAnomalies } from "@/fixtures/demo/anomalies";
 import { DEMO_PRICES, demoCheckout, demoTransactions } from "@/fixtures/demo/checkouts";
 import { demoStoreState } from "@/fixtures/demo/store";
 import { useCheckoutSummary, useCheckoutTransactions } from "@/hooks/checkout.hook";
-import { toSceneStore } from "@/scene/layout";
+import { storeLayout, toSceneStore } from "@/scene/layout";
 
 afterEach(() => window.history.replaceState(null, "", "/"));
 
@@ -42,14 +43,18 @@ describe("demo store", () => {
 describe("demo anomalies", () => {
   it("point at products of the store, where they stand, and agree with their stock", () => {
     const state = demoStoreState();
-    const { anomalies, context_version } = demoAnomalies(state);
+    const { anomalies, total } = demoAnomalies(state);
     expect(anomalies.length).toBeGreaterThan(0);
-    expect(context_version).toBe(state.context_version);
+    expect(total).toBe(anomalies.length);
     for (const anomaly of anomalies) {
+      expect(anomaly.title.length).toBeGreaterThan(0);
+      expect(anomaly.description.length).toBeGreaterThan(0);
+      if (!anomaly.sku) continue;
       const product = state.products.find((item) => item.sku === anomaly.sku)!;
       expect(product).toMatchObject({ shelf_id: anomaly.shelf_id, slot_id: anomaly.slot_id });
-      if (anomaly.kind === ANOMALY_KIND.Stockout) expect(product.shelf_quantity).toBe(0);
-      if (anomaly.kind === ANOMALY_KIND.LowStock) expect(product.shelf_quantity).toBeLessThan(product.facings);
+      expect(anomaly.context_version).toBe(state.context_version);
+      if (anomaly.anomaly_type === ANOMALY_TYPE.Stockout) expect(product.shelf_quantity).toBe(0);
+      if (anomaly.anomaly_type === ANOMALY_TYPE.SlowMoving) expect(product.shelf_quantity).toBeGreaterThan(0);
     }
     expect(anomalies.some((anomaly) => anomaly.sku === "P001")).toBe(false);
   });
@@ -57,10 +62,31 @@ describe("demo anomalies", () => {
   it("put a visible halo on the shelves at every severity", () => {
     const state = demoStoreState();
     const { anomalies } = demoAnomalies(state);
-    const onShelf = (sku: string) => state.products.find((item) => item.sku === sku)!.shelf_quantity;
+    const onShelf = (sku: string | null) => state.products.find((item) => item.sku === sku)?.shelf_quantity ?? 0;
     for (const severity of ANOMALY_SEVERITIES) {
       expect(anomalies.some((anomaly) => anomaly.severity === severity && onShelf(anomaly.sku) > 0)).toBe(true);
     }
+  });
+
+  it("include one anomaly about a whole shelf of the store, with no product", () => {
+    const shelfWide = demoAnomalies().anomalies.filter((anomaly) => anomaly.sku === null);
+    expect(shelfWide).toHaveLength(1);
+    expect(storeLayout.shelves.some((shelf) => shelf.shelfId === shelfWide[0].shelf_id)).toBe(true);
+  });
+
+  it("give each anomaly its own agent run, and the demo run handles the P003 stockout", () => {
+    const { anomalies } = demoAnomalies();
+    expect(new Set(anomalies.map((anomaly) => anomaly.correlation_id)).size).toBe(anomalies.length);
+    const handled = anomalies.filter((anomaly) => anomaly.correlation_id === DEMO_RUN_ID);
+    expect(handled.map(({ sku, anomaly_type }) => [sku, anomaly_type])).toEqual([["P003", ANOMALY_TYPE.Stockout]]);
+    expect(demoAgentRun().every((entry) => entry.correlation_id === DEMO_RUN_ID)).toBe(true);
+  });
+
+  it("include a demand-surge opportunity on a product with stock to sell", () => {
+    const state = demoStoreState();
+    const surge = demoAnomalies(state).anomalies.filter((anomaly) => anomaly.anomaly_type === ANOMALY_TYPE.DemandSurge);
+    expect(surge).toHaveLength(1);
+    expect(state.products.find((item) => item.sku === surge[0].sku)!.shelf_quantity).toBeGreaterThan(0);
   });
 });
 

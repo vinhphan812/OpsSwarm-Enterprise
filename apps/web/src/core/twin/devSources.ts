@@ -5,7 +5,7 @@ import { createMemoryTwin, patchProduct, type MemoryTwin } from "@/core/api/sour
 import type { TwinSource } from "@/core/api/sources/TwinSource";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import { FIXTURE_P001 } from "@/constants/twin.constant";
-import { ANOMALY_KIND, ANOMALY_SEVERITY, type AnomalyKind, type AnomalySeverity } from "@/enums/anomaly.enum";
+import { ANOMALY_SEVERITY, ANOMALY_TYPE, type AnomalySeverity, type AnomalyType } from "@/enums/anomaly.enum";
 import { demoAnomalies } from "@/fixtures/demo/anomalies";
 import { resolveAnomalies, simulateAnomaly } from "./simulateAnomaly";
 import { useAnomalyStore } from "@/state/anomaly.store";
@@ -60,7 +60,8 @@ const DEV_SOURCES: Record<string, TwinSource> = {
  * P001 on A01-S01, `twin.patch("P001", { facings: 5 })` changes it, `twin.patch("P001", null)`
  * removes it, and `twin.anomalies()` lists the demo anomalies of the current state.
  * `twin.raise("P001")` raises an anomaly event on a product (a stockout unless told
- * otherwise), and `twin.resolve("P001")` closes its anomalies again.
+ * otherwise), and `twin.resolve("P001")` closes its anomalies again. `twin.failAnomalies()` acts as
+ * a failed `GET /anomalies` read, and `twin.reloadAnomalies()` as a good one with the demo anomalies.
  * `twin.simulate()` opens a simulation of the demo actions on the current state (or of the
  * actions passed in), `twin.commit()` commits it to Live as a guarded commit would, and
  * `twin.discard()` drops it. `twin.candidate("cand-b")` shows one of the open simulation's
@@ -81,15 +82,17 @@ function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSou
       anomalies: () => demoAnomalies(twin.current()),
       raise: (
         sku: string,
-        kind: AnomalyKind = ANOMALY_KIND.Stockout,
+        type: AnomalyType = ANOMALY_TYPE.Stockout,
         severity: AnomalySeverity = ANOMALY_SEVERITY.High,
       ) => {
         const state = twin.current();
         const product = state.products.find((candidate) => candidate.sku === sku);
         if (!product) throw new Error(`${sku} is not in the twin`);
-        return simulateAnomaly(product, kind, severity, state.context_version);
+        return simulateAnomaly(product, type, severity, state.context_version);
       },
       resolve: resolveAnomalies,
+      failAnomalies: (message = "GET /anomalies did not answer.") => useAnomalyStore.getState().fail(message),
+      reloadAnomalies: () => useAnomalyStore.getState().setAll(demoAnomalies(twin.current())),
       simulate: (...actions: SimulationAction[]) => openSimulation(twin, actions.length ? actions : undefined),
       commit: () => commitSimulation(twin),
       discard: discardSimulation,

@@ -5,7 +5,7 @@ import { Color, type InstancedMesh, type MeshStandardMaterial } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntityInspector } from "@/components/twin/EntityInspector";
 import { anomalyColor } from "@/core/utils/theme";
-import { ANOMALY_KIND, ANOMALY_SEVERITY } from "@/enums/anomaly.enum";
+import { ANOMALY_SEVERITY, ANOMALY_TYPE } from "@/enums/anomaly.enum";
 import { TWIN_STATUS } from "@/enums/twin.enum";
 import { STOCK_SHAPE } from "@/enums/stock.enum";
 import { anomalyFor } from "@/fixtures/demo/anomalies";
@@ -29,7 +29,7 @@ const SHAPES = Object.values(STOCK_SHAPE);
 
 /** The issue's scenario: P001 is selected, then the anomaly API reports a stockout on it. */
 const stockoutOnP001 = () =>
-  anomalyFor(p001, ANOMALY_KIND.Stockout, ANOMALY_SEVERITY.High, state.context_version);
+  anomalyFor(p001, ANOMALY_TYPE.Stockout, ANOMALY_SEVERITY.High, state.context_version);
 
 beforeEach(() => {
   useAnomalyStore.setState({ anomalies: [] });
@@ -99,7 +99,7 @@ describe("anomaly halo", () => {
     const { halos, run } = await renderScene();
     const p004 = state.products.find((product) => product.sku === "P004")!;
     await run(() => {
-      useAnomalyStore.getState().raise(anomalyFor(p004, ANOMALY_KIND.LowStock, ANOMALY_SEVERITY.Medium, state.context_version));
+      useAnomalyStore.getState().raise(anomalyFor(p004, ANOMALY_TYPE.SlowMoving, ANOMALY_SEVERITY.Medium, state.context_version));
       useAnomalyStore.getState().raise({ ...stockoutOnP001(), anomaly_id: "anm-gone", sku: "P999" });
     });
     expect(count(halos())).toBe(drawnOf("P004"));
@@ -107,12 +107,20 @@ describe("anomaly halo", () => {
 
   it("colors a halo by the product's worst open severity", async () => {
     const { halos, run } = await renderScene();
-    const low = anomalyFor(p001, ANOMALY_KIND.SalesDrop, ANOMALY_SEVERITY.Low, state.context_version);
+    const low = anomalyFor(p001, ANOMALY_TYPE.SlowMoving, ANOMALY_SEVERITY.Low, state.context_version);
     await run(() => useAnomalyStore.getState().raise(low));
     expect(halos().every((mesh) => mesh.name.startsWith(`stock-anomaly-${ANOMALY_SEVERITY.Low}-`))).toBe(true);
     await run(() => useAnomalyStore.getState().raise(stockoutOnP001()));
     expect(halos().every((mesh) => mesh.name.startsWith(`stock-anomaly-${ANOMALY_SEVERITY.High}-`))).toBe(true);
     expect(count(halos())).toBe(drawnOf("P001"));
+    await run(() => useAnomalyStore.getState().raise({ ...stockoutOnP001(), anomaly_id: "anm-critical", severity: ANOMALY_SEVERITY.Critical }));
+    expect(halos().every((mesh) => mesh.name.startsWith(`stock-anomaly-${ANOMALY_SEVERITY.Critical}-`))).toBe(true);
+  });
+
+  it("draws no halo for an anomaly about a whole shelf", async () => {
+    const { halos, run } = await renderScene();
+    await run(() => useAnomalyStore.getState().raise({ ...stockoutOnP001(), anomaly_id: "anm-shelf", sku: null }));
+    expect(halos()).toHaveLength(0);
   });
 });
 

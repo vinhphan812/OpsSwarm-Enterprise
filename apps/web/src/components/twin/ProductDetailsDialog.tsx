@@ -78,7 +78,10 @@ function StockTiles({ product, state }: { product: ProductInventory; state: Stoc
   );
 }
 
-/** Open anomalies as rows marked by severity. One read from an older twin state says so. */
+/**
+ * Open anomalies as rows marked by severity, with the detector's title. One read from an
+ * older twin state says so, when the anomaly names the state it read.
+ */
 function AnomalyRows({ anomalies, contextVersion }: { anomalies: Anomaly[]; contextVersion: string }) {
   const { t } = useTranslation();
   if (anomalies.length === 0) return <p className="details-empty">{t("productDetails.noAnomalies")}</p>;
@@ -87,11 +90,13 @@ function AnomalyRows({ anomalies, contextVersion }: { anomalies: Anomaly[]; cont
       {anomalies.map((anomaly) => (
         <li key={anomaly.anomaly_id} className="details-anomaly" data-severity={anomaly.severity}>
           <AlertIcon className="details-anomaly-icon" />
-          <span className="details-anomaly-kind">{t(`anomaly.kind.${anomaly.kind}`)}</span>
+          <span className="details-anomaly-kind" title={anomaly.description}>
+            {anomaly.title}
+          </span>
           <span className="details-anomaly-severity">{t(`anomaly.severity.${anomaly.severity}`)}</span>
           <span className="details-anomaly-meta">
-            {t("anomaly.detected", { time: format.hour(anomaly.detected_at) })}
-            {anomaly.context_version !== contextVersion ? ` · ${t("anomaly.olderState")}` : ""}
+            {t(`anomaly.type.${anomaly.anomaly_type}`)} · {t("anomaly.detected", { time: format.hour(anomaly.detected_at) })}
+            {anomaly.context_version && anomaly.context_version !== contextVersion ? ` · ${t("anomaly.olderState")}` : ""}
           </span>
         </li>
       ))}

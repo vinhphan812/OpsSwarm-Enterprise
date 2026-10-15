@@ -1,4 +1,4 @@
-import type { AnomalyKind, AnomalySeverity } from "@/enums/anomaly.enum";
+import type { AnomalySeverity, AnomalyType } from "@/enums/anomaly.enum";
 import { anomalyFor } from "@/fixtures/demo/anomalies";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import type { ProductInventory } from "@/types/twin.type";
@@ -12,11 +12,11 @@ import type { ProductInventory } from "@/types/twin.type";
 /** Raises an anomaly event on `product`, as read from the twin state at `contextVersion`. Returns its id. */
 export function simulateAnomaly(
   product: ProductInventory,
-  kind: AnomalyKind,
+  type: AnomalyType,
   severity: AnomalySeverity,
   contextVersion: string,
 ): string {
-  const anomaly = anomalyFor(product, kind, severity, contextVersion, new Date().toISOString());
+  const anomaly = anomalyFor(product, type, severity, contextVersion, new Date().toISOString());
   useAnomalyStore.getState().raise(anomaly);
   return anomaly.anomaly_id;
 }
