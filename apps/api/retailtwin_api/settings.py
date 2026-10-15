@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None
     google_cloud_location: str = Field(default="us-central1")
 
+    # ── Autonomy (G03) ───────────────────────────────────────────────────────
+    # When true, a new sale.completed accepted by POST /events starts an
+    # investigation through the Observer with the configured LLM provider.
+    # Off by default so tests and local runs do not call a model per event.
+    autonomy_enabled: bool = Field(default=False)
+
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
 

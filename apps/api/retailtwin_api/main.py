@@ -7,20 +7,26 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from retailtwin_api.agent_activity import AgentActivityLog
 from retailtwin_api.agents.executor import build_commit_service
+from retailtwin_api.agents.observer.consumer import MemoryActivationLedger
+from retailtwin_api.agents.orchestrator.autonomy import AutonomousInvestigations
+from retailtwin_api.agents.orchestrator.tool_registry import build_store_registry
+from retailtwin_api.backbone import MemoryPipe, MemoryQuarantine
 from retailtwin_api.analytics_repository import (
     get_checkout_repository,
     unavailable_analytics_repositories,
 )
-from retailtwin_api.decisions import unavailable_decision_source
+from retailtwin_api.decisions import InMemoryDecisionSource, unavailable_decision_source
 from retailtwin_api.errors import ApiError, api_error_handler, http_error_handler, validation_error_handler
 from retailtwin_api.events import EventLog, ReviewAuditLog
 from retailtwin_api.firestore_twin import FirestoreLiveTwinRepository, LiveTwinRepository
 from retailtwin_api.guard.decision_context_guard import InMemoryGuardAudit
 from retailtwin_api.middleware import CorrelationMiddleware
 from retailtwin_api.routes import router
+from retailtwin_api.llm.factory import create_provider, llm_config_from_settings
 from retailtwin_api.settings import Settings, get_settings
-from retailtwin_api.simulation import SimulationRepository
+from retailtwin_api.simulation import SimulationRepository, _build_state
 from retailtwin_api.store import LiveTwinStore, StoreReader, open_memory_live_store, open_store
 
 logger = logging.getLogger(__name__)
@@ -54,7 +60,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.events = EventLog()
     app.state.review_audit = ReviewAuditLog()
     app.state.live_context_version = store.view().context_version if store.loaded else ""
-    app.state.simulations = SimulationRepository(store.view, resolved.store_id)
+    app.state.activity = AgentActivityLog()
+    app.state.simulations = SimulationRepository(store.view, resolved.store_id, activity=app.state.activity)
+    # Observer plumbing for POST /events (G03). The pipe and ledger are process memory.
+    app.state.event_pipe = MemoryPipe()
+    app.state.activation_ledger = MemoryActivationLedger()
+    app.state.quarantine = MemoryQuarantine()
+    app.state.autonomy = None
+    if resolved.autonomy_enabled and store.loaded:
+        try:
+            provider = create_provider(llm_config_from_settings(resolved))
+        except Exception as exc:
+            # A misconfigured provider disables autonomy; the read and review routes keep serving.
+            provider = None
+            logger.error("autonomy.unavailable", extra={"error_type": type(exc).__name__})
+    else:
+        provider = None
+    if provider is not None:
+        decisions = InMemoryDecisionSource()
+        app.state.decisions = decisions
+        app.state.autonomy = AutonomousInvestigations(
+            provider=provider,
+            registry=build_store_registry(store),
+            store_view=store.view,
+            proposals=app.state.simulations,
+            decisions=decisions,
+            activity=app.state.activity,
+            build_state=_build_state,
+        )
     if not store.loaded:
         logger.error(
             "fixture.unavailable",

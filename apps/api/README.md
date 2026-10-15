@@ -67,6 +67,7 @@ Copy the repository `.env.example` to `.env` only when you need to override a se
 | `STORE_FIXTURE_PATH` | `data/schemas/store-state.example.json` | Day-0 read model |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `LIVE_TWIN_BACKEND` | `memory` | `memory`, `firestore` or `fixture` (read-only, no commits) |
+| `AUTONOMY_ENABLED` | `false` | A new `sale.completed` on `POST /events` starts an investigation with the configured LLM provider (ADR 0023) |
 | `RETAILTWIN_COMMIT_SIGNING_KEY` | per-process random key outside production | HMAC key for commit authorizations; required in production |
 | `RETAILTWIN_COMMIT_TOKEN_TTL_SECONDS` | `30` | Commit authorization lifetime |
 | `RETAILTWIN_DCG_FRESHNESS_SECONDS` | `120` | Oldest context the guard accepts |

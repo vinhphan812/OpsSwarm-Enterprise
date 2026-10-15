@@ -4,9 +4,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal, cast
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 
 from retailtwin_api.agents.executor import CommitService
+from retailtwin_api.agents.observer.consumer import ObservationError, consume_available
+from retailtwin_api.backbone import SALE_COMPLETED
 from retailtwin_api.analytics_repository import (
     AnalyticsError,
     AnomalyRepository,
@@ -187,6 +189,7 @@ def accept_event(
     request: Request,
     event: StoreEvent,
     response: Response,
+    background: BackgroundTasks,
     store: StoreReader = Depends(get_store),
     events: EventLog = Depends(get_events),
 ) -> EventReceipt:
@@ -218,7 +221,27 @@ def accept_event(
         ) from exc
     response.status_code = 200 if duplicate else 201
     _log_event(stored, duplicate=duplicate, correlation_id=cid)
-    return EventReceipt(duplicate=duplicate, event=stored)
+    investigation_id = None
+    if not duplicate:
+        investigation_id = _observe(request, stored, background)
+    return EventReceipt(duplicate=duplicate, event=stored, investigation_id=investigation_id)
+
+
+def _observe(request: Request, event: StoreEvent, background: BackgroundTasks) -> str | None:
+    """Hand a new sale to the Observer. The investigation itself runs after the response."""
+    autonomy = request.app.state.autonomy
+    if autonomy is None or event.event_type != SALE_COMPLETED:
+        return None
+    pipe = request.app.state.event_pipe
+    pipe.publish(event)
+    try:
+        outcomes = consume_available(pipe, request.app.state.activation_ledger, autonomy, request.app.state.quarantine)
+    except ObservationError:
+        logger.error("observer.handoff_failed", extra={"event_id": event.event_id, "correlation_id": event.correlation_id})
+        return None
+    background.add_task(autonomy.drain)
+    started = [o for o in outcomes if o.outcome == "started" and o.event_id == event.event_id]
+    return started[0].investigation_id if started else None
 
 
 def _log_event(event: StoreEvent, duplicate: bool, correlation_id: str) -> None:
