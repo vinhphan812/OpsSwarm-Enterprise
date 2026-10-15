@@ -115,6 +115,10 @@
   --severity: var(--color-serious);
 }
 
+.details-anomaly[data-severity="critical"] {
+  --severity: var(--color-anomaly-critical);
+}
+
 .details-anomaly-icon {
   width: 16px;
   height: 16px;

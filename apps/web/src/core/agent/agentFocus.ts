@@ -19,8 +19,12 @@ export function agentFocusOf(entry: ActivityEntry): AgentFocus | null {
   const reason = entry.summary;
   if (entry.sku) return { entityId: entry.sku, entityType: ENTITY_TYPE.Product, reason };
   if (!entry.shelf_id) return null;
-  const equipment = storeLayout.equipment.some((item) => item.equipmentId === entry.shelf_id);
-  return { entityId: entry.shelf_id, entityType: equipment ? ENTITY_TYPE.Equipment : ENTITY_TYPE.Shelf, reason };
+  return { entityId: entry.shelf_id, entityType: fixtureTypeOf(entry.shelf_id), reason };
+}
+
+/** Whether `holderId` names a piece of equipment or a gondola shelf. */
+export function fixtureTypeOf(holderId: string): EntityType {
+  return storeLayout.equipment.some((item) => item.equipmentId === holderId) ? ENTITY_TYPE.Equipment : ENTITY_TYPE.Shelf;
 }
 
 /**

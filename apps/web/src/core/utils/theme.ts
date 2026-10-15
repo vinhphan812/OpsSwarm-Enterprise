@@ -31,6 +31,7 @@ export const selectionColor = () => themeColor("--color-selection", "#ffffff");
 export const changeColor = () => themeColor("--color-change", "#3987e5");
 
 const ANOMALY_FALLBACK: Record<AnomalySeverity, string> = {
+  [ANOMALY_SEVERITY.Critical]: "#e5177e",
   [ANOMALY_SEVERITY.High]: "#ff4d3d",
   [ANOMALY_SEVERITY.Medium]: "#ff9f1a",
   [ANOMALY_SEVERITY.Low]: "#f2d34b",

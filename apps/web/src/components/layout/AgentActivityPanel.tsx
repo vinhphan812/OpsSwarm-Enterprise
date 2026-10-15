@@ -11,6 +11,7 @@ import { LENS } from "@/enums/ui.enum";
 import { usePanelStore } from "@/state/panel.store";
 import { useRunStore } from "@/state/run.store";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
+import { AlertsSection } from "./AlertsSection";
 import { LENS_VIEW } from "./lens";
 
 /** Panel slide: quick, settles without a visible bounce. Transform only, so the 3D view never resizes. */
@@ -60,7 +61,8 @@ export function AgentActivityOpenButton() {
 }
 
 /**
- * Operations lens: the store API check and the agent's timeline. A SKU in the timeline selects that product;
+ * Operations lens: the store API check, the open alerts and opportunities, and the agent's timeline.
+ * A SKU in the timeline selects that product; picking an alert narrows the timeline to its run.
  * Follow agent lets the agent's own steps move the camera (`useAgentFocus`).
  */
 function OperationsView() {
@@ -70,16 +72,22 @@ function OperationsView() {
   const selected = useUiStore(selectedProductId);
   const followAgent = useUiStore((state) => state.followAgent);
   const setFollowAgent = useUiStore((state) => state.setFollowAgent);
+  const focusedCorrelationId = useUiStore((state) => state.focusedCorrelationId);
+  const showAllActivity = useUiStore((state) => state.showAllActivity);
+  const shown = focusedCorrelationId
+    ? activity.filter((entry) => entry.correlation_id === focusedCorrelationId)
+    : activity;
 
   return (
     <>
       <StoreStatus />
+      <AlertsSection />
 
       <section className="activity-section">
         <div className="activity-section-head">
           <h2 className="activity-section-title">
             {t("activity.section")}
-            <span className="activity-count">{activity.length}</span>
+            <span className="activity-count">{shown.length}</span>
           </h2>
           <Switch
             size="sm"
@@ -91,8 +99,16 @@ function OperationsView() {
             {t("activity.followAgent")}
           </Switch>
         </div>
+        {focusedCorrelationId ? (
+          <div className="activity-filter">
+            <span>{t("alerts.filtered")}</span>
+            <button type="button" onClick={showAllActivity}>
+              {t("alerts.showAll")}
+            </button>
+          </div>
+        ) : null}
         <AnimatePresence initial={false} mode="popLayout">
-          {activity.length ? (
+          {shown.length ? (
             <motion.ol
               key="list"
               className="activity-list"
@@ -102,7 +118,7 @@ function OperationsView() {
               exit={{ opacity: 0 }}
             >
               <AnimatePresence initial={false}>
-                {activity.map((entry) => (
+                {shown.map((entry) => (
                   <motion.li
                     key={entry.id}
                     layout
@@ -141,7 +157,7 @@ function OperationsView() {
               exit={{ opacity: 0 }}
             >
               <ActivityIcon className="empty-icon" />
-              <p>{t("activity.empty")}</p>
+              <p>{t(focusedCorrelationId ? "alerts.noRunYet" : "activity.empty")}</p>
             </motion.div>
           )}
         </AnimatePresence>

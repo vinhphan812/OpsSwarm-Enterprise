@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EntityInspector } from "@/components/twin/EntityInspector";
 import { ProductDetailsDialog } from "@/components/twin/ProductDetailsDialog";
 import { PromotionsPanel } from "@/components/promotions/PromotionsPanel";
-import { ANOMALY_KIND, ANOMALY_SEVERITY } from "@/enums/anomaly.enum";
+import { ANOMALY_SEVERITY, ANOMALY_TYPE } from "@/enums/anomaly.enum";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { TWIN_STATUS } from "@/enums/twin.enum";
 import { LENS } from "@/enums/ui.enum";
@@ -71,16 +71,18 @@ describe("product details dialog", () => {
   it("opens from the product card with the twin figures, anomalies, and promotions of the product", async () => {
     useUiStore.getState().select("P004");
     useAnomalyStore.getState().raise({
+      // As apps/api serves it today: no correlation_id, slot_id or context_version.
       anomaly_id: "anm-P004",
+      anomaly_type: ANOMALY_TYPE.SlowMoving,
+      severity: ANOMALY_SEVERITY.Medium,
       store_id: p004.store_id,
       sku: "P004",
       shelf_id: p004.shelf_id,
-      slot_id: p004.slot_id,
-      kind: ANOMALY_KIND.LowStock,
-      severity: ANOMALY_SEVERITY.Medium,
+      title: "P004 sells below forecast",
+      description: "Sales below forecast.",
       detected_at: "2026-10-09T08:00:00Z",
-      context_version: state.context_version,
-      correlation_id: "run-1",
+      event_ids: ["evt-1"],
+      metadata: {},
     });
     renderPage();
     fireEvent.click(within(screen.getByLabelText("Product P004")).getByRole("button", { name: "Details" }));
@@ -92,8 +94,10 @@ describe("product details dialog", () => {
     expect(stock.textContent).toContain(`${p004.shelf_quantity}of ${p004.facings} facings`);
     expect(stock.textContent).toContain(String(p004.backroom_quantity));
     const anomalies = within(dialog).getByRole("list", { name: "Open anomalies" });
-    expect(anomalies.textContent).toContain("Low stock");
+    expect(anomalies.textContent).toContain("P004 sells below forecast");
+    expect(anomalies.textContent).toContain("Slow moving");
     expect(anomalies.textContent).toContain("medium");
+    expect(anomalies.textContent).not.toContain("older twin state");
     const promotions = within(dialog).getByRole("region", { name: "Promotions" });
     expect(promotions.textContent).toContain("Pasta night bundle");
     expect(promotions.textContent).not.toContain("Breakfast week");

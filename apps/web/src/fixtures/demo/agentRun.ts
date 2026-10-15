@@ -1,5 +1,7 @@
+import { ANOMALY_TYPE } from "@/enums/anomaly.enum";
 import { useRunStore } from "@/state/run.store";
 import type { ActivityEntry } from "@/types/agent.type";
+import { demoCorrelationId } from "./anomalies";
 
 /**
  * Demo data for `?twin=demo` (development builds only), never a real agent run: the
@@ -7,6 +9,9 @@ import type { ActivityEntry } from "@/types/agent.type";
  * backroom. INVESTIGATE and ACT name the product, VERIFY only its shelf, so following
  * the agent focuses both a product and a fixture. Until #94 reads `GET /agent/events`.
  */
+
+/** The demo run's correlation id: the one of the demo P003 stockout, so its alert follows the run. */
+export const DEMO_RUN_ID = demoCorrelationId("P003", ANOMALY_TYPE.Stockout);
 
 /** Milliseconds between two steps of the replay. */
 export const DEMO_AGENT_STEP_MS = 2500;
@@ -27,7 +32,7 @@ const STEPS: Step[] = [
 ];
 
 /** The demo run's entries, stamped from `start`, one second apart. A new array per call. */
-export function demoAgentRun(runId = "demo-run", start = Date.now()): ActivityEntry[] {
+export function demoAgentRun(runId = DEMO_RUN_ID, start = Date.now()): ActivityEntry[] {
   return STEPS.map((step, index) => ({
     ...step,
     id: `${runId}-${index + 1}`,
@@ -38,11 +43,12 @@ export function demoAgentRun(runId = "demo-run", start = Date.now()): ActivityEn
 
 /**
  * Plays the demo run into `run.store` as an agent would, one step every `stepMs`, after
- * clearing the timeline. Returns a function that stops it. `twin.agentRun()` in the console.
+ * clearing the timeline, so its fixed ids never clash. Returns a function that stops it.
+ * `twin.agentRun()` in the console.
  */
 export function replayDemoAgentRun(stepMs = DEMO_AGENT_STEP_MS): () => void {
   useRunStore.getState().reset();
-  const entries = demoAgentRun(`demo-run-${Date.now()}`);
+  const entries = demoAgentRun();
   const timers = entries.map((entry, index) =>
     setTimeout(() => useRunStore.getState().append({ ...entry, ts: new Date().toISOString() }), index * stepMs),
   );

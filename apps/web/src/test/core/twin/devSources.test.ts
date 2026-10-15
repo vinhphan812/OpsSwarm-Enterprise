@@ -24,7 +24,7 @@ const at = (url: string) => window.history.replaceState(null, "", url);
 
 beforeEach(() => {
   vi.mocked(createApiSource).mockClear();
-  useAnomalyStore.setState({ anomalies: [] });
+  useAnomalyStore.setState({ anomalies: [], readError: null });
   useTwinStore.setState({ simulation: null, candidates: [], selectedCandidateId: null });
 });
 
@@ -56,6 +56,21 @@ describe("pickSource", () => {
       expect.arrayContaining(["sim-demo-001"]),
     );
     expect(useTwinStore.getState().candidates.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("lets the console fail the demo anomaly read and read it again", () => {
+    at("/?twin=demo");
+    pickSource();
+    const count = useAnomalyStore.getState().anomalies.length;
+    const twin = (window as unknown as { twin: { failAnomalies: (message?: string) => void; reloadAnomalies: () => void } }).twin;
+
+    twin.failAnomalies();
+    expect(useAnomalyStore.getState()).toMatchObject({ readError: "GET /anomalies did not answer." });
+    expect(useAnomalyStore.getState().anomalies).toHaveLength(count);
+
+    twin.reloadAnomalies();
+    expect(useAnomalyStore.getState().readError).toBeNull();
+    expect(useAnomalyStore.getState().anomalies).toHaveLength(count);
   });
 
   it("never turns on demo mode in a production build", () => {

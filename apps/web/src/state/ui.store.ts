@@ -10,7 +10,7 @@ type UiStore = {
   focusSource: FocusSource | null;
   /** Why the agent focused the current selection, shown as a caption; null for the user's own. */
   focusReason: string | null;
-  /** Counts `focusEntity` calls, so the camera flies again to an entity that is already selected. */
+  /** Counts `focusEntity` and `focusAlert` calls, so the camera flies again to an entity that is already selected. */
   focusSeq: number;
   /** Whether the camera follows what the agent works on. On by default. */
   followAgent: boolean;
@@ -27,6 +27,8 @@ type UiStore = {
   detailsSku: string | null;
   /** The promotion the Promotions lens should scroll to and flash, until it has. */
   focusedPromotionId: string | null;
+  /** The agent run of the alert the user picked: the timeline shows only it. Null shows every run. */
+  focusedCorrelationId: string | null;
   /** Selects an entity, a product unless told otherwise; `null` clears the selection. */
   select: (entityId: string | null, entityType?: EntityType) => void;
   /** The agent selects an entity and flies the camera to it, captioned with `reason`. */
@@ -40,6 +42,13 @@ type UiStore = {
   showDetails: (sku: string | null) => void;
   /** Switches to the Promotions lens on one promotion; `null` once it has been shown. */
   focusPromotion: (promotionId: string | null) => void;
+  /**
+   * Selects what an alert is about and flies to it, and narrows the timeline to the run that
+   * handles it; an alert with no run (`null`) leaves the timeline whole.
+   */
+  focusAlert: (correlationId: string | null, entityId: string, entityType: EntityType) => void;
+  /** Shows every run in the timeline again; the selection stays. */
+  showAllActivity: () => void;
 };
 
 export const useUiStore = create<UiStore>()((set) => ({
@@ -56,8 +65,10 @@ export const useUiStore = create<UiStore>()((set) => ({
   lens: LENS.Operations,
   detailsSku: null,
   focusedPromotionId: null,
+  focusedCorrelationId: null,
   select: (selectedEntityId, entityType = ENTITY_TYPE.Product) =>
     set({
+      focusedCorrelationId: null,
       selectedEntityId,
       selectedEntityType: selectedEntityId ? entityType : null,
       focusSource: selectedEntityId ? FOCUS_SOURCE.User : null,
@@ -80,6 +91,17 @@ export const useUiStore = create<UiStore>()((set) => ({
   showDetails: (detailsSku) => set({ detailsSku }),
   focusPromotion: (focusedPromotionId) =>
     set(focusedPromotionId ? { focusedPromotionId, lens: LENS.Promotions } : { focusedPromotionId }),
+  focusAlert: (focusedCorrelationId, selectedEntityId, selectedEntityType) =>
+    set((ui) => ({
+      selectedEntityId,
+      selectedEntityType,
+      focusSource: FOCUS_SOURCE.User,
+      focusReason: null,
+      focusSeq: ui.focusSeq + 1,
+      userActiveAt: Date.now(),
+      focusedCorrelationId,
+    })),
+  showAllActivity: () => set({ focusedCorrelationId: null }),
 }));
 
 /** True while `entityId` is the selected entity of `entityType`. */
