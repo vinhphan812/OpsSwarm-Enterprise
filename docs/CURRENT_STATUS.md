@@ -1,11 +1,11 @@
 # RetailTwin AI — Current Project Status
 
-**Status date:** 2026-10-08
+**Status date:** 2026-10-15
 **Purpose:** separate what is implemented now from the target architecture described elsewhere.
 
 ## Current baseline on main
 
-The repository contains two merged day-0 slices: a view-only 3D web scaffold from PR #56 / issue #3, and a fixture-backed FastAPI plus frontend API integration from PR #57 / issue #8.
+The repository contains three merged slices: a view-only 3D web scaffold from PR #56 / issue #3, a fixture-backed FastAPI plus frontend API integration from PR #57 / issue #8, and a Firestore Live Twin boundary from PR #106 / issue #6.
 
 Implemented on `main`:
 - Vite + React 18 + TypeScript;
@@ -38,27 +38,50 @@ Implemented on `main`:
 - agent-action audit for issue #35 (ADR 0019) in `apps/api/retailtwin_api/audit/trail.py`. `record_trace` appends one row per stage (`trigger`, `evidence`, `decision`, `guard`, `execution`, `observed`) to `retailtwin.agent_action_audit`. One `correlation_id` is one trace. A denial has no execution or observed row. `predicted_impact` is the decision's own `kpi_score`, and `-1.0` stays unscored. The reason is a short summary, not a prompt. A repeated payload is a duplicate and a different payload does not replace the row. The day-0 `agent_actions` table is unchanged. No route calls it, and it does not write the Live Twin. The BigQuery table is created only by `infrastructure/gcp/apply-agent-action-audit.sh` when `CONFIRM_GCP_AGENT_AUDIT=yes`;
 - one Gemini inventory read for issue #2 (ADR 0021) in `apps/api/retailtwin_api/agents/orchestrator/inventory_read.py`. `read_inventory` asks the injected provider for exactly one `get_inventory` call and executes it with `READ` granted. The request does not offer a simulation or commit tool. The typed Live Twin document is the result; model prose is ignored. A missing SKU returns `not_found`. No call, another tool, or another SKU fails closed. The Vertex adapter sends `functionCallingConfig` for that choice. CI uses `FakeLlmProvider`. A live call on 2026-10-14 with `gemini-2.5-flash` in `us-central1` read `store-001` / `P001` (shelf `A01`, slot `A01-S01`, 5 facings, 18 on the shelf, 42 in the backroom, version 3) and the tool output matched that Firestore document. An unknown SKU returned `not_found` and was not created. This does not write the Live Twin, does not call Vertex from Cloud Run, and does not pass foundation gate #10 or gates G02–G06;
 - deterministic `sale.completed` publisher. The lander claims each `event_id` in Firestore `store_event_claims`. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation, so a takeover joins the same job. A replay of the same payload is a duplicate. A different payload is a conflict and does not replace the claim or the row. `correlation_id` is kept on the message and the row. A rejected message is quarantined before it is acknowledged;
-- 3D move cue for issue #23 in `apps/web`. When the twin state on screen moves a product, its items hop from the source slot to the destination, an outline marks where it stood, and the light hands over from the source slot to the destination, flashes on arrival and fades out, and the product card says where it came from. The cue is read from the state diff (#91), so it shows for Live changes and for the Simulation view against Live, and leaving a proposal plays the move back. Today it runs under `?twin=memory|demo`; reading moves from the Simulation API is still #92;
-- replenishment cue for issue #25 in `apps/web`. A recent stock change shows `Shelf +N` / `Backroom -N` on the product card and details dialog and glows on the slot of a shelf gain; a change that is not a matching backroom → shelf transfer is flagged as `inconsistentTransfer` until the next change; shelf units past what the facings hold show as `+N not shown`. Works in the Live and Simulation views under `?twin=memory|demo`; real `replenish_shelf` results from the API are still #92;
-- ADR 0001, 0002, 0003, 0004, 0005, 0006, and 0007;
+- 3D move cue of issue #23 in `apps/web`. When the twin state on screen moves a product, its items hop from the source slot to the destination, an outline marks where it stood, and the light hands over from the source slot to the destination, flashes on arrival and fades out, and the product card says where it came from. The cue is read from the state diff (#91), so it shows for Live changes and for the Simulation view against Live, and leaving a proposal plays the move back;
+- 3D facings cue for issue #24 in `apps/web`. Cap facings at slot capacity, flag overflow, and cue changes;
+- 3D replenishment cue for issue #25 in `apps/web`. A recent stock change shows `Shelf +N` / `Backroom -N` on the product card and details dialog and glows on the slot of a shelf gain; a change that is not a matching backroom → shelf transfer is flagged as `inconsistentTransfer` until the next change; shelf units past what the facings hold show as `+N not shown`. Works in the Live and Simulation views under `?twin=memory|demo`;
+- 3D selection, highlight, details cards, and camera focus for issue #22 in `apps/web`. Agent-driven camera focus and Follow agent (issue #28);
+- canonical Firestore Live Twin boundary for issues #6 and #81 (PR #106) in `apps/api/retailtwin_api/twin/live_twin.py`. Versioned SKU documents, atomic commits with Firestore preconditions, and ADC auth;
+- provider-neutral LLM runtime for issue #85 (ADR 0008) in `apps/api/retailtwin_api/llm/`. Registered providers (`fake`, `openai_compatible`, `vertex_gemini`), adapter pattern, production requires `vertex_gemini` with ADC;
+- deterministic KPI evaluator for issue #33 (PR #112) in `services/simulation`. Score candidates with stockout risk, service level, movement cost, and business score;
+- simulation clone scoring for issue #15 (PR #173). Apply candidate actions to a clone, score the result;
+- Day-0 FastAPI Cloud Run deployment for issue #9 (PR #111). Linux/amd64 image, gcr.io/retailtwin-ai-511002/retailtwin-api, public invoker, minimum instances 1;
+- production Cloud Run hardening for issue #34 (PR #113). WIF/OIDC authentication, secret management, health/degraded status;
+- simulation review routes for issues #83 (PR #127). `POST /simulations/{id}/approve` and `/simulations/{id}/reject` with HMAC-signed authorization;
+- simulation candidate details and production API binding for issue #93 (PR #158). Wire candidates to proposal view;
+- analytics routes for issues #79 and #74 (PR #129). `GET /anomalies`, `/revenue`, `/promotions` with Firestore and BigQuery backends;
+- simulation API routes for issue #32 (PR #151). In-memory SimulationRepository for `/simulations` routes;
+- verify post-action state for issue #19 (PR #167). Re-read live inventory after commit;
+- commit through signed single-use authorization for issue #18 (PR #166);
+- no-stale-commit for issue #17 (PR #152). Binding expiry enforcement, immutable audit;
+- refresh evidence and replan after stale rejection for issue #20 (PR #168);
+- record agent-action provenance in BigQuery for issue #35 (PR #177). Agent-action audit trail;
+- reproducible G04 guard-gate evidence for issue #51 (PR #176). Fix reused ids after replan;
+- Firebase Hosting CD pipeline for issue #43 (PR #162). Web deployment via Firebase Hosting;
+- health/degraded status and graceful analytics degradation for issue #44 (PR #157);
+- error boundary and retry recovery for issue #44 (PR #160);
+- demo mode with `VITE_ALLOW_DEMO` and GLB stock models for issue #29 (PR #180);
+- closed-up exterior with roof, sky, decor and street grid for issue #29 (PR #180);
+- merge-conflict markers CI for issue #133 (PR #147). Block merge-conflict markers in every change;
+- security CI for issues #146 and #188. Secret/dependency and container scans before deploy;
+- Cloud Run deployment verification for issue #187. Verify public Cloud Run deployment;
+- ADR 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0014, 0015, 0016, 0017, 0018, 0019, 0020, and 0021;
 - tracked `apps/web/package-lock.json`.
-
-The 3D scene and the API are **not Firestore Live Twin**. Issue #4, on `main` through PR #65, reads `GET /store` and places products on the static layout (ADR 0007). Issue #6 replaces `open_store` with Firestore and keeps the four routes. `store_event_claims` is an idempotency ledger for this backbone, not that Live Twin. `infrastructure/gcp/verify-store-events.sh` checks the subscription and the three tables. The smoke command publishes `data/synthetic/sale-completed.json` and checks that a replay stays one row.
 
 ## Google Cloud foundation
 
-Issue #5 applies the shared project `retailtwin-ai-511002` in `us-central1`. The shape is the always-free layout in [infrastructure/gcp/README.md](../infrastructure/gcp/README.md) and [ADR 0004](adr/0004-keep-the-cloud-foundation-on-free-tier.md): required APIs on, Compute Engine and the other large services off, two service identities and no keys. Firestore `(default)` is Standard edition Native mode. Issue #6 still seeds the Live Twin. `store_event_claims` is an idempotency ledger for this backbone, not that Live Twin. This backbone adds subscription `store-events-analytics` and the three BigQuery tables. There is no Cloud Run service and no Gemini call.
+Issue #5 applies the shared project `retailtwin-ai-511002` in `us-central1`. The shape is the always-free layout in [infrastructure/gcp/README.md](../infrastructure/gcp/README.md) and [ADR 0004](adr/0004-keep-the-cloud-foundation-on-free-tier.md): required APIs on, Compute Engine and the other large services off, two service identities and no keys. Firestore `(default)` is Standard edition Native mode. The Live Twin is seeded from Firestore documents on `main` via PR #106.
+
+The API runs on Cloud Run (issue #9, PR #111) with public invoker, minimum instances 1, and WIF/OIDC authentication (issue #34, PR #113). The deployed service accepts `GET /health`, `/ready`, `/store` without credentials.
 
 The monthly budget `retailtwin-dev-guard` is 25,000 VND, about 1 USD, on this project only, with alerts at 50%, 90%, and 100%. The billing account currency is VND. The alert does not disable billing.
 
 ## Work in progress
 
-Issue #4 is on `main` through PR #65.
-- The scene reads `GET /store` from `apps/api` and places products on the static layout (ADR 0007). P001 is bound by its SKU.
-- The scene polls `GET /store` every 5 s. When reads fail, it backs off up to 60 s. It keeps the last state, or empty shelves, on screen when the API is down.
-- The web app only reads the API. It does not call `POST /events`.
-- Tests cover the HTTP path from the committed seed to the scene: a P001 change in the seed redraws P001, and a reload rebuilds the same state.
-- Still open: a manual run against a live `apps/api`. Firestore stays with #6, so today the state comes from the JSON seed.
+Issue #134 (cloud-config) is merged via PR #185. It owns the canonical production cloud runtime matrix, service-account naming, Artifact Registry path reconciliation, WIF/CI deployment configuration, Secret Manager contract, and `.env.example` update. It does not implement the runtime wiring itself; that contract is verified once the issue merges.
+
+Issue #135 (demo-data) is in progress on branch `issue/135-demo-data` via active implementation PR #197. It provides a deterministic GCP seed/reset/replay workflow for Firestore, BigQuery, and Pub/Sub using the P017 Weekend Demand Surge scenario and P001 foundation data. Checkout, payment, and promotion production datasets are not in scope until their respective backend contracts land.
 
 Issue #58 is closed. The web build and test workflow is on `main`.
 
@@ -71,17 +94,45 @@ Baseline (PR #68):
 - API: 89% line, 85% branch (pytest-cov, 269 stmts, 44 branches)
 - Web: 91% stmt/line, 91% branch (Vitest v8, 12 tests)
 
+## Implemented on main
+
+The following have been implemented since the 2026-10-08 baseline:
+
+- Firestore-backed Live Twin and seed/reset (issue #6, PR #106);
+- Cloud Run production deployment (issue #9, PR #111, #113);
+- Provider-neutral LLM runtime (issue #85, PR #109);
+- Deterministic KPI evaluator (issue #33, PR #112);
+- Simulation clone scoring (issue #15, PR #173);
+- Simulation review routes — POST /approve and /reject (issue #83, PR #127);
+- Simulation candidate binding (issue #93, PR #158);
+- Simulation API routes (issue #32, PR #151);
+- Analytics API — GET /anomalies, /revenue, /promotions (issues #79, #74, PR #129);
+- Agent-action audit trail (issue #35, PR #177);
+- Guard-gate reproducible evidence (issue #51, PR #176);
+- Verifier post-action state check (issue #19, PR #167);
+- Commit through signed authorization (issue #18, PR #166);
+- No-stale-commit enforcement (issue #17, PR #152);
+- Auto re-plan on stale rejection (issue #20, PR #168);
+- Firebase Hosting CD (issue #43, PR #162);
+- Health/degraded status (issue #44, PR #157);
+- Error boundary (issue #44, PR #160);
+- Demo mode with GLB models (issue #29, PR #180);
+- 3D move cue (issue #23, PR #115);
+- 3D facings cue (issue #24, PR #116);
+- 3D replenishment cue (issue #25, PR #117);
+- 3D selection and highlight (issue #22, PR #118);
+- Agent-driven camera focus (issue #28, PR #126);
+- Merge-conflict markers CI (issue #133, PR #147);
+- Security CI with container scans (issues #146, #188);
+- Cloud Run deployment verification (issue #187).
+
 ## Not implemented yet
 
 Do not infer implementation merely because a component is documented in the target architecture. The following remain planned/open unless their issue is explicitly completed:
 
-- Firestore-backed Live Twin and seed/reset;
-- later analytical tables such as product performance and simulation results;
-- agent simulation that scores a planner decision;
-- Simulation Twin and KPI evaluator;
-- 3D binding to Live/Simulation Twin state;
-- Cloud Run production deployment;
+- Later analytical tables such as product performance and simulation results;
 - end-to-end autonomous scenario;
+- Demo data for production build (issue #135, active PR #197);
 - submission gates G02–G06.
 
 ## Current release-gate status
@@ -100,10 +151,10 @@ Gate status changes only when the corresponding issue contains reproducible evid
 ## Immediate critical path
 
 1. Issue #58 is closed. The web build and test workflow is on `main`. Issue #60 adds the coverage baseline and threshold to that gate.
-2. The Gemini real read tool (#2, ADR 0021) calls `get_inventory` and checks that result against the Live Twin document. Production construction requires Vertex ADC, uses the shipped Vertex builder, and rejects a fake provider, a loopback endpoint, and an API key. The `vertex_gemini` name cannot be replaced or removed (ADR 0020). Cloud Run evidence is still required before foundation gate #10. The store-events backbone (#7) claims each `sale.completed` event id once. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation. A replayed event id is a duplicate. It does not start the Observer. Issue #6 still owns the Live Twin.
-3. Pass Foundation Gate #10. #10 stays open: Firestore and Cloud Run evidence for the gate are still required. The one inventory read does not close this gate. The observer consumer can start one investigation for a new `sale.completed`. The analytics lander still does not.
-4. The allow-listed tool registry (#11, ADR 0009), the observer (#12, ADR 0010), the investigator (#13, ADR 0011), the planner (#14, ADR 0012), the Decision Context Guard with No-Stale-Commit (#16, ADR 0014 and #17, ADR 0015), the guarded Executor (#18, ADR 0016), the post-action Verifier (#19, ADR 0017), and automatic re-plan (#20, ADR 0018) are in the API. Re-plan stamps each new decision with a context version read after the refresh. Simulation scoring is ADR 0013. Re-plan still calls an injected port and does not import the simulator. The agent-action audit (#35, ADR 0019) records the correlated trace. Provider selection is a registry (ADR 0020): production construction requires Vertex ADC, uses the shipped Vertex builder, and rejects a fake provider, a loopback endpoint, and an API key. The `vertex_gemini` name cannot be replaced or removed. The one Gemini read is `read_inventory` (ADR 0021). These other components still take an injected provider. Gates G02–G06 and foundation gate #10 stay unpassed.
-5. Bind those state changes to the 3D Live/Simulation views.
+2. The Firestore Live Twin boundary is on `main` (issue #6, PR #106). The scene reads `GET /store` from `apps/api` and places products on the layout (ADR 0007). The scene polls `GET /store` every 5 s. When reads fail, it backs off up to 60 s. It keeps the last state, or empty shelves, on screen when the API is down.
+3. Cloud Run production wiring for Vertex AI with ADC (Foundation #10) is pending runtime evidence. The `vertex_gemini` provider name cannot be replaced or removed (ADR 0020). The cloud-config config/runtime-matrix (issue #134, merged via PR #185) owns the canonical production cloud runtime matrix, WIF/CI deployment configuration, and Secret Manager contract; it does not implement the runtime wiring itself.
+4. The allow-listed tool registry (#11, ADR 0009), the observer (#12, ADR 0010), the investigator (#13, ADR 0011), the planner (#14, ADR 0012), the Decision Context Guard with No-Stale-Commit (#16, ADR 0014 and #17, ADR 0015), the guarded Executor (#18, ADR 0016), the post-action Verifier (#19, ADR 0017), and automatic re-plan (#20, ADR 0018) are in the API. Simulation clone scoring (#15) evaluates candidates. Provider selection is a registry (ADR 0020): production construction requires Vertex ADC, uses the shipped Vertex builder, and rejects a fake provider, a loopback endpoint, and an API key. The `vertex_gemini` name cannot be replaced or removed. The one Gemini read is `read_inventory` (ADR 0021). The agent-action audit (#35, ADR 0019) records the correlated trace. Gates G02–G06 and foundation gate #10 stay unpassed.
+5. Bind state changes to the 3D Live/Simulation views. The 3D move, facings, and replenishment cues are implemented. The 3D binding to Live/Simulation Twin state is wired through the state diff (#91).
 6. Pass G02 → G03 → G04 → G05 → G06 in order.
 
 ## Documentation rule
