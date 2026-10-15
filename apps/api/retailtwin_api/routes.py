@@ -12,6 +12,8 @@ from retailtwin_api.analytics_repository import (
     AnomalyRepository,
     PromotionRepository,
     RevenueRepository,
+    CheckoutRepository,
+    CheckoutNotFound,
 )
 from retailtwin_api.contracts import DCGVerdict
 from retailtwin_api.decisions import DecisionSource
@@ -28,6 +30,7 @@ from retailtwin_api.schemas import (
     PromotionsResponse,
     ReadyResponse,
     RevenueResponse,
+    CheckoutResponse,
     StoreEvent,
     StoreResponse,
 )
@@ -74,6 +77,10 @@ def get_revenue_repo(request: Request) -> RevenueRepository:
 
 def get_promotions(request: Request) -> PromotionRepository:
     return request.app.state.promotions
+
+
+def get_checkouts(request: Request) -> CheckoutRepository:
+    return request.app.state.checkouts
 
 
 
@@ -327,6 +334,40 @@ def list_promotions(
             extra={"correlation_id": _correlation_id(request), "store_id": target_store},
         )
         raise ApiError(503, "analytics_unavailable", "Promotion analytics are currently unavailable.") from exc
+
+
+@router.get("/checkouts/{checkout_id}", response_model=CheckoutResponse, include_in_schema=True)
+def get_checkout(
+    request: Request,
+    checkout_id: str,
+    store_id: str | None = Query(default=None, min_length=1),
+    repo: CheckoutRepository = Depends(get_checkouts),
+) -> CheckoutResponse:
+    """Return a demo-safe checkout summary and transactions for a checkout lane.
+
+    Degrades gracefully: if analytics are unavailable, raises 503 analytics_unavailable.
+    Unknown checkout returns 404 checkout_not_found.
+
+    PII policy: cashier staff_id and name are never returned by this public
+    endpoint. Cashier data is retained only within the repository read model.
+    """
+    target_store = store_id or request.app.state.settings.store_id
+    try:
+        response = repo.get_checkout(checkout_id=checkout_id, store_id=target_store)
+        if response.summary.cashier is not None:
+            response.summary.cashier = None
+        response.transactions = [
+            txn.model_copy(update={"cashier": None}) for txn in response.transactions
+        ]
+        return response
+    except CheckoutNotFound as exc:
+        raise ApiError(404, "checkout_not_found", f"Checkout {checkout_id!r} was not found.") from exc
+    except AnalyticsError as exc:
+        logger.warning(
+            "analytics.checkout_unavailable",
+            extra={"correlation_id": _correlation_id(request), "store_id": target_store, "checkout_id": checkout_id},
+        )
+        raise ApiError(503, "analytics_unavailable", "Checkout analytics are currently unavailable.") from exc
 
 
 # ─── Simulations ────────────────────────────────────────────────────────────────

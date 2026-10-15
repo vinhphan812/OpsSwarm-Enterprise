@@ -136,6 +136,51 @@ class AnomaliesResponse(BaseModel):
     detected_since: datetime | None = None
 
 
+# ─── Checkout analytics schemas ────────────────────────────────────────────────
+
+class Cashier(BaseModel):
+    staff_id: str
+    name: str
+
+
+class CheckoutLine(BaseModel):
+    sku: str
+    quantity: int = Field(ge=1)
+    unit_price: float = Field(ge=0)
+    line_total: float = Field(ge=0)
+
+
+class CheckoutTransaction(BaseModel):
+    transaction_id: str
+    checkout_id: str
+    store_id: str
+    completed_at: datetime
+    cashier: Cashier | None = None
+    items: int = Field(ge=0)
+    total: float = Field(ge=0)
+    payment_method: Literal["cash", "card", "mobile"]
+    lines: list[CheckoutLine] = Field(default_factory=list)
+
+
+class CheckoutSummary(BaseModel):
+    checkout_id: str
+    store_id: str
+    status: Literal["open", "paused", "closed"]
+    cashier: Cashier | None = None
+    shift_started_at: datetime | None = None
+    business_date: str
+    revenue_today: float = Field(ge=0)
+    transactions_today: int = Field(ge=0)
+    items_scanned_today: int = Field(ge=0)
+    queue_length: int = Field(ge=0)
+    last_transaction_at: datetime | None = None
+
+
+class CheckoutResponse(BaseModel):
+    summary: CheckoutSummary
+    transactions: list[CheckoutTransaction] = Field(default_factory=list)
+
+
 # ─── Revenue schemas ──────────────────────────────────────────────────────────
 
 class RevenueBucket(BaseModel):

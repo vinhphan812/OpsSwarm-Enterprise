@@ -9,6 +9,7 @@ from retailtwin_api.analytics_repository import (
     InMemoryAnomalyRepository,
     InMemoryPromotionRepository,
     InMemoryRevenueRepository,
+    InMemoryCheckoutRepository,
 )
 from retailtwin_api.schemas import (
     Anomaly,
@@ -18,6 +19,11 @@ from retailtwin_api.schemas import (
     PromotionStatus,
     PromotionType,
     RevenueBucket,
+    CheckoutResponse,
+    CheckoutSummary,
+    CheckoutTransaction,
+    CheckoutLine,
+    Cashier,
 )
 
 
@@ -394,3 +400,156 @@ class TestPromotions:
         data = response.json()
         assert data["total"] == 3
         assert data["active_count"] == 1  # only ACTIVE counts
+
+
+# ─── /checkouts tests ──────────────────────────────────────────────────────────
+
+class TestCheckouts:
+    def test_returns_checkout(self, client: TestClient, checkout_repo: InMemoryCheckoutRepository):
+        now = datetime.now(timezone.utc)
+        checkout_repo.seed([
+            CheckoutResponse(
+                summary=CheckoutSummary(
+                    checkout_id="CK01",
+                    store_id="store-001",
+                    status="open",
+                    cashier=Cashier(staff_id="EMP-014", name="Linh Tran"),
+                    shift_started_at=now - timedelta(hours=4),
+                    business_date="2026-10-09",
+                    revenue_today=26.52,
+                    transactions_today=3,
+                    items_scanned_today=8,
+                    queue_length=2,
+                    last_transaction_at=now,
+                ),
+                transactions=[
+                    CheckoutTransaction(
+                        transaction_id="CK01-0001",
+                        checkout_id="CK01",
+                        store_id="store-001",
+                        completed_at=now,
+                        cashier=Cashier(staff_id="EMP-014", name="Linh Tran"),
+                        items=3,
+                        total=9.97,
+                        payment_method="cash",
+                        lines=[
+                            CheckoutLine(sku="P001", quantity=2, unit_price=3.49, line_total=6.98),
+                            CheckoutLine(sku="P002", quantity=1, unit_price=2.99, line_total=2.99),
+                        ],
+                    )
+                ],
+            )
+        ])
+        response = client.get("/checkouts/CK01")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["summary"]["checkout_id"] == "CK01"
+        assert data["summary"]["revenue_today"] == 26.52
+        assert len(data["transactions"]) == 1
+        assert data["transactions"][0]["transaction_id"] == "CK01-0001"
+
+    def test_checkout_not_found(self, client: TestClient):
+        response = client.get("/checkouts/UNKNOWN")
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "checkout_not_found"
+
+    def test_checkout_analytics_unavailable(self, client: TestClient):
+        from retailtwin_api.analytics_repository import _UnavailableCheckoutRepository
+        client.app.state.checkouts = _UnavailableCheckoutRepository()
+        response = client.get("/checkouts/CK01")
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "analytics_unavailable"
+
+    def test_cashier_pii_redacted_by_default(self, client: TestClient, checkout_repo: InMemoryCheckoutRepository):
+        """Cashier staff_id and name are redacted unless redact_cashier=false."""
+        now = datetime.now(timezone.utc)
+        checkout_repo.seed([
+            CheckoutResponse(
+                summary=CheckoutSummary(
+                    checkout_id="CK01",
+                    store_id="store-001",
+                    status="open",
+                    cashier=Cashier(staff_id="EMP-014", name="Linh Tran"),
+                    shift_started_at=now - timedelta(hours=4),
+                    business_date="2026-10-09",
+                    revenue_today=26.52,
+                    transactions_today=3,
+                    items_scanned_today=8,
+                    queue_length=2,
+                    last_transaction_at=now,
+                ),
+                transactions=[
+                    CheckoutTransaction(
+                        transaction_id="CK01-0001",
+                        checkout_id="CK01",
+                        store_id="store-001",
+                        completed_at=now,
+                        cashier=Cashier(staff_id="EMP-014", name="Linh Tran"),
+                        items=3,
+                        total=9.97,
+                        payment_method="cash",
+                        lines=[],
+                    )
+                ],
+            )
+        ])
+        # Default: cashier is redacted from summary
+        resp = client.get("/checkouts/CK01")
+        assert resp.status_code == 200
+        assert resp.json()["summary"]["cashier"] is None
+        # Default: cashier is redacted from transactions
+        assert resp.json()["transactions"][0]["cashier"] is None
+
+        # Cashier data remains redacted even when a caller supplies unrelated query values.
+        resp2 = client.get("/checkouts/CK01", params={"store_id": "store-001"})
+        assert resp2.status_code == 200
+        assert resp2.json()["summary"]["cashier"] is None
+        assert resp2.json()["transactions"][0]["cashier"] is None
+
+    def test_cross_store_isolation(self, client: TestClient, checkout_repo: InMemoryCheckoutRepository):
+        """Same checkout_id exists in two stores — must NOT leak across stores."""
+        now = datetime.now(timezone.utc)
+        checkout_repo.seed([
+            CheckoutResponse(
+                summary=CheckoutSummary(
+                    checkout_id="CK01",
+                    store_id="store-001",
+                    status="open",
+                    cashier=None,
+                    shift_started_at=now - timedelta(hours=2),
+                    business_date="2026-10-09",
+                    revenue_today=100.0,
+                    transactions_today=5,
+                    items_scanned_today=15,
+                    queue_length=3,
+                    last_transaction_at=now,
+                ),
+                transactions=[],
+            ),
+            CheckoutResponse(
+                summary=CheckoutSummary(
+                    checkout_id="CK01",
+                    store_id="store-002",
+                    status="closed",
+                    cashier=None,
+                    shift_started_at=now - timedelta(hours=6),
+                    business_date="2026-10-09",
+                    revenue_today=50.0,
+                    transactions_today=2,
+                    items_scanned_today=6,
+                    queue_length=0,
+                    last_transaction_at=None,
+                ),
+                transactions=[],
+            ),
+        ])
+        # store-001 sees its own CK01
+        resp = client.get("/checkouts/CK01", params={"store_id": "store-001"})
+        assert resp.status_code == 200
+        assert resp.json()["summary"]["store_id"] == "store-001"
+        assert resp.json()["summary"]["revenue_today"] == 100.0
+        # store-002 sees its own CK01
+        resp2 = client.get("/checkouts/CK01", params={"store_id": "store-002"})
+        assert resp2.status_code == 200
+        assert resp2.json()["summary"]["store_id"] == "store-002"
+        assert resp2.json()["summary"]["revenue_today"] == 50.0
