@@ -8,20 +8,47 @@ The production web app is a static Vite build hosted by Firebase Hosting:
 
 The API URL is public configuration, not a secret. Vite embeds it in the JavaScript bundle at build time. Do not commit `.env` files, Firebase tokens, service-account keys, or downloaded credentials.
 
-## Prerequisites
+## Automated CD Pipeline (GitHub Actions)
 
-- Node.js `>=20.17` and npm
-- `firebase-tools`
-- a short-lived authenticated Firebase CLI session authorised to deploy Hosting in `retailtwin-ai-511002`
-- the Cloud Run API configured to allow both production Hosting origins:
-  - `https://retailtwin-ai-511002.web.app`
-  - `https://retailtwin-ai-511002.firebaseapp.com`
+Production deployment is fully automated via GitHub Actions (see `.github/workflows/web.yml`):
 
-The project has `.firebaserc` and `firebase.json` checked in. Hosting serves `apps/web/dist`, applies immutable caching only to hashed assets, does not cache `index.html`, and rewrites browser routes to the SPA entry point.
+1. **Trigger**: Automatically on push to `main` when web app files change
+2. **Build & Test**: Runs TypeScript compilation, production build, and test suite
+3. **Security Checks**:
+   - Rejects `localhost` or `127.0.0.1` in production bundle
+   - Verifies expected API origin is embedded
+   - Rejects unexpected API origins
+4. **Deploy**: Uses WIF/OIDC authentication to Firebase Hosting (no secrets required)
+5. **Smoke Verification**: Post-deploy checks:
+   - Index page loads
+   - SPA rewrite works (`/twin` → `index.html`)
+   - JS/CSS assets load
+   - Production API origin embedded in bundle
+   - No localhost origins in deployed assets
+   - CORS permits frontend origin
+   - API health endpoint returns OK
 
-## Deploy
+### Repository Variables Required
 
-Run from the repository root:
+Configure these in GitHub repository Settings → Variables:
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `FIREBASE_API_BASE_URL` | `https://retailtwin-api-537192856637.us-central1.run.app` | Production API origin |
+| `FIREBASE_SITE_ID` | `retailtwin-ai-511002` | Firebase Hosting site ID |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | (GCP WIF provider ID) | OIDC provider for WIF auth |
+
+### Repository Secrets Required
+
+Configure in GitHub repository Settings → Secrets:
+
+| Secret | Description |
+|--------|-------------|
+| `GCP_DEPLOY_SA` | Service account for deployment (`github-actions@retailtwin-ai-511002.iam.gserviceaccount.com`) with Firebase Hosting Admin role |
+
+## Manual Deployment (Emergency Only)
+
+For emergency manual deployment, use the deploy script:
 
 ```bash
 ./scripts/deploy-web.sh
@@ -83,7 +110,7 @@ access-control-allow-origin: https://retailtwin-ai-511002.web.app
 
 Finally, open the frontend in a clean browser profile. Confirm the app shell and 3D store render, and confirm `/health` and `/store` succeed in the browser network panel with no CORS error.
 
-## Roll back
+## Roll Back
 
 List Hosting releases and clone a known-good version into a new release:
 

@@ -30,6 +30,8 @@ concurrency:
 
 env:
   VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
+  FIREBASE_SITE_ID: ${{ vars.FIREBASE_SITE_ID }}
+  PRODUCTION_API_ORIGIN: ${{ vars.FIREBASE_API_BASE_URL }}
 
 jobs:
   security:
@@ -38,6 +40,9 @@ jobs:
   build-test:
     name: Build & Test
     runs-on: ubuntu-latest
+
+    outputs:
+      api_origin: ${{ env.VITE_API_BASE_URL }}
 
     defaults:
       run:
@@ -74,6 +79,38 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ env.VITE_API_BASE_URL }}
 
+      - name: "Security check: reject localhost/127.0.0.1 in bundle"
+        run: |
+          if grep -r -E "https?://(localhost|127\.0\.0\.1):" dist/ >/dev/null 2>&1; then
+            echo "ERROR: Production bundle contains localhost or 127.0.0.1 origin. Refusing to deploy."
+            grep -r -E "https?://(localhost|127\.0\.0\.1):" dist/ || true
+            exit 1
+          fi
+          echo "PASS: No localhost/127.0.0.1 origins found in bundle"
+
+      - name: "Security check: verify expected API origin embedded"
+        run: |
+          if ! grep -r -F "${VITE_API_BASE_URL}" dist/ >/dev/null 2>&1; then
+            echo "ERROR: Production bundle does not contain expected API origin: ${VITE_API_BASE_URL}"
+            exit 1
+          fi
+          echo "PASS: Expected API origin ${VITE_API_BASE_URL} found in bundle"
+
+      - name: "Security check: reject unexpected API origins"
+        run: |
+          # Capture all URLs from the bundle that look like API endpoints
+          UNEXPECTED=$(grep -r -oE "https?://[^/\"' >]+" dist/ | \
+            grep -v "firebase" | \
+            grep -v "${VITE_API_BASE_URL}" | \
+            grep -E "(api|run\.app|cloudfunctions|appspot)" || true)
+
+          if [ -n "${UNEXPECTED}" ]; then
+            echo "ERROR: Bundle contains unexpected API origins:"
+            echo "${UNEXPECTED}"
+            exit 1
+          fi
+          echo "PASS: No unexpected API origins found"
+
       - name: Run tests
         run: npm test
 
@@ -108,6 +145,13 @@ jobs:
     needs: [build-test, security]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+
+    outputs:
+      frontend_url: ${{ steps.deploy.outputs.frontend_url }}
+      channel: ${{ steps.deploy.outputs.channel }}
+      version: ${{ steps.deploy.outputs.version }}
+      api_origin: ${{ needs.build-test.outputs.api_origin }}
 
     steps:
       - name: Checkout
@@ -117,7 +161,7 @@ jobs:
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: github-actions@retailtwin-ai-511002.iam.gserviceaccount.com
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
 
       - name: Download web dist
         uses: actions/download-artifact@v4
@@ -126,7 +170,181 @@ jobs:
           path: apps/web/dist/
 
       - name: Deploy to Firebase Hosting
-        # Uses ADC from WIF auth step above — no FIREBASE_TOKEN secret required.
-        # google-github-actions/auth sets up Application Default Credentials that
-        # Firebase CLI 15+ picks up automatically.
-        run: npx firebase-tools@20.0.0 deploy --only hosting --project retailtwin-ai-511002 --non-interactive
+        id: deploy
+        run: |
+          # Deploy using firebase-tools CLI with ADC from WIF auth
+          # Capture deployment output for verification
+          DEPLOY_OUTPUT=$(npx firebase-tools@20.0.0 deploy \
+            --only hosting \
+            --project retailtwin-ai-511002 \
+            --site ${{ vars.FIREBASE_SITE_ID }} \
+            --json 2>&1)
+
+          echo "Deployment output:"
+          echo "${DEPLOY_OUTPUT}"
+
+          # Extract deployment URL from JSON output
+          FRONTEND_URL=$(echo "${DEPLOY_OUTPUT}" | \
+            grep -o '"url":"[^"]*"' | \
+            head -1 | \
+            sed 's/"url":"//;s/"$//')
+
+          # Extract channel and version
+          CHANNEL=$(echo "${DEPLOY_OUTPUT}" | \
+            grep -o '"channel":"[^"]*"' | \
+            head -1 | \
+            sed 's/"channel":"//;s/"$//')
+
+          VERSION=$(echo "${DEPLOY_OUTPUT}" | \
+            grep -o '"version":"[^"]*"' | \
+            head -1 | \
+            sed 's/"version":"//;s/"$//')
+
+          # Set outputs for subsequent jobs
+          echo "frontend_url=${FRONTEND_URL}" >> $GITHUB_OUTPUT
+          echo "channel=${CHANNEL}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          echo "Deployed to: ${FRONTEND_URL}"
+
+      - name: Capture deployment metadata
+        run: |
+          echo "### Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit SHA | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend URL | [${{ steps.deploy.outputs.frontend_url }}](${{ steps.deploy.outputs.frontend_url }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Channel | \`${{ steps.deploy.outputs.channel }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`${{ steps.deploy.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Origin | \`${{ needs.build-test.outputs.api_origin }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  verify:
+    name: Smoke Verification
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      FRONTEND_URL: ${{ needs.deploy.outputs.frontend_url }}
+      API_ORIGIN: ${{ needs.deploy.outputs.api_origin }}
+
+    steps:
+      - name: Wait for deployment propagation
+        run: sleep 15
+
+      - name: Verify index page loads
+        run: |
+          if ! curl --fail --silent --head "${FRONTEND_URL}/" | grep -q "200\|301\|302"; then
+            echo "ERROR: Frontend index page not reachable"
+            exit 1
+          fi
+          echo "PASS: Frontend index page loads (HTTP status OK)"
+
+      - name: Verify SPA rewrite works
+        run: |
+          # Test a non-root route that should be rewritten to index.html
+          # SPA rewrite returns the index.html content, verify app shell markers
+          RESP=$(curl --fail --silent "${FRONTEND_URL}/twin")
+          # Check for app shell markers (title, root element, or known text from index.html)
+          if ! echo "${RESP}" | grep -qE '(<title>|<div id="root">|app|retailtwin)'; then
+            echo "ERROR: SPA rewrite not working for /twin route"
+            echo "Response does not contain expected app shell markers"
+            echo "First 200 chars: ${RESP:0:200}"
+            exit 1
+          fi
+          echo "PASS: SPA rewrite works for /twin route"
+
+      - name: Verify JS/CSS assets load
+        run: |
+          HTML=$(curl --fail --silent "${FRONTEND_URL}/")
+
+          # Extract first JS asset reference and verify it loads
+          # Use -E for extended regex and properly strip quotes
+          JS_ASSET=$(echo "${HTML}" | grep -oE 'src="[^"]+\.js"' | head -1 | sed -E 's/^src="//;s/"$//')
+          if [ -n "${JS_ASSET}" ]; then
+            if ! curl --fail --silent --head "${FRONTEND_URL}${JS_ASSET}" | grep -q "200\|301\|302"; then
+              echo "ERROR: JS asset not loading: ${JS_ASSET}"
+              exit 1
+            fi
+            echo "PASS: JS assets load correctly"
+          fi
+
+          # Extract first CSS asset reference and verify it loads
+          CSS_ASSET=$(echo "${HTML}" | grep -oE 'href="[^"]+\.css"' | head -1 | sed -E 's/^href="//;s/"$//')
+          if [ -n "${CSS_ASSET}" ]; then
+            if ! curl --fail --silent --head "${FRONTEND_URL}${CSS_ASSET}" | grep -q "200\|301\|302"; then
+              echo "ERROR: CSS asset not loading: ${CSS_ASSET}"
+              exit 1
+            fi
+            echo "PASS: CSS assets load correctly"
+          fi
+
+      - name: Verify production API origin embedded in bundle
+        run: |
+          HTML=$(curl --fail --silent "${FRONTEND_URL}/")
+          # Find the main JS bundle
+          JS_ASSET=$(echo "${HTML}" | grep -oE 'src="[^"]+\.js"' | head -1 | sed 's/src="//;s/"//')
+          if [ -n "${JS_ASSET}" ]; then
+            JS_CONTENT=$(curl --fail --silent "${FRONTEND_URL}${JS_ASSET}")
+            if ! echo "${JS_CONTENT}" | grep -qF "${API_ORIGIN}"; then
+              echo "ERROR: Production API origin not embedded in bundle"
+              exit 1
+            fi
+            echo "PASS: Production API origin embedded in bundle"
+          fi
+
+      - name: Verify no localhost origins in deployed assets
+        run: |
+          HTML=$(curl --fail --silent "${FRONTEND_URL}/")
+          # Check all linked assets for localhost references
+          ASSETS=$(echo "${HTML}" | grep -oE '(src|href)="[^"]+' | sed -E 's/(src|href)="//;s/"$//')
+          for ASSET in ${ASSETS}; do
+            CONTENT=$(curl --fail --silent "${FRONTEND_URL}${ASSET}" 2>/dev/null || echo "")
+            if echo "${CONTENT}" | grep -qE "https?://(localhost|127\.0\.0\.1):"; then
+              echo "ERROR: Asset ${ASSET} contains localhost reference"
+              exit 1
+            fi
+          done
+          echo "PASS: No localhost origins found in deployed assets"
+
+      - name: Verify CORS permits frontend origin
+        run: |
+          # Check CORS headers for health endpoint
+          CORS_HEADER=$(curl --fail --silent -I \
+            -H "Origin: ${FRONTEND_URL}" \
+            "${API_ORIGIN}/health" 2>/dev/null | \
+            grep -i "access-control-allow-origin" || true)
+
+          if [ -z "${CORS_HEADER}" ]; then
+            echo "ERROR: No CORS headers from API"
+            exit 1
+          fi
+
+          if ! echo "${CORS_HEADER}" | grep -qF "${FRONTEND_URL}"; then
+            echo "ERROR: CORS does not permit frontend origin ${FRONTEND_URL}"
+            echo "Got: ${CORS_HEADER}"
+            exit 1
+          fi
+          echo "PASS: CORS permits frontend origin"
+
+      - name: Verify API health endpoint
+        run: |
+          HEALTH=$(curl --fail --silent "${API_ORIGIN}/health")
+          if ! echo "${HEALTH}" | grep -q "ok"; then
+            echo "ERROR: API health check failed"
+            exit 1
+          fi
+          echo "PASS: API health endpoint returns OK"
+
+      - name: Final summary
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "  Web CD verification complete"
+          echo "=========================================="
+          echo "Frontend: ${FRONTEND_URL}"
+          echo "API:      ${API_ORIGIN}"
+          echo "Commit:   ${{ github.sha }}"
+          echo ""
