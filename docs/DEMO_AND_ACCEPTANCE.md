@@ -112,6 +112,30 @@ Step 8 is covered by the API audit only. The UI view of the rejection is #40.
 9. Audit record is written.
 10. Verifier checks result.
 
+### Reproducible run (API path)
+
+```bash
+python tests/e2e/gates/g05_live_commit_gate.py --out g05-evidence.json   # exit 0 only on PASS
+pytest tests/e2e/test_g05_live_commit_gate.py                            # also proves a wrong Executor FAILs
+```
+
+The harness covers the steps above as follows:
+
+- **Steps 1-2.** The investigator and planner build candidates from Live reads. `agents.simulator.simulate` scores them on a clone with `simulation-kpi-v1`, and the best-scored candidate is chosen.
+- **Steps 3-7.** `POST /simulations/{id}/approve` returns `ALLOW` with every guard check passing. The guard audit shows `authorize` and then the Executor's post-redeem `commit` recheck. Live shows exactly the authorized transition, and the SKU version and the store version each advance by one.
+- **Step 8.** `GET /store`, the source of the 3D Live view, carries the committed row. The rendered 3D frame is not captured by this harness.
+- **Step 9.** The review audit and the guard audit are written, with the run id as correlation id.
+- **Step 10.** The Verifier re-reads Live and confirms the state. No post-action KPI observation exists yet, so its KPI half reports `KPI_UNOBSERVED`.
+
+It also runs two failure cases:
+
+- approving the committed simulation again returns `DENY SIMULATION_NOT_OPEN`;
+- a replenishment one unit larger than the backroom returns `DENY INFEASIBLE_ACTION`.
+
+Neither changes Live.
+
+The model is a scripted `FakeLlmProvider`. Tools, simulator, KPI evaluator, guard, token, Executor and Verifier are production code.
+
 ## 6. G06 submission acceptance
 
 Run the full flagship scenario **20 consecutive times** from deterministic reset.
