@@ -8,7 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from retailtwin_api.agents.executor import build_commit_service
-from retailtwin_api.analytics_repository import unavailable_analytics_repositories
+from retailtwin_api.analytics_repository import (
+    get_checkout_repository,
+    unavailable_analytics_repositories,
+)
 from retailtwin_api.decisions import unavailable_decision_source
 from retailtwin_api.errors import ApiError, api_error_handler, http_error_handler, validation_error_handler
 from retailtwin_api.events import EventLog, ReviewAuditLog
@@ -58,11 +61,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             extra={"store_error": store.error, "fixture_path": str(resolved.store_fixture_path)},
         )
     # Analytics repositories: GCP-backed (BigQuery + Firestore); empty adapters in dev.
-    # Swap app.state.anomalies / .revenue / .promotions in integration tests.
-    anomalies, revenue, promotions = unavailable_analytics_repositories()
+    # Checkout reads use the explicit in-memory scaffold pending a verified BQ schema.
+    # Swap app.state repositories in integration tests.
+    anomalies, revenue, promotions, _ = unavailable_analytics_repositories()
     app.state.anomalies = anomalies
     app.state.revenue = revenue
     app.state.promotions = promotions
+    app.state.checkouts = get_checkout_repository()
 
     # Correlation + structured logging middleware (must be outermost)
     app.add_middleware(CorrelationMiddleware)

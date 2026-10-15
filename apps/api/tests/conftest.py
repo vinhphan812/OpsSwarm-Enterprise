@@ -5,6 +5,7 @@ from retailtwin_api.analytics_repository import (
     InMemoryAnomalyRepository,
     InMemoryPromotionRepository,
     InMemoryRevenueRepository,
+    InMemoryCheckoutRepository,
 )
 from retailtwin_api.main import create_app
 from retailtwin_api.settings import DEFAULT_FIXTURE, Settings
@@ -48,12 +49,18 @@ def promotion_repo() -> InMemoryPromotionRepository:
 
 
 @pytest.fixture
-def client(settings: Settings, anomaly_repo, revenue_repo, promotion_repo) -> TestClient:
+def checkout_repo() -> InMemoryCheckoutRepository:
+    return InMemoryCheckoutRepository()
+
+
+@pytest.fixture
+def client(settings: Settings, anomaly_repo, revenue_repo, promotion_repo, checkout_repo) -> TestClient:
     """Test client with seeded in-memory analytics repositories."""
     application = create_app(settings)
     application.state.anomalies = anomaly_repo
     application.state.revenue = revenue_repo
     application.state.promotions = promotion_repo
+    application.state.checkouts = checkout_repo
     with TestClient(application) as test_client:
         yield test_client
 
