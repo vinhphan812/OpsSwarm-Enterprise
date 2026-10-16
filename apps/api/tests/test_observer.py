@@ -33,11 +33,17 @@ class RecordingStarter:
     def __init__(self) -> None:
         self.starts: list[InvestigationStart] = []
 
+    def start_investigation_for_event(self, start: InvestigationStart) -> None:
+        self.starts.append(start)
+
     def start_investigation(self, start: InvestigationStart) -> None:
         self.starts.append(start)
 
 
 class FailingStarter:
+    def start_investigation_for_event(self, start: InvestigationStart) -> None:
+        raise RuntimeError("path /secret/key")
+
     def start_investigation(self, start: InvestigationStart) -> None:
         raise RuntimeError("path /secret/key")
 
@@ -48,12 +54,15 @@ class AckWatchingStarter:
         self.ledger = ledger
         self.starts: list[InvestigationStart] = []
 
-    def start_investigation(self, start: InvestigationStart) -> None:
+    def start_investigation_for_event(self, start: InvestigationStart) -> None:
         assert start.event.event_id not in self.pipe.acked
         stored = self.ledger.get(start.event.event_id)
         assert stored is not None
         assert stored.status == "pending"
         self.starts.append(start)
+
+    def start_investigation(self, start: InvestigationStart) -> None:
+        self.start_investigation_for_event(start)
 
 
 class FlakyAckPipe(MemoryPipe):

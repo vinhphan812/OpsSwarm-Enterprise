@@ -55,9 +55,43 @@ class Settings(BaseSettings):
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
 
+    # ── Autonomous trigger (ADR 0023) ────────────────────────────────────────
+    # Off by default in dev so a memory pipe never auto-publishes. Production
+    # Cloud Run sets these true so Pub/Sub push drives the agent.
+    autonomous_trigger_enabled: bool = Field(default=False)
+    autonomous_trigger_interval_seconds: int = Field(default=45, ge=5, le=3600)
+    autonomous_scheduled_publisher_enabled: bool = Field(default=False)
+    autonomous_pubsub_project: str | None = None
+    autonomous_pubsub_subscription: str = Field(default="store-events-agent")
+    # In production the ``store-events-agent`` subscription is **push-only**
+    # (it points at ``POST /pubsub/agent-events``). Running a background pull
+    # loop against the same subscription would flip it back to pull delivery,
+    # which Cloud Run cannot do — push and pull are mutually exclusive on one
+    # subscription. The pull loop only runs in non-production environments.
+    autonomous_pubsub_pull_disabled_in_production: bool = Field(default=True)
+
     # ── Cloud Run production guard ────────────────────────────────────────────
     # Controls readiness/liveness separation and safety checks.
     # Set to "production" in Cloud Run environment variables.
+
+    # ── Pub/Sub push OIDC audience (ADR 0023) ─────────────────────────────────
+    # Cloud Run service URL the Pub/Sub push OIDC token must match. In
+    # production the gateway accepts push messages only when the verified
+    # ``aud`` claim equals this URL. Empty in dev / test so the route
+    # accepts the in-process MemoryPipe path without a real token.
+    app_base_url: str = Field(default="")
+    # Service-account email the Pub/Sub push OIDC token must be issued for.
+    # Pub/Sub's push authenticator is the canonical
+    # ``service-<PROJECT_NUMBER>@gcp-sa-pubsub.iam.gserviceaccount.com``
+    # service account; in production the route requires the verified
+    # ``email`` claim to equal this value AND ``email_verified`` to be true.
+    # A different Google-issued ID token for the same audience must NOT be
+    # able to invoke the autonomous agent endpoint. Empty in dev / test so
+    # the route accepts the in-process MemoryPipe path without a real
+    # token; production deployments must set this so the route fails
+    # closed on misconfiguration.
+    pubsub_push_service_account: str = Field(default="")
+
     @field_validator("app_env")
     @classmethod
     def validate_app_env(cls, v: str) -> str:

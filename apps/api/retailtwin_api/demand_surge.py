@@ -3,12 +3,21 @@
 Seed 1 rebuilds one series of sale.completed events. The series publishes on
 the existing store-events path. Detecting the velocity spike does not start
 the Observer and does not change the Live Twin.
+
+The :class:`DemandSurgeScheduler` publishes a canonical ``sale.completed``
+event on a fixed cadence so the FE sees new data continuously (ADR 0023).
+Each tick uses a fresh ``event_id``; the ``EventLog`` dedupes by
+``event_id``, so every tick lands as a new event in the read model.
 """
 
 import argparse
+import asyncio
 import json
+import logging
 import os
+import secrets
 import sys
+import threading
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -276,6 +285,127 @@ def _event_payload(event: StoreEvent) -> dict[str, object]:
         "occurred_at": format_occurred_at(event.occurred_at),
         "source": event.source,
     }
+
+
+# ─── Autonomous scheduled publisher (ADR 0023) ───────────────────────────────
+
+log = logging.getLogger(__name__)
+
+
+def build_canonical_sale_event(
+    *,
+    quantity: int = SURGE_QUANTITIES[-1],
+    store_id: str = STORE_ID,
+    sku: str = SKU,
+    source: str = SOURCE,
+    now: datetime | None = None,
+) -> StoreEvent:
+    """Build one canonical ``sale.completed`` event with a fresh ``event_id``.
+
+    The EventLog dedupes by ``event_id`` (see :class:`EventLog`), so each
+    call produces a brand-new event. The store id, sku, quantity, and source
+    match the demand-surge shape so the Live Twin and the analytics landers
+    see the same payload the manual replay would have produced.
+    """
+
+    moment = now if now is not None else datetime.now(timezone.utc)
+    return StoreEvent(
+        event_id=f"evt-canonical-{secrets.token_hex(8)}",
+        correlation_id=f"run-canonical-scheduler-{moment.strftime('%Y%m%d%H%M%S')}",
+        event_type=SALE_COMPLETED,
+        store_id=store_id,
+        sku=sku,
+        quantity=quantity,
+        occurred_at=moment,
+        source=source,
+    )
+
+
+class DemandSurgeScheduler:
+    """Publishes a canonical ``sale.completed`` event on a fixed cadence (ADR 0023).
+
+    Boundary: this class owns the publish cadence. It calls
+    :func:`build_canonical_sale_event` per tick so the canonical ``store_id``
+    and ``sku`` are reused. A failed publish is logged and the next tick
+    still runs; the loop never raises out.
+
+    ``start`` and ``stop`` are idempotent. ``stop`` awaits the running task
+    with a short bounded timeout before cancelling, so the lifespan teardown
+    never blocks the Cloud Run instance longer than the configurable grace
+    period.
+    """
+
+    def __init__(self, pipe: EventPipe, interval_seconds: float) -> None:
+        if interval_seconds <= 0:
+            raise BackboneError("DemandSurgeScheduler requires a positive interval.")
+        self._pipe = pipe
+        self._interval_seconds = float(interval_seconds)
+        self._task: asyncio.Task[None] | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._lock = threading.Lock()
+
+    def start(self) -> None:
+        """Begin the publish loop. No-op when already running."""
+
+        with self._lock:
+            if self._task is not None and not self._task.done():
+                return
+            self._stop_event = asyncio.Event()
+            self._task = asyncio.create_task(
+                self._run(), name="retailtwin-demand-surge-scheduler"
+            )
+
+    async def stop(self) -> None:
+        """Signal the loop to exit and wait for the task to drain."""
+
+        with self._lock:
+            stop_event = self._stop_event
+            task = self._task
+        if stop_event is not None:
+            stop_event.set()
+        if task is None:
+            return
+        try:
+            await asyncio.wait_for(task, timeout=5.0)
+        except asyncio.TimeoutError:
+            task.cancel()
+        except asyncio.CancelledError:
+            pass
+        finally:
+            with self._lock:
+                self._task = None
+                self._stop_event = None
+
+    async def _run(self) -> None:
+        assert self._stop_event is not None
+        while not self._stop_event.is_set():
+            try:
+                self._publish_one()
+            except BackboneError as exc:
+                log.warning(
+                    "demand_surge.publish_failed reason=%s",
+                    str(exc),
+                )
+            except Exception:  # noqa: BLE001 — keep the loop alive
+                log.exception("demand_surge.publish_failed")
+            try:
+                await asyncio.wait_for(
+                    self._stop_event.wait(),
+                    timeout=self._interval_seconds,
+                )
+            except asyncio.TimeoutError:
+                continue
+
+    def _publish_one(self) -> StoreEvent:
+        event = build_canonical_sale_event()
+        self._pipe.publish(event)
+        log.info(
+            "demand_surge.published event_id=%s correlation_id=%s sku=%s",
+            event.event_id,
+            event.correlation_id,
+            event.sku,
+        )
+        return event
 
 
 if __name__ == "__main__":

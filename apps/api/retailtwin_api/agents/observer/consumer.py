@@ -52,7 +52,16 @@ class InvestigationStart:
 
 
 class InvestigationStarter(Protocol):
-    """Orchestration boundary. Implementations must not call a model SDK."""
+    """Orchestration boundary. Implementations must not call a model SDK.
+
+    Production starters expose :meth:`start_investigation_for_event`, which
+    drives the autonomous event path without resetting the Live Twin and
+    without injecting a deterministic ``REFRESH_REQUIRED`` race. The
+    legacy ``start_investigation`` alias (kept for backwards compatibility
+    with demo / test orchestration) is **not** safe for production events.
+    """
+
+    def start_investigation_for_event(self, start: InvestigationStart) -> None: ...
 
     def start_investigation(self, start: InvestigationStart) -> None: ...
 
@@ -179,7 +188,7 @@ def observe_message(
     reservation = ledger.reserve(event)
     if reservation.kind == "owner":
         try:
-            starter.start_investigation(
+            starter.start_investigation_for_event(
                 InvestigationStart(reservation.investigation_id, reservation.event)
             )
         except Exception:
