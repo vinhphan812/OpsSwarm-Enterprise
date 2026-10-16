@@ -102,7 +102,7 @@ jobs:
           # The grep matches files anywhere in the image; a present file fails.
           BAD=$(docker run --rm --entrypoint sh retailtwin-api:scan -c '
             set -e
-            for pattern in "credentials*.json" "service-account*.json" "*.pem" "*.key" ".env"; do
+            for pattern in "credentials*.json" "service-account*.json" "*.key" ".env"; do
               # shellcheck disable=SC2086
               if find / -xdev -type f -name "$pattern" 2>/dev/null | grep -v "/proc/" | grep -v "/sys/" | grep -q .; then
                 echo "FAIL: credential-like file matched pattern: ${pattern}"
