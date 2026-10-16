@@ -41,6 +41,10 @@ WORKDIR /app
 COPY --from=builder --chown=appuser:appgroup /app/.venv/ .venv/
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/ apps/api/
 COPY --from=builder --chown=appuser:appgroup /app/data/ ./data/
+# Required by retailtwin_api.version — it reads the canonical SemVer at import
+# time (apps/api/retailtwin_api/version.py:read_version). Without this the
+# container raises InvalidVersion before uvicorn can bind the port.
+COPY VERSION VERSION
 
 # Make the venv Python/uvicorn available on PATH (base Python is outside the venv)
 ENV PATH="/app/.venv/bin:$PATH"
