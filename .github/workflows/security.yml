@@ -48,7 +48,7 @@ jobs:
           /tmp/retailtwin-app-venv/bin/python -m pip install ./apps/api
           /tmp/retailtwin-audit-venv/bin/python -m pip install pip-audit
           APP_PACKAGES=$(/tmp/retailtwin-app-venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
-          /tmp/retailtwin-audit-venv/bin/python -m pip_audit --progress-spinner off --path "$APP_PACKAGES"
+          /tmp/retailtwin-audit-venv/bin/python -m pip_audit --no-progress --path "$APP_PACKAGES"
 
       - name: Web production dependencies
         working-directory: apps/web
