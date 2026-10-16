@@ -1,16 +1,20 @@
 import { Button, Switch } from "@heroui/react";
 import { AnimatePresence, motion, type Transition } from "framer-motion";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ActivityIcon, PanelToggleIcon } from "@/components/icons";
 import { PromotionsPanel } from "@/components/promotions/PromotionsPanel";
 import { RevenuePanel } from "@/components/revenue/RevenuePanel";
 import { StoreStatus } from "@/components/status/StoreStatus";
 import { PANEL_WIDTH } from "@/constants/app.constant";
-import { ENTITY_TYPE } from "@/enums/scene.enum";
+import { groupRuns } from "@/core/agent/agentRuns";
+import { ACTIVITY_VIEW, ACTIVITY_VIEWS } from "@/enums/agent.enum";
 import { LENS } from "@/enums/ui.enum";
 import { usePanelStore } from "@/state/panel.store";
 import { useRunStore } from "@/state/run.store";
-import { selectedProductId, useUiStore } from "@/state/ui.store";
+import { useUiStore } from "@/state/ui.store";
+import { ActivityLog } from "./ActivityLog";
+import { AgentRunCard } from "./AgentRunCard";
 import { AlertsSection } from "./AlertsSection";
 import { LENS_VIEW } from "./lens";
 
@@ -19,11 +23,6 @@ const PANEL_SLIDE: Transition = { type: "spring", stiffness: 420, damping: 40 };
 const PANEL_HIDDEN = { x: "calc(100% + 24px)", opacity: 0.6 };
 /** Lens change: the old content fades left, the new one comes in from the right. */
 const LENS_SWAP: Transition = { duration: 0.18, ease: "easeOut" };
-
-/** HH:MM:SS of an ISO timestamp, in the viewer's time zone. */
-function clock(ts: string) {
-  return new Date(ts).toLocaleTimeString([], { hour12: false });
-}
 
 /** Floating button over the 3D view that brings the closed panel back. */
 export function AgentActivityOpenButton() {
@@ -62,21 +61,24 @@ export function AgentActivityOpenButton() {
 
 /**
  * Operations lens: the store API check, the open alerts and opportunities, and the agent's timeline.
- * A SKU in the timeline selects that product; picking an alert narrows the timeline to its run.
- * Follow agent lets the agent's own steps move the camera (`useAgentFocus`).
+ * The timeline shows one card per run (`correlation_id`), newest first, with entries of no run
+ * listed below; or the raw log. A SKU in it selects that product; picking an alert narrows it
+ * to its run. Follow agent lets the agent's own steps move the camera (`useAgentFocus`).
  */
 function OperationsView() {
   const { t } = useTranslation();
   const activity = useRunStore((state) => state.activity);
-  const select = useUiStore((state) => state.select);
-  const selected = useUiStore(selectedProductId);
   const followAgent = useUiStore((state) => state.followAgent);
   const setFollowAgent = useUiStore((state) => state.setFollowAgent);
   const focusedCorrelationId = useUiStore((state) => state.focusedCorrelationId);
   const showAllActivity = useUiStore((state) => state.showAllActivity);
-  const shown = focusedCorrelationId
-    ? activity.filter((entry) => entry.correlation_id === focusedCorrelationId)
-    : activity;
+  const activityView = useUiStore((state) => state.activityView);
+  const setActivityView = useUiStore((state) => state.setActivityView);
+  const shown = useMemo(
+    () => (focusedCorrelationId ? activity.filter((entry) => entry.correlation_id === focusedCorrelationId) : activity),
+    [activity, focusedCorrelationId],
+  );
+  const { runs, loose } = useMemo(() => groupRuns(shown), [shown]);
 
   return (
     <>
@@ -99,6 +101,18 @@ function OperationsView() {
             {t("activity.followAgent")}
           </Switch>
         </div>
+        <div className="activity-view" role="group" aria-label={t("activity.view.label")}>
+          {ACTIVITY_VIEWS.map((view) => (
+            <button
+              key={view}
+              type="button"
+              aria-pressed={activityView === view}
+              onClick={() => setActivityView(view)}
+            >
+              {t(`activity.view.${view}`)}
+            </button>
+          ))}
+        </div>
         {focusedCorrelationId ? (
           <div className="activity-filter">
             <span>{t("alerts.filtered")}</span>
@@ -108,47 +122,7 @@ function OperationsView() {
           </div>
         ) : null}
         <AnimatePresence initial={false} mode="popLayout">
-          {shown.length ? (
-            <motion.ol
-              key="list"
-              className="activity-list"
-              aria-label={t("activity.timeline")}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <AnimatePresence initial={false}>
-                {shown.map((entry) => (
-                  <motion.li
-                    key={entry.id}
-                    layout
-                    className="activity-item"
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                  >
-                    <div className="activity-meta">
-                      <time dateTime={entry.ts}>{clock(entry.ts)}</time>
-                      <span className="activity-stage">{entry.stage}</span>
-                      {entry.sku ? (
-                        <button
-                          type="button"
-                          className="activity-sku"
-                          aria-label={t("activity.selectProduct", { sku: entry.sku })}
-                          aria-pressed={selected === entry.sku}
-                          onClick={() => select(entry.sku!, ENTITY_TYPE.Product)}
-                        >
-                          {entry.sku}
-                        </button>
-                      ) : null}
-                    </div>
-                    <p className="activity-summary">{entry.summary}</p>
-                  </motion.li>
-                ))}
-              </AnimatePresence>
-            </motion.ol>
-          ) : (
+          {!shown.length ? (
             <motion.div
               key="empty"
               className="empty"
@@ -158,6 +132,28 @@ function OperationsView() {
             >
               <ActivityIcon className="empty-icon" />
               <p>{t(focusedCorrelationId ? "alerts.noRunYet" : "activity.empty")}</p>
+            </motion.div>
+          ) : activityView === ACTIVITY_VIEW.Log ? (
+            <motion.div key="log" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <ActivityLog entries={shown} label={t("activity.timeline")} />
+            </motion.div>
+          ) : (
+            <motion.div key="runs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              {runs.length ? (
+                <ol className="run-list" aria-label={t("activity.runs")}>
+                  <AnimatePresence initial={false}>
+                    {runs.map((run) => (
+                      <AgentRunCard key={run.id} run={run} />
+                    ))}
+                  </AnimatePresence>
+                </ol>
+              ) : null}
+              {loose.length ? (
+                <>
+                  <h3 className="activity-loose-title">{t("activity.loose")}</h3>
+                  <ActivityLog entries={loose} label={t("activity.loose")} />
+                </>
+              ) : null}
             </motion.div>
           )}
         </AnimatePresence>

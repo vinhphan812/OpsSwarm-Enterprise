@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ACTIVITY_VIEW, type ActivityView } from "@/enums/agent.enum";
 import { ENTITY_TYPE, type EntityType } from "@/enums/scene.enum";
 import { FOCUS_SOURCE, LENS, VIEW_MODE, type FocusSource, type Lens, type ViewMode } from "@/enums/ui.enum";
 
@@ -29,6 +30,8 @@ type UiStore = {
   focusedPromotionId: string | null;
   /** The agent run of the alert the user picked: the timeline shows only it. Null shows every run. */
   focusedCorrelationId: string | null;
+  /** Whether the timeline shows run cards or the raw log. Run cards by default. */
+  activityView: ActivityView;
   /** Selects an entity, a product unless told otherwise; `null` clears the selection. */
   select: (entityId: string | null, entityType?: EntityType) => void;
   /** The agent selects an entity and flies the camera to it, captioned with `reason`. */
@@ -49,6 +52,7 @@ type UiStore = {
   focusAlert: (correlationId: string | null, entityId: string, entityType: EntityType) => void;
   /** Shows every run in the timeline again; the selection stays. */
   showAllActivity: () => void;
+  setActivityView: (activityView: ActivityView) => void;
 };
 
 export const useUiStore = create<UiStore>()((set) => ({
@@ -66,6 +70,7 @@ export const useUiStore = create<UiStore>()((set) => ({
   detailsSku: null,
   focusedPromotionId: null,
   focusedCorrelationId: null,
+  activityView: ACTIVITY_VIEW.Runs,
   select: (selectedEntityId, entityType = ENTITY_TYPE.Product) =>
     set({
       focusedCorrelationId: null,
@@ -102,6 +107,7 @@ export const useUiStore = create<UiStore>()((set) => ({
       focusedCorrelationId,
     })),
   showAllActivity: () => set({ focusedCorrelationId: null }),
+  setActivityView: (activityView) => set({ activityView }),
 }));
 
 /** True while `entityId` is the selected entity of `entityType`. */

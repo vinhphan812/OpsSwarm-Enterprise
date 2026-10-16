@@ -253,6 +253,186 @@ body {
   color: var(--color-ink);
 }
 
+/* Timeline view switch: run cards or the raw log. */
+.activity-view {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 2px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+}
+
+.activity-view button {
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.activity-view button[aria-pressed="true"] {
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+/* AI run cards: one per correlation_id, with the control loop as a vertical stepper. */
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-card {
+  padding: 10px 12px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.run-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.run-card-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--color-ink);
+}
+
+.run-card-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+}
+
+.run-card-state {
+  margin-left: auto;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--color-ink-soft);
+  border-radius: 4px;
+}
+
+.run-card-state[data-active] {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.run-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-step {
+  position: relative;
+  display: flex;
+  gap: 10px;
+  padding-bottom: 8px;
+}
+
+/* The line joining one step's dot to the next. */
+.run-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: var(--color-line);
+}
+
+.run-step[data-status="done"]:not(:last-child)::before {
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+
+.run-step-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin-top: 3px;
+  border: 2px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-card);
+}
+
+.run-step[data-status="done"] .run-step-dot {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+}
+
+.run-step[data-status="active"] .run-step-dot {
+  border-color: var(--color-accent);
+  background: var(--color-card);
+  animation: run-step-pulse 1.4s ease-out infinite;
+}
+
+@keyframes run-step-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-step[data-status="active"] .run-step-dot {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 35%, transparent);
+  }
+}
+
+.run-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.run-step-name {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  line-height: 16px;
+  color: var(--color-ink-faint);
+}
+
+.run-step[data-status="done"] .run-step-name {
+  color: var(--color-ink-soft);
+}
+
+.run-step[data-status="active"] .run-step-name {
+  color: var(--color-accent);
+}
+
+.run-step-entry .activity-meta {
+  margin: 2px 0 0;
+}
+
+.activity-loose-title {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-muted);
+}
+
 /* Alerts & opportunities, above the timeline. Capped so the timeline stays in view. */
 .alerts-section {
   margin-bottom: 18px;

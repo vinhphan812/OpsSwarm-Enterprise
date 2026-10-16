@@ -98,8 +98,8 @@ describe("Alerts & opportunities", () => {
     demoAgentRun(DEMO_RUN_ID).forEach((entry) => useRunStore.getState().append(entry));
     useRunStore.getState().append({ id: "other", ts: new Date().toISOString(), stage: "OBSERVE", summary: "Another run.", correlation_id: "x" });
     render(<AgentActivityPanel />);
-    const timeline = () => screen.getByRole("list", { name: "Agent activity timeline" });
-    expect(within(timeline()).getByText("Another run.")).toBeTruthy();
+    const runIds = () => screen.getAllByTestId("agent-run").map((card) => card.getAttribute("data-run"));
+    expect(runIds()).toEqual(["x", DEMO_RUN_ID]);
     const seq = useUiStore.getState().focusSeq;
 
     const item = alertButton(/P003 is out of stock/);
@@ -109,11 +109,11 @@ describe("Alerts & opportunities", () => {
     expect(ui.selectedEntityType).toBe(ENTITY_TYPE.Product);
     expect(ui.focusSeq).toBe(seq + 1);
     expect(item.getAttribute("aria-pressed")).toBe("true");
-    await waitFor(() => expect(within(timeline()).queryByText("Another run.")).toBeNull());
-    expect(within(timeline()).getAllByRole("listitem")).toHaveLength(demoAgentRun().length);
+    await waitFor(() => expect(runIds()).toEqual([DEMO_RUN_ID]));
+    expect(screen.queryByText("Another run.")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show every run" }));
-    expect(within(timeline()).getByText("Another run.")).toBeTruthy();
+    await waitFor(() => expect(runIds()).toEqual(["x", DEMO_RUN_ID]));
     expect(selectedProductId(useUiStore.getState())).toBe("P003");
   });
 
