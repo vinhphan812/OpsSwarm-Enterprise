@@ -6,10 +6,46 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from retailtwin_api.contracts import ActionUnion, ControlStage, DCGVerdictResult
+from retailtwin_api.contracts import ActionUnion, ControlStage, DCGVerdict, DCGVerdictResult
 from retailtwin_api.schemas import StoreResponse
 
 SimulationStatus = Literal["pending", "evaluated", "committed", "rejected"]
+
+# DCG gate result row. A failed gate stops the run; later gates are "not_run".
+GuardGateStatus = Literal["passed", "failed", "not_run"]
+
+# Status of the single-use commit authorization the guard issued for the
+# decision. "none" means the guard has not authorized anything yet;
+# "requested" is an open token waiting to be redeemed; "redeemed" was used
+# to write to the Live Twin; "expired" was issued but is past its expiry.
+AuthorizationStatus = Literal["none", "requested", "redeemed", "expired"]
+
+
+class GuardGateResult(BaseModel):
+    """One row of the per-gate breakdown the DCG card renders."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    gate_id: str = Field(min_length=1)
+    status: GuardGateStatus
+    message: str = Field(default="")
+
+
+class CommitAuthorizationReceipt(BaseModel):
+    """Receipt for the single-use commit authorization issued for a decision.
+
+    ``binding_id`` is the context hash the Executor committed against. The
+    action hashes are the per-action SHA-256s the authorizer signed.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: AuthorizationStatus = "none"
+    issued_at: datetime | None = None
+    expires_at: datetime | None = None
+    action_count: int = Field(default=0, ge=0)
+    action_hashes: list[str] = Field(default_factory=list)
+    binding_id: str | None = None
 
 
 class SimulationState(BaseModel):
@@ -48,6 +84,18 @@ class SimulationDetail(SimulationSummary):
     state: SimulationState
     correlation_id: str | None = Field(default=None, min_length=1)
     agent_id: str | None = Field(default=None, min_length=1)
+    # DCG visualization fields. Populated from the latest guard audit for the
+    # decision behind this simulation when one is available; otherwise the
+    # defaults keep the response shape stable.
+    guard_verdict: DCGVerdict | None = None
+    guard_reason: str | None = None
+    guard_gates: list[GuardGateResult] = Field(default_factory=list)
+    decision_context_version: str | None = Field(default=None, min_length=1)
+    decision_context_timestamp: datetime | None = None
+    freshness_seconds: int | None = Field(default=None, ge=0)
+    authorization: CommitAuthorizationReceipt = Field(
+        default_factory=lambda: CommitAuthorizationReceipt(status="none")
+    )
 
 
 class CandidateKPI(BaseModel):
@@ -72,6 +120,20 @@ class SimulationCandidateResponse(BaseModel):
     evaluator_version: str = Field(min_length=1)
     provenance: str = Field(min_length=1)
     created_at: datetime
+    # DCG visualization fields per candidate. The guard evaluates exactly one
+    # decision per simulation, so only the candidate whose ``candidate_id``
+    # matches the decision's ``decision_id`` carries a verdict, gates, and an
+    # authorization receipt. Every other candidate reports
+    # ``guard_verdict=None``, ``guard_reason="not_evaluated"``,
+    # ``guard_gates=[]``, ``authorization=None`` so the FE card can clearly
+    # distinguish the chosen plan from the alternatives.
+    guard_verdict: DCGVerdict | None = None
+    guard_reason: str | None = None
+    guard_gates: list[GuardGateResult] = Field(default_factory=list)
+    decision_context_version: str | None = Field(default=None, min_length=1)
+    decision_context_timestamp: datetime | None = None
+    freshness_seconds: int | None = Field(default=None, ge=0)
+    authorization: CommitAuthorizationReceipt | None = None
 
 
 class CandidateListResponse(BaseModel):
@@ -103,6 +165,12 @@ class AgentActivityEntry(BaseModel):
     slot_id: str | None = Field(default=None, min_length=1)
     focus: str | None = Field(default=None, min_length=1)
     summary: str | None = Field(default=None)
+    # When the entry was first seen by the activity log. Defaults to ``ts``
+    # for entries that pre-date the field. The DCG card reads this to mark
+    # when a stage moved from "started" to its outcome.
+    acquired_at: datetime | None = None
+    # DCG verdict for GUARD / ACT entries. ``None`` for other stages.
+    verdict: str | None = Field(default=None, min_length=1)
 
 
 class AgentEventListResponse(BaseModel):
@@ -186,6 +254,13 @@ class SimulationReviewResponse(BaseModel):
     detail_code: str | None = None
     # The Decision Context Guard result with its per-gate checks, when the guard ran.
     guard: DCGVerdictResult | None = None
+    # Commit-authorization receipt returned only when an authorization was
+    # issued for this decision. ``binding_id`` is the context hash the
+    # Executor committed against; ``action_hashes`` are the per-action
+    # SHA-256s the authorizer signed.
+    binding_id: str | None = None
+    expires_at: datetime | None = None
+    action_hashes: list[str] = Field(default_factory=list)
 
 
 class ReviewAuditRecord(BaseModel):

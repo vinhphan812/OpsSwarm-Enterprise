@@ -76,6 +76,7 @@ def _repository() -> InMemorySimulationRepository:
         shelf_id="A01",
         slot_id="A01-S01",
         summary="Simulation completed for SKU P001",
+        acquired_at=first.created_at,
     )
     return InMemorySimulationRepository([first, second], [candidate], [event])
 
@@ -151,6 +152,8 @@ def test_agent_events_are_cursor_paginated_and_include_focus_fields(simulation_c
             "shelf_id": "A01", "slot_id": "A01-S01",
             "focus": None,
             "summary": "Simulation completed for SKU P001",
+            "acquired_at": "2026-10-11T23:59:00Z",
+            "verdict": None,
         }],
         "cursor": None,
     }
