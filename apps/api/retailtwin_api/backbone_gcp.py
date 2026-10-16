@@ -11,7 +11,7 @@ import subprocess
 import threading
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol, cast
@@ -729,3 +729,178 @@ class FirestoreRest:
                 self._token = token
             token = self._token
         return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+# ---------------------------------------------------------------------------
+# GcpPubSubEventPipe — google-cloud-pubsub backed EventPipe (ADR 0023)
+# ---------------------------------------------------------------------------
+
+
+class _PubSubPublishFuture(Protocol):
+    """Subset of the publisher Future surface the pipe actually uses."""
+
+    def result(self, timeout: float | None = None) -> str: ...
+
+
+class _PubSubPublisherClient(Protocol):
+    """Subset of ``google.cloud.pubsub_v1.PublisherClient`` the pipe uses."""
+
+    def publish(
+        self,
+        topic: str,
+        data: bytes,
+        **kwargs: str,
+    ) -> _PubSubPublishFuture: ...
+
+
+class _PubSubReceivedMessage(Protocol):
+    """Subset of ``google.pubsub_v1.types.ReceivedMessage`` the pipe uses."""
+
+    ack_id: str
+    message: object
+
+
+class _PubSubPullResponse(Protocol):
+    received_messages: list[_PubSubReceivedMessage]
+
+
+class _PubSubMessageView(Protocol):
+    data: bytes
+    attributes: Mapping[str, str]
+    publish_time: object
+
+
+class _PubSubSubscriberClient(Protocol):
+    """Subset of ``google.cloud.pubsub_v1.SubscriberClient`` the pipe uses."""
+
+    def pull(
+        self,
+        request: Mapping[str, object],
+        timeout: float | None = ...,
+    ) -> _PubSubPullResponse: ...
+
+    def acknowledge(
+        self,
+        request: Mapping[str, object],
+        timeout: float | None = ...,
+    ) -> None: ...
+
+    def modify_ack_deadline(
+        self,
+        request: Mapping[str, object],
+        timeout: float | None = ...,
+    ) -> None: ...
+
+
+def _default_subscriber_factory() -> _PubSubSubscriberClient:
+    """Import the real subscriber client lazily so tests can mock it."""
+
+    from google.cloud.pubsub_v1 import SubscriberClient
+
+    return cast(_PubSubSubscriberClient, SubscriberClient())
+
+
+class GcpPubSubEventPipe:
+    """EventPipe backed by Google Cloud Pub/Sub via the sync client.
+
+    Boundary: this module owns the wire format (canonical body + attributes
+    from :mod:`retailtwin_api.backbone`) and the ack-id lifecycle; the
+    observation/decision logic lives in the consumer and the starter.
+
+    The publisher client is built once and cached — it holds an HTTP/2
+    connection that is safe to reuse. The subscriber is built per pull call:
+    the HTTP push handler is short-lived and a per-call client keeps the
+    ack-deadline window tight without background threads.
+    """
+
+    def __init__(
+        self,
+        project: str,
+        topic: str,
+        subscription: str,
+        *,
+        publisher: _PubSubPublisherClient | None = None,
+        subscriber_factory: Callable[[], _PubSubSubscriberClient] | None = None,
+    ) -> None:
+        if not project:
+            raise BackboneError("GcpPubSubEventPipe requires a project id.")
+        if not topic:
+            raise BackboneError("GcpPubSubEventPipe requires a topic name.")
+        if not subscription:
+            raise BackboneError("GcpPubSubEventPipe requires a subscription name.")
+        self._project = project
+        self._topic_path = f"projects/{project}/topics/{topic}"
+        self._subscription_path = f"projects/{project}/subscriptions/{subscription}"
+        self._publisher: _PubSubPublisherClient | None = publisher
+        self._publisher_lock = threading.Lock()
+        self._subscriber_factory: Callable[[], _PubSubSubscriberClient] = (
+            subscriber_factory or _default_subscriber_factory
+        )
+
+    @property
+    def topic_path(self) -> str:
+        return self._topic_path
+
+    @property
+    def subscription_path(self) -> str:
+        return self._subscription_path
+
+    def publish(self, event: StoreEvent) -> None:
+        require_sale(event)
+        publisher = self._get_publisher()
+        body = canonical_body(event).encode("utf-8")
+        attributes = message_attributes(event)
+        future = publisher.publish(self._topic_path, body, **attributes)
+        # The synchronous publisher returns a Future; wait so the caller sees
+        # the same back-pressure as the gcloud path.
+        future.result(timeout=30.0)
+
+    def pull(self, limit: int = 10) -> list[PulledMessage]:
+        bounded = max(1, min(limit, 100))
+        subscriber = self._subscriber_factory()
+        response = subscriber.pull(
+            request={"subscription": self._subscription_path, "max_messages": bounded},
+            timeout=10.0,
+        )
+        messages: list[PulledMessage] = []
+        for received in response.received_messages:
+            view = self._message_view(received)
+            if view is None:
+                continue
+            messages.append(
+                PulledMessage(
+                    ack_id=received.ack_id,
+                    body=view.data.decode("utf-8", errors="replace"),
+                    attributes={str(key): str(value) for key, value in view.attributes.items()},
+                    publish_time=str(getattr(view.publish_time, "rfc3339", lambda: "")() or ""),
+                )
+            )
+        return messages
+
+    def ack(self, ack_id: str) -> None:
+        if not ack_id or any(char in ack_id for char in "\n\r"):
+            raise BackboneError("Refusing an empty ack id.")
+        subscriber = self._subscriber_factory()
+        subscriber.acknowledge(
+            request={"subscription": self._subscription_path, "ack_ids": [ack_id]},
+            timeout=10.0,
+        )
+
+    def _get_publisher(self) -> _PubSubPublisherClient:
+        cached = self._publisher
+        if cached is not None:
+            return cached
+        with self._publisher_lock:
+            if self._publisher is None:
+                from google.cloud.pubsub_v1 import PublisherClient
+
+                self._publisher = cast(_PubSubPublisherClient, PublisherClient())
+            return self._publisher
+
+    def _message_view(self, received: _PubSubReceivedMessage) -> _PubSubMessageView | None:
+        message = getattr(received, "message", None)
+        if message is None:
+            return None
+        # The Protocol declares the shape we need; cast keeps mypy quiet
+        # without leaking the upstream type into module-level imports.
+        return cast(_PubSubMessageView, message)

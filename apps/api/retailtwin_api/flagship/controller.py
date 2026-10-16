@@ -512,7 +512,15 @@ class FlagshipController:
             )
 
     async def start(self, request: FlagshipRequest | None = None) -> FlagshipRunResult:
-        """Run the autonomous chain end-to-end. Returns the terminal result."""
+        """Run the autonomous chain end-to-end. Returns the terminal result.
+
+        This is the **demo /flagship/start** entry point: it rebuilds the
+        canonical weekend-demand-surge ``sale.completed`` event from the
+        demand-surge seed and drives the chain against it. Production
+        autonomous events must use :meth:`start_for_event` instead — this
+        path reseeds the Live Twin via :meth:`reset` and is not safe for
+        real production traffic.
+        """
         body = request or FlagshipRequest()
         with self._lock:
             self._require_deps()
@@ -530,10 +538,113 @@ class FlagshipController:
             self._phase = FlagshipPhase.RUNNING
             self._add_event("start", f"flagship start run_id={self._run_id} seed={self._seed}")
 
+        # 1) EVENT — rebuild the canonical sale event from the demand-surge seed.
+        events = reset_weekend_demand_surge(self._seed)
+        trigger = events[-1]
+        # Replace the correlation id so investigators/planner see a single lineage.
+        trigger_event = trigger.model_copy(
+            update={"correlation_id": self._correlation_id}
+        )
+        self._add_event(
+            "event",
+            f"sale.completed sku={DEMO_SKU} correlation_id={self._correlation_id}",
+        )
+        start = InvestigationStart(
+            investigation_id=f"inv-{self._run_id}",
+            event=trigger_event,
+        )
+
         try:
-            result = await self._run(body)
+            result = await self._drive_chain(start, body)
         except Exception as exc:  # noqa: BLE001 — surface anything
             log.exception("flagship run failed run_id=%s", self._run_id)
+            with self._lock:
+                self._phase = FlagshipPhase.ERROR
+                self._completed_at = _now()
+                self._error = f"{type(exc).__name__}: {exc}"
+                self._add_event("error", self._error)
+            raise
+
+        with self._lock:
+            self._phase = FlagshipPhase.COMPLETE if result.phase is FlagshipPhase.COMPLETE else FlagshipPhase.ERROR
+            self._completed_at = _now()
+            self._last_result = result
+        return result
+
+    async def start_for_event(
+        self,
+        event: StoreEvent,
+        correlation_id: str | None = None,
+    ) -> FlagshipRunResult:
+        """Drive the autonomous chain against a real incoming event.
+
+        Production autonomous events (ADR 0023) enter through this method.
+        Differences from :meth:`start`:
+
+        * **No Live reset.** The Live Twin stays in whatever state the
+          store currently holds — a real sale must investigate the *current*
+          store, not a freshly seeded demo baseline.
+        * **No stale-block injection.** ``stale_block_enabled`` is forced
+          to ``False`` regardless of ``APP_ENV``; real events never need a
+          deterministic ``REFRESH_REQUIRED`` race. The injection is a demo
+          artefact.
+        * The full event content (``event_id``, ``sku``, ``quantity``,
+          ``occurred_at``, ``store_id``, ``correlation_id``) is preserved
+          end-to-end and propagated to the investigator/planner/replan
+          chain.
+
+        The event is still subject to the canonical guard and replan loop;
+        only the deterministic-reset and stale-injection knobs are turned
+        off. Live Twin writes still go through the guarded Executor
+        (ADR 0016).
+        """
+        if not self.is_configured:
+            raise FlagshipStateError(
+                "Flagship controller is not configured. Call register_dependencies() first."
+            )
+        # Pin the autonomous event path to the canonical seed (ADR 0023)
+        # and force ``stale_block_enabled=False`` so a real Pub/Sub message
+        # never triggers a deterministic ``REFRESH_REQUIRED`` injection.
+        body = FlagshipRequest(
+            stale_block_enabled=False,
+            correlation_id=correlation_id or event.correlation_id,
+        )
+        with self._lock:
+            self._require_deps()
+            if self._phase not in (FlagshipPhase.IDLE, FlagshipPhase.COMPLETE, FlagshipPhase.ERROR):
+                raise FlagshipStateError(
+                    f"Cannot start_for_event from phase {self._phase.value}."
+                )
+            self._run_id = uuid.uuid4().hex[:12]
+            self._correlation_id = body.correlation_id or f"event-{event.event_id}"
+            self._seed = body.seed
+            self._started_at = _now()
+            self._completed_at = None
+            self._timeline = []
+            self._error = None
+            self._phase = FlagshipPhase.RUNNING
+            self._add_event(
+                "start",
+                f"flagship start_for_event event_id={event.event_id} sku={event.sku} store_id={event.store_id}",
+            )
+            self._add_event(
+                "event",
+                f"sale.completed sku={event.sku} correlation_id={self._correlation_id}",
+            )
+
+        start = InvestigationStart(
+            investigation_id=f"inv-{event.event_id}",
+            event=event,
+        )
+
+        try:
+            result = await self._drive_chain(start, body)
+        except Exception as exc:  # noqa: BLE001 — surface anything
+            log.exception(
+                "flagship start_for_event failed event_id=%s run_id=%s",
+                event.event_id,
+                self._run_id,
+            )
             with self._lock:
                 self._phase = FlagshipPhase.ERROR
                 self._completed_at = _now()
@@ -551,24 +662,23 @@ class FlagshipController:
     # Internal flow
     # ------------------------------------------------------------------
 
-    async def _run(self, body: FlagshipRequest) -> FlagshipRunResult:
-        """Drive the canonical chain. Failures surface as a result with phase=ERROR."""
+    async def _drive_chain(
+        self,
+        start: InvestigationStart,
+        body: FlagshipRequest,
+    ) -> FlagshipRunResult:
+        """Drive the canonical chain. Failures surface as a result with phase=ERROR.
+
+        Shared by :meth:`start` (demo /flagship/start path, which builds the
+        canonical seed event) and :meth:`start_for_event` (autonomous event
+        path, which uses the real incoming ``StoreEvent``). Steps 2-7 below
+        are identical for both entry points; only the event source differs.
+        """
         assert self._deps is not None
         deps = self._deps
         run_id = self._run_id or uuid.uuid4().hex[:12]
         correlation_id = self._correlation_id or f"run-weekend-demand-surge-{self._seed}"
         store_id = deps.store_id
-
-        # 1) EVENT — rebuild the canonical sale event from the demand-surge seed.
-        events = reset_weekend_demand_surge(self._seed)
-        trigger = events[-1]
-        # Replace the correlation id so investigators/planner see a single lineage.
-        trigger_event = trigger.model_copy(update={"correlation_id": correlation_id})
-        self._add_event("event", f"sale.completed sku={DEMO_SKU} correlation_id={correlation_id}")
-        start = InvestigationStart(
-            investigation_id=f"inv-{run_id}",
-            event=trigger_event,
-        )
 
         # 2) INVESTIGATE — provider calls the read tools, no Live writes.
         try:
@@ -622,6 +732,8 @@ class FlagshipController:
         # ``APP_ENV`` is ``production`` (ADR 0016 — only the guarded Executor
         # writes the Live Twin in production), so we surface that as a
         # fail-safely error result instead of letting it crash the demo.
+        # Autonomous-event callers pass ``stale_block_enabled=False``
+        # (ADR 0023), so a real Pub/Sub message never hits this branch.
         bumped = False
         if body.stale_block_enabled and scored:
             try:

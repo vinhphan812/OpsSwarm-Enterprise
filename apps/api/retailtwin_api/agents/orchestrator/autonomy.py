@@ -95,6 +95,16 @@ class AutonomousInvestigations:
     # InvestigationStarter -------------------------------------------------
 
     def start_investigation(self, start: InvestigationStart) -> None:
+        """Record the OBSERVE stage and queue the investigation for ``drain``.
+
+        Historical / G03 entry point. The production autonomous event path
+        (ADR 0023) now drives investigations through
+        :class:`FlagshipInvestigationStarter`, which preserves the full
+        event content without resetting the Live Twin. This method is
+        kept for backwards compatibility with the original ``/events``
+        handler and unit tests that exercise the legacy queue + drain
+        chain.
+        """
         event = start.event
         self._activity.record(
             ControlStage.OBSERVE,
@@ -107,6 +117,21 @@ class AutonomousInvestigations:
         )
         with self._lock:
             self._queue.append(start)
+
+    def start_investigation_for_event(self, start: InvestigationStart) -> None:
+        """Production autonomous-event entry point (ADR 0023).
+
+        The :class:`ObserverConsumer` protocol uses this method when
+        handing a real incoming event to its investigation starter. For
+        :class:`AutonomousInvestigations` (the legacy G03 chain) it is a
+        thin alias over :meth:`start_investigation` — the OBSERVE record
+        and queue append are identical. Production Pub/Sub events route
+        through :class:`FlagshipInvestigationStarter.start_investigation_for_event`
+        instead, which drives :class:`FlagshipController.start_for_event`
+        and preserves the full event payload without resetting the Live
+        Twin.
+        """
+        self.start_investigation(start)
 
     # Runner ---------------------------------------------------------------
 

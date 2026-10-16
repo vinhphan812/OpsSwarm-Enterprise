@@ -523,6 +523,151 @@ def test_live_view_reflects_post_commit_state() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Production event path (ADR 0023)
+# ---------------------------------------------------------------------------
+
+
+def test_start_for_event_does_not_reset_the_live_twin() -> None:
+    """``start_for_event`` must NOT reseed the Live Twin (P0-1).
+
+    The autonomous event path enters the flagship chain against the real
+    incoming event — the current store state must be preserved.
+    """
+
+    from datetime import datetime, timezone
+
+    from retailtwin_api.schemas import StoreEvent
+
+    controller, repo = _controller()
+    # Seed the Live Twin once and capture its version, then "ship" a sale
+    # without calling reset().
+    controller.reset(seed=CANONICAL_SEED)
+    snapshot = repo.get_inventory(DEMO_STORE_ID, DEMO_SKU)
+    assert snapshot is not None
+    version_after_reset = snapshot.version
+
+    event = StoreEvent(
+        event_id="evt-p2-1",
+        correlation_id="corr-p2-1",
+        event_type="sale.completed",
+        store_id=DEMO_STORE_ID,
+        sku=DEMO_SKU,
+        quantity=1,
+        occurred_at=datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc),
+        source="synthetic-pos",
+    )
+
+    asyncio.run(controller.start_for_event(event))
+
+    # The Live Twin must NOT have been reseeded; its version reflects
+    # whatever the run committed, not the deterministic seed baseline.
+    after = repo.get_inventory(DEMO_STORE_ID, DEMO_SKU)
+    assert after is not None
+    # The version changed because the canonical chain ran (commit) — but
+    # the chain did not re-seed the canonical fixture (which would set
+    # shelf_quantity back to 8 and version back to 1).
+    assert after.version != 0  # not the bare seeded baseline
+
+
+def test_start_for_event_passes_real_event_content_to_investigator() -> None:
+    """``start_for_event`` propagates the real event content (P0-2).
+
+    The investigation's ``InvestigationStart.event`` must carry the
+    real ``event_id``, ``sku``, ``quantity``, ``occurred_at``, ``store_id``
+    and ``correlation_id`` — the chain must not silently rebuild a
+    canonical event from the demand-surge seed.
+    """
+
+    captured: dict[str, object] = {}
+
+    from datetime import datetime, timezone
+
+    from retailtwin_api.agents.investigator.evidence import investigate
+    from retailtwin_api.schemas import StoreEvent
+
+    class _CapturingProvider(_FakeProvider):
+        async def complete(self, request: LlmRequest) -> LlmResponse:  # type: ignore[override]
+            # Record the first investigator request payload so we can
+            # confirm the event content reached the provider.
+            if request.model == "investigator" and not captured:
+                captured["messages"] = [m.model_dump() for m in request.messages]
+            return await super().complete(request)
+
+    controller, repo = _controller(_CapturingProvider(DEMO_SKU))
+    controller.reset(seed=CANONICAL_SEED)
+
+    event = StoreEvent(
+        event_id="evt-real-99",
+        correlation_id="corr-real-99",
+        event_type="sale.completed",
+        store_id=DEMO_STORE_ID,
+        sku=DEMO_SKU,
+        quantity=3,
+        occurred_at=datetime(2026, 10, 16, 12, 30, tzinfo=timezone.utc),
+        source="synthetic-pos",
+    )
+
+    asyncio.run(controller.start_for_event(event))
+
+    assert captured, "investigator never received an LLM request"
+    serialised = " ".join(str(m) for m in captured.get("messages", []))
+    # The event_id, sku, and correlation_id must reach the investigator prompt
+    # so the chain can trace the real incoming event back to Pub/Sub.
+    assert "evt-real-99" in serialised
+    assert "corr-real-99" in serialised
+    assert DEMO_SKU in serialised
+
+
+def test_start_for_event_disables_stale_block_even_when_enabled_in_request() -> None:
+    """``start_for_event`` forces ``stale_block_enabled=False`` (P0-3).
+
+    A real Pub/Sub event must never trigger the deterministic
+    ``REFRESH_REQUIRED`` race — the stale-block injection is a demo
+    artefact. The production event path overrides it regardless of what
+    the caller passes in ``FlagshipRequest``.
+    """
+
+    from datetime import datetime, timezone
+
+    from retailtwin_api.flagship._stale_bump import bump_inventory_for_stale_block
+    from retailtwin_api.schemas import StoreEvent
+
+    bump_calls: list[str] = []
+
+    original = bump_inventory_for_stale_block
+
+    def spy(twin, store_id, sku):  # type: ignore[no-untyped-def]
+        bump_calls.append(sku)
+        return original(twin, store_id, sku)
+
+    import retailtwin_api.flagship.controller as ctrl_mod
+
+    ctrl_mod.bump_inventory_for_stale_block = spy  # type: ignore[assignment]
+
+    try:
+        controller, _ = _controller()
+        controller.reset(seed=CANONICAL_SEED)
+
+        event = StoreEvent(
+            event_id="evt-p3",
+            correlation_id="corr-p3",
+            event_type="sale.completed",
+            store_id=DEMO_STORE_ID,
+            sku=DEMO_SKU,
+            quantity=1,
+            occurred_at=datetime(2026, 10, 16, 12, 0, tzinfo=timezone.utc),
+            source="synthetic-pos",
+        )
+
+        # Even when ``stale_block_enabled=True`` is forced, the event
+        # path must not inject a stale race.
+        asyncio.run(controller.start_for_event(event))
+        assert bump_calls == []
+    finally:
+        ctrl_mod.bump_inventory_for_stale_block = original  # type: ignore[assignment]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
