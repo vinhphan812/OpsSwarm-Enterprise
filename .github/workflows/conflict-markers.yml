@@ -18,7 +18,7 @@ concurrency:
 jobs:
   check:
     name: No conflict markers
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
