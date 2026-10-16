@@ -13,6 +13,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 RUN uv venv /app/.venv
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Upgrade base tools to address CVE-2026-XXX in setuptools/wheel bundled in python:3.11-slim
+RUN uv pip install --no-cache --upgrade setuptools wheel
+
 # Install dependencies into the venv
 RUN uv pip install --no-cache \
         fastapi>=0.115 \
@@ -23,6 +26,7 @@ RUN uv pip install --no-cache \
 # Copy source and install the package into the venv
 COPY apps/api/ apps/api/
 COPY data/ data/
+COPY services/ services/
 RUN uv pip install --no-cache -e apps/api/
 
 
@@ -41,6 +45,9 @@ WORKDIR /app
 COPY --from=builder --chown=appuser:appgroup /app/.venv/ .venv/
 COPY --from=builder --chown=appuser:appgroup /app/apps/api/ apps/api/
 COPY --from=builder --chown=appuser:appgroup /app/data/ ./data/
+# Cross-package utilities imported lazily by main.py:_ensure_simulation_kpi_path
+# (services/simulation/kpi/evaluator.py depends on services/forecasting/risk/stockout.py).
+COPY --from=builder --chown=appuser:appgroup /app/services/ services/
 # Required by retailtwin_api.version — it reads the canonical SemVer at import
 # time (apps/api/retailtwin_api/version.py:read_version). Without this the
 # container raises InvalidVersion before uvicorn can bind the port.

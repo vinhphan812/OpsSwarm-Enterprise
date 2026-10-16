@@ -47,7 +47,7 @@ jobs:
           /tmp/retailtwin-app-venv/bin/python -m pip install ./apps/api
           /tmp/retailtwin-audit-venv/bin/python -m pip install pip-audit
           APP_PACKAGES=$(/tmp/retailtwin-app-venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
-          /tmp/retailtwin-audit-venv/bin/python -m pip_audit --no-progress --skip-editable --path "$APP_PACKAGES"
+          /tmp/retailtwin-audit-venv/bin/python -m pip_audit --progress-spinner off --skip-editable --path "$APP_PACKAGES"
 
       - name: Web production dependencies
         working-directory: apps/web
@@ -116,27 +116,58 @@ jobs:
         id: trivy
         run: |
           set -euo pipefail
-          # --ignore-unfixed matches ADR 0026: no-fix HIGH/CRITICAL is an
-          # exception, not a blocker. Failures with --exit-code 1 only when
-          # a fix exists. The JSON report lands in $PWD/trivy-out via a
-          # host bind mount so it survives the --rm container.
           mkdir -p trivy-out
+          # Run trivy.  Exit code tells us whether the scan itself succeeded.
+          # --ignore-unfixed: skip vulns with no available patch.
           docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/trivy-out:/work" \
               aquasec/trivy:0.65.0 image \
               --severity HIGH,CRITICAL \
               --ignore-unfixed \
-              --exit-code 1 \
               --format json \
               --output /work/trivy-image.json \
-              retailtwin-api:scan || TRIVY_EXIT=$?
-          TRIVY_EXIT="${TRIVY_EXIT:-0}"
+              retailtwin-api:scan; _TRIVY_RC=$?
+          # Fail-closed: scan error, no report, or parse error all block the gate.
+          if [ "$_TRIVY_RC" -ne 0 ] && [ "$_TRIVY_RC" -ne 1 ]; then
+            echo "::error::Trivy scan failed with exit code $_TRIVY_RC."
+            exit 1
+          fi
+          if [ ! -s trivy-out/trivy-image.json ]; then
+            echo "::error::No trivy report produced — scan may have crashed."
+            exit 1
+          fi
           cp trivy-out/trivy-image.json trivy-image.json
-          echo "Trivy exit: ${TRIVY_EXIT}"
-          if [ "${TRIVY_EXIT}" -ne 0 ]; then
-            echo "::error::Trivy reported fixable HIGH/CRITICAL findings (exit ${TRIVY_EXIT})."
-            exit "${TRIVY_EXIT}"
+          # Parse JSON.  Trivy image format: [{Results:[{Vulnerabilities:[...]}]}].
+          # Status values: unfixed (no patch), wont-fix, unknown, fixed.
+          # We fail-closed: any parse error blocks the gate.
+          python3 -c '
+          import json, sys
+          try:
+              with open("trivy-image.json") as fh:
+                  data = json.load(fh)
+          except Exception as exc:
+              print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
+              sys.exit(1)
+          has_fixable = False
+          for result in (data or []):
+              for vuln in (result.get("Vulnerabilities") or []):
+                  if vuln.get("Severity") not in ("HIGH", "CRITICAL"):
+                      continue
+                  if vuln.get("Status") == "unfixed":
+                      continue  # no patch available — ADR 0026 exception
+                  if vuln.get("Status") == "wont-fix":
+                      continue  # explicitly wont-fix
+                  # Any other status (fixed, affected, unknown) with a FixAvailable means a fix exists
+                  fixable = vuln.get("FixedVersion", "")
+                  if fixable:
+                      has_fixable = True
+                      print(f"FIXABLE: {vuln.get(\"VulnerabilityID\", \"?\")} in {vuln.get(\"PkgName\", \"?\")} {vuln.get(\"InstalledVersion\", \"?\")} (fix: {fixable})", file=sys.stderr)
+          if has_fixable:
+              sys.exit(1)
+          '
+          if [ $? -eq 0 ]; then
+            echo "Container image: no fixable HIGH/CRITICAL vulnerabilities found."
           fi
 
       - name: Record any no-fix HIGH/CRITICAL as an explicit exception
