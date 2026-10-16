@@ -28,6 +28,8 @@ from retailtwin_api.contracts import DCGVerdict
 from retailtwin_api.decisions import DecisionSource
 from retailtwin_api.errors import ApiError
 from retailtwin_api.events import EventConflict, EventLog, ReviewAuditLog
+from retailtwin_api.guard.decision_context_guard import GuardAuditEvent, GuardAuditSink
+from retailtwin_api.guard.decision_context_guard.authorization import SignedAuthorization
 from retailtwin_api.schemas import (
     AnomaliesResponse,
     AnomalySeverity,
@@ -48,10 +50,13 @@ from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
     AgentEventListResponse,
     CandidateListResponse,
+    CommitAuthorizationReceipt,
     CursorParameters,
     DecisionReviewReasonCode,
     DecisionReviewVerdict,
+    GuardGateResult,
     PageParameters,
+    SimulationCandidateResponse,
     SimulationDetail,
     SimulationFilters,
     SimulationListResponse,
@@ -93,6 +98,13 @@ def get_promotions(request: Request) -> PromotionRepository:
 def get_checkouts(request: Request) -> CheckoutRepository:
     return request.app.state.checkouts
 
+
+def get_guard_audit(request: Request) -> GuardAuditSink:
+    return request.app.state.guard_audit
+
+
+def get_decisions(request: Request) -> DecisionSource:
+    return request.app.state.decisions
 
 
 def require_simulations(repository: SimulationReadRepository) -> None:
@@ -710,26 +722,48 @@ def list_simulations(
 
 
 @router.get("/simulations/{simulation_id}", response_model=SimulationDetail)
-def read_simulation(simulation_id: str, repository: SimulationReadRepository = Depends(get_simulations)) -> SimulationDetail:
+def read_simulation(
+    request: Request,
+    simulation_id: str,
+    repository: SimulationReadRepository = Depends(get_simulations),
+    decisions: DecisionSource = Depends(get_decisions),
+    audit: GuardAuditSink = Depends(get_guard_audit),
+) -> SimulationDetail:
     require_simulations(repository)
     item = repository.get_simulation(simulation_id)
     if item is None:
         raise ApiError(404, "simulation_not_found", f"Simulation {simulation_id!r} was not found.")
-    return item
+    return _with_guard_summary(item, decisions, audit)
 
 
 @router.get("/simulations/{simulation_id}/candidates", response_model=CandidateListResponse)
 def list_candidates(
+    request: Request,
     simulation_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     repository: SimulationReadRepository = Depends(get_simulations),
+    decisions: DecisionSource = Depends(get_decisions),
+    audit: GuardAuditSink = Depends(get_guard_audit),
 ) -> CandidateListResponse:
     require_simulations(repository)
     result = repository.list_candidates(simulation_id, PageParameters(page=page, page_size=page_size))
     if result is None:
         raise ApiError(404, "simulation_not_found", f"Simulation {simulation_id!r} was not found.")
-    return result
+    summary = _guard_fields_for_simulation(simulation_id, decisions, audit)
+    if summary is None:
+        return result
+    evaluated_candidate_id, fields = summary
+    return result.model_copy(
+        update={
+            "candidates": [
+                candidate.model_copy(update=fields)
+                if candidate.candidate_id == evaluated_candidate_id
+                else _not_evaluated_candidate(candidate)
+                for candidate in result.candidates
+            ]
+        }
+    )
 
 
 @router.get("/agent/events", response_model=AgentEventListResponse)
@@ -748,16 +782,139 @@ def list_agent_events(
 
 # ─── Simulation review ──────────────────────────────────────────────────────────
 
+
+def _guard_gates_from_checks(checks: list[dict[str, object]]) -> list[GuardGateResult]:
+    """Translate the raw ``policy_result["checks"]`` rows into ``GuardGateResult``."""
+    rows: list[GuardGateResult] = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        gate_id = str(check.get("gate") or "")
+        if not gate_id:
+            continue
+        passed = check.get("passed", False)
+        if passed is True:
+            status: Literal["passed", "failed", "not_run"] = "passed"
+        elif passed is False:
+            status = "failed"
+        else:
+            status = "not_run"
+        rows.append(
+            GuardGateResult(
+                gate_id=gate_id,
+                status=status,
+                message=str(check.get("detail") or ""),
+            )
+        )
+    return rows
+
+
+def _authorization_from_token(token: SignedAuthorization | None) -> CommitAuthorizationReceipt:
+    """Map a ``SignedAuthorization`` to the receipt the DCG card renders."""
+    if token is None:
+        return CommitAuthorizationReceipt(status="none")
+    now = datetime.now(timezone.utc)
+    status: Literal["none", "requested", "redeemed", "expired"] = "redeemed"
+    if token.expiry < now:
+        status = "expired"
+    return CommitAuthorizationReceipt(
+        status=status,
+        issued_at=token.issued_at,
+        expires_at=token.expiry,
+        action_count=len(token.action_hashes),
+        action_hashes=list(token.action_hashes),
+        binding_id=token.context_hash,
+    )
+
+
+# Reason reported by candidates the guard did not evaluate. The guard runs
+# exactly once per simulation, against the chosen decision; every other
+# candidate is an alternative the guard never saw.
+NOT_EVALUATED_REASON = "not_evaluated"
+
+
+def _guard_fields_for_simulation(
+    simulation_id: str,
+    decisions: DecisionSource,
+    audit: GuardAuditSink,
+) -> tuple[str, dict[str, object]] | None:
+    """Evaluated candidate id and latest guard summary fields, or None if no decision ran yet.
+
+    The returned ``candidate_id`` matches the guard's ``decision.decision_id``;
+    the candidates route uses it to bind the verdict to the one candidate the
+    guard actually evaluated, leaving every other candidate at
+    :data:`NOT_EVALUATED_REASON` defaults.
+    """
+    decision = decisions.get_for_simulation(simulation_id) if decisions.available else None
+    if decision is None:
+        return None
+    events: list[GuardAuditEvent] = audit.events(decision.decision_id) if hasattr(audit, "events") else []
+    if not events:
+        return None
+    latest = events[-1]
+    checks = list(getattr(latest, "gate_checks", []) or [])
+    now = datetime.now(timezone.utc)
+    freshness_seconds = max(0, int((now - decision.context_timestamp).total_seconds()))
+    # The binding id is the context hash the guard allowed. The token was
+    # consumed at commit time, so the rest of the receipt stays at defaults
+    # here; the approve response carries the full receipt.
+    binding_id = latest.context_hash if latest.context_hash else None
+    fields: dict[str, object] = {
+        "guard_verdict": latest.verdict,
+        "guard_reason": latest.reason_code,
+        "guard_gates": _guard_gates_from_checks(checks),
+        "decision_context_version": decision.context_version,
+        "decision_context_timestamp": decision.context_timestamp,
+        "freshness_seconds": freshness_seconds,
+    }
+    if binding_id is not None:
+        fields["authorization"] = CommitAuthorizationReceipt(
+            status="none",
+            binding_id=binding_id,
+        )
+    return decision.decision_id, fields
+
+
+def _not_evaluated_candidate(candidate: SimulationCandidateResponse) -> SimulationCandidateResponse:
+    """Reset the DCG fields on a candidate the guard never saw.
+
+    The verdict is bound only to the candidate the guard actually evaluated.
+    Alternatives must read as ``verdict=None``, ``reason="not_evaluated"``,
+    ``gates=[]`` and ``authorization=None`` so the FE card never paints an
+    authorization on a plan that was never authorized.
+    """
+    return candidate.model_copy(
+        update={
+            "guard_verdict": None,
+            "guard_reason": NOT_EVALUATED_REASON,
+            "guard_gates": [],
+            "decision_context_version": None,
+            "decision_context_timestamp": None,
+            "freshness_seconds": None,
+            "authorization": None,
+        }
+    )
+
+
+def _with_guard_summary(
+    detail: SimulationDetail,
+    decisions: DecisionSource,
+    audit: GuardAuditSink,
+) -> SimulationDetail:
+    """Return ``detail`` with DCG visualization fields populated when available."""
+    summary = _guard_fields_for_simulation(detail.simulation_id, decisions, audit)
+    if summary is None:
+        return detail
+    _, fields = summary
+    return detail.model_copy(update=fields)
+
+
 def get_review_audit(request: Request) -> ReviewAuditLog:
     return request.app.state.review_audit
 
 
 def get_live_version(request: Request) -> str:
     return request.app.state.live_context_version
-
-
-def get_decisions(request: Request) -> DecisionSource:
-    return request.app.state.decisions
 
 
 def get_commits(request: Request) -> CommitService | None:
@@ -894,6 +1051,7 @@ def approve_simulation(
         )
 
     outcome = commits.approve(decision)
+    receipt = _authorization_from_token(outcome.token)
     if outcome.committed:
         repository.set_status(simulation_id, "committed", datetime.now(timezone.utc))
         request.app.state.live_context_version = store.view().context_version
@@ -909,6 +1067,9 @@ def approve_simulation(
                 live_context_version=request.app.state.live_context_version,
                 detail_code=outcome.reason_code,
                 guard=outcome.guard,
+                binding_id=receipt.binding_id,
+                expires_at=receipt.expires_at,
+                action_hashes=receipt.action_hashes,
             ),
         )
     failed = outcome.commit is not None and outcome.commit.status == "failed"
@@ -924,6 +1085,9 @@ def approve_simulation(
             live_context_version=live_version,
             detail_code=outcome.reason_code,
             guard=outcome.guard,
+            binding_id=receipt.binding_id,
+            expires_at=receipt.expires_at,
+            action_hashes=receipt.action_hashes,
         ),
     )
 

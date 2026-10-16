@@ -35,10 +35,13 @@ class AgentActivityLog:
         slot_id: str | None = None,
         summary: str | None = None,
         at: datetime | None = None,
+        acquired_at: datetime | None = None,
+        verdict: str | None = None,
     ) -> AgentActivityEntry:
+        ts = at or datetime.now(timezone.utc)
         entry = AgentActivityEntry(
             id=f"act-{uuid.uuid4().hex[:12]}",
-            ts=at or datetime.now(timezone.utc),
+            ts=ts,
             stage=stage,
             status=status,
             correlation_id=correlation_id,
@@ -50,6 +53,10 @@ class AgentActivityLog:
             slot_id=slot_id,
             focus=sku,
             summary=summary,
+            # Default ``acquired_at`` to ``ts`` so entries that pre-date the
+            # field still report when they were first recorded.
+            acquired_at=acquired_at or ts,
+            verdict=verdict,
         )
         with self._lock:
             self._entries.append(entry)

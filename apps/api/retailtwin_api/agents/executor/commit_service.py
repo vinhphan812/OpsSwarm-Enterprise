@@ -23,6 +23,7 @@ from retailtwin_api.guard.decision_context_guard.authorization import (
     SIGNING_KEY_ENV,
     CommitAuthorizer,
     InMemoryAuthorizationLedger,
+    SignedAuthorization,
 )
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,10 @@ class ApprovalOutcome(BaseModel):
     reason_code: str
     guard: DCGVerdictResult
     commit: CommitOutcome | None = None
+    # The single-use signed authorization that was issued for the decision
+    # when the guard allowed it. ``None`` whenever no token was issued (the
+    # guard refused, the authorizer was unavailable, etc.).
+    token: SignedAuthorization | None = None
 
     @property
     def committed(self) -> bool:
@@ -63,14 +68,26 @@ class CommitService:
         token = self._authorizer.issue(decision, binding)
         outcome = self._executor.commit(decision, token)
         if outcome.committed:
-            return ApprovalOutcome(verdict=DCGVerdict.ALLOW, reason_code=outcome.reason_code, guard=guard, commit=outcome)
+            return ApprovalOutcome(
+                verdict=DCGVerdict.ALLOW,
+                reason_code=outcome.reason_code,
+                guard=guard,
+                commit=outcome,
+                token=token,
+            )
         if outcome.guard is not None and outcome.guard.verdict is not DCGVerdict.ALLOW:
             verdict = outcome.guard.verdict
         elif outcome.reason_code == VERSION_STALE:
             verdict = DCGVerdict.REFRESH_REQUIRED
         else:
             verdict = DCGVerdict.DENY
-        return ApprovalOutcome(verdict=verdict, reason_code=outcome.reason_code, guard=outcome.guard or guard, commit=outcome)
+        return ApprovalOutcome(
+            verdict=verdict,
+            reason_code=outcome.reason_code,
+            guard=outcome.guard or guard,
+            commit=outcome,
+            token=token,
+        )
 
 
 def build_commit_service(

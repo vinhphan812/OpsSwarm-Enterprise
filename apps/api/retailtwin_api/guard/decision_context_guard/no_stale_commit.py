@@ -21,9 +21,10 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from retailtwin_api.contracts import DCGVerdict, DCGVerdictResult, Decision
 from retailtwin_api.guard.decision_context_guard.guard import CONTEXT_EXPIRED, DecisionContextGuard
@@ -50,6 +51,10 @@ class GuardAuditEvent(BaseModel):
     context_hash: str
     entity_versions: dict[str, str]
     at: datetime
+    # Per-gate breakdown the DCG card renders. A failed gate stops the run;
+    # later gates carry ``passed=False`` and a "not run" detail. Mirrors the
+    # ``policy_result["checks"]`` rows of ``DCGVerdictResult``.
+    gate_checks: list[dict[str, object]] = Field(default_factory=list)
 
 
 class GuardAuditSink(Protocol):
@@ -145,6 +150,10 @@ class NoStaleCommit:
 
     def _emit(self, stage: Stage, decision: Decision, result: DCGVerdictResult) -> None:
         correlation_id = decision.evidence[0].correlation_id if decision.evidence else ""
+        raw_checks = result.policy_result.get("checks", [])
+        gate_checks: list[dict[str, Any]] = (
+            [item for item in raw_checks if isinstance(item, dict)] if isinstance(raw_checks, list) else []
+        )
         event = GuardAuditEvent(
             stage=stage,
             decision_id=decision.decision_id,
@@ -156,6 +165,7 @@ class NoStaleCommit:
             context_hash=result.context_hash,
             entity_versions=dict(result.policy_result.get("entity_versions", {})),
             at=self._clock(),
+            gate_checks=gate_checks,
         )
         self._audit.record(event)
         log.info(
