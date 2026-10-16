@@ -1,0 +1,81 @@
+# Dependabot configuration for retailtwin-ai.
+#
+# Tracks GitHub Actions and the Python + npm ecosystems so a non-blocking
+# PR keeps the supply-chain surface fresh. Issue #146 (ADR 0026) requires
+# that floating third-party action tags are accompanied by a commit SHA
+# comment in the workflow file; dependabot opens the upgrade PR and the
+# same PR refreshes the SHA comment.
+version: 2
+
+updates:
+  # ── GitHub Actions ───────────────────────────────────────────────────────────
+  # First-party `actions/*` actions float on major-version tags by default;
+  # Dependabot keeps them current and the workflow YAML lists the resolved
+  # SHA as a comment so the tag and SHA can be reconciled in code review.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions-minor:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "ci(actions)"
+      include: "scope"
+
+  # ── Python (apps/api) ────────────────────────────────────────────────────────
+  - package-ecosystem: "pip"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    groups:
+      python-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "deps(api)"
+      include: "scope"
+    ignore:
+      # Pinned to the project's chosen minimums; major upgrades are reviewed
+      # explicitly so the public API surface stays stable.
+      - dependency-name: "fastapi"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pydantic"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "uvicorn"
+        update-types: ["version-update:semver-major"]
+
+  # ── npm (apps/web) ───────────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Asia/Ho_Chi_Minh"
+    open-pull-requests-limit: 5
+    groups:
+      npm-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    commit-message:
+      prefix: "deps(web)"
+      include: "scope"

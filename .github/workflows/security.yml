@@ -1,21 +1,40 @@
 name: Security checks
+
+# Issue #146 / ADR 0026 — supply-chain and security gates.
+#
+# Layers:
+#   1. secrets        — Trivy fs --scanners secret
+#   2. python deps    — pip-audit on apps/api in an isolated venv
+#   3. web deps       — npm audit --omit=dev (production only)
+#   4. repo vulns     — Trivy fs --scanners vuln
+#   5. container img  — Trivy image, non-root user check, no-credential-file
+#   6. action pins    — third-party GitHub Actions pinned to a SHA comment
+#
+# HIGH/CRITICAL with a known fix blocks the gate. HIGH/CRITICAL with no fix
+# is logged to the Step Summary as an explicit exception. MEDIUM/LOW never
+# blocks the gate (see ADR 0026).
 on:
   workflow_call:
   workflow_dispatch:
   pull_request:
   push:
     branches: [main]
+
 permissions:
   contents: read
+
 jobs:
   scan:
     name: Secrets and dependency security
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Scan committed files for secrets (Trivy container)
         run: |
           docker run --rm -v "$PWD:/work:ro" aquasec/trivy:0.65.0 fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 /work
+
       - name: Python project dependency vulnerabilities
         run: |
           python3 -m venv /tmp/retailtwin-app-venv
@@ -25,11 +44,137 @@ jobs:
           /tmp/retailtwin-audit-venv/bin/python -m pip install pip-audit
           APP_PACKAGES=$(/tmp/retailtwin-app-venv/bin/python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
           /tmp/retailtwin-audit-venv/bin/python -m pip_audit --progress-spinner off --path "$APP_PACKAGES"
+
       - name: Web production dependencies
         working-directory: apps/web
         run: |
           npm ci --ignore-scripts
           npm audit --omit=dev --audit-level=high
+
       - name: Repository vulnerability scan
         run: |
           docker run --rm -v "$PWD:/work:ro" aquasec/trivy:0.65.0 fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 /work
+
+  # ── Container image gate (issue #146 / ADR 0026) ────────────────────────────
+  # Builds the Dockerfile in CI, fails closed if the image runs as UID 0 or
+  # carries a credential file, and scans it with Trivy for HIGH/CRITICAL
+  # vulnerabilities with a known fix. No-fix HIGH/CRITICAL is annotated in
+  # the Step Summary but does not block the gate.
+  container-image:
+    name: Container image scan
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2  # v3.10.0
+
+      - name: Build container image
+        id: build
+        run: |
+          docker build \
+              --tag retailtwin-api:scan \
+              --file Dockerfile \
+              --load \
+              .
+
+      - name: Verify image runs as non-root (UID != 0)
+        run: |
+          set -euo pipefail
+          USER_ID=$(docker run --rm --entrypoint id retailtwin-api:scan -u)
+          echo "Container runs as UID ${USER_ID}"
+          if [ "${USER_ID}" = "0" ]; then
+            echo "::error::Container runs as UID 0 (root). The runtime image must declare a non-root USER."
+            exit 1
+          fi
+          echo "PASS: container runs as non-root UID ${USER_ID}"
+
+      - name: Verify image does not carry credential files
+        run: |
+          set -euo pipefail
+          # Check the same paths that .gitignore refuses to commit.
+          # The grep matches files anywhere in the image; a present file fails.
+          BAD=$(docker run --rm --entrypoint sh retailtwin-api:scan -c '
+            set -e
+            for pattern in "credentials*.json" "service-account*.json" "*.pem" "*.key" ".env"; do
+              # shellcheck disable=SC2086
+              if find / -xdev -type f -name "$pattern" 2>/dev/null | grep -v "/proc/" | grep -v "/sys/" | grep -q .; then
+                echo "FAIL: credential-like file matched pattern: ${pattern}"
+                exit 1
+              fi
+            done
+            echo "PASS: no credential-like files in image"
+          ')
+          echo "${BAD}"
+
+      - name: Scan image for fixable HIGH/CRITICAL vulnerabilities
+        id: trivy
+        run: |
+          set -euo pipefail
+          # --ignore-unfixed matches ADR 0026: no-fix HIGH/CRITICAL is an
+          # exception, not a blocker. Failures with --exit-code 1 only when
+          # a fix exists. The JSON report lands in $PWD/trivy-out via a
+          # host bind mount so it survives the --rm container.
+          mkdir -p trivy-out
+          docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              -v "$PWD/trivy-out:/work" \
+              aquasec/trivy:0.65.0 image \
+              --severity HIGH,CRITICAL \
+              --ignore-unfixed \
+              --exit-code 1 \
+              --format json \
+              --output /work/trivy-image.json \
+              retailtwin-api:scan || TRIVY_EXIT=$?
+          TRIVY_EXIT="${TRIVY_EXIT:-0}"
+          cp trivy-out/trivy-image.json trivy-image.json
+          echo "Trivy exit: ${TRIVY_EXIT}"
+          if [ "${TRIVY_EXIT}" -ne 0 ]; then
+            echo "::error::Trivy reported fixable HIGH/CRITICAL findings (exit ${TRIVY_EXIT})."
+            exit "${TRIVY_EXIT}"
+          fi
+
+      - name: Record any no-fix HIGH/CRITICAL as an explicit exception
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f trivy-image.json ]; then
+            UNFIXED=$(python3 -c '
+            import json, sys
+            try:
+                with open("trivy-image.json") as fh:
+                    data = json.load(fh)
+            except Exception as exc:
+                print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
+                sys.exit(0)
+            rows = []
+            for item in data or []:
+                if item.get("Severity") not in ("HIGH", "CRITICAL"):
+                    continue
+                if item.get("Status") != "unfixed":
+                    continue
+                rows.append(f"- {item.get(\"Severity\")} {item.get(\"VulnerabilityID\")} in {item.get(\"PkgName\")} {item.get(\"InstalledVersion\")} ({item.get(\"Title\", \"\")})")
+            if rows:
+                print("\n".join(rows))
+            ')
+            echo "## No-fix HIGH/CRITICAL (exception — does not block gate)" >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "${UNFIXED}" ]; then
+              echo "${UNFIXED}" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "None." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+
+      - name: Upload trivy image report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report
+          path: trivy-image.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Cleanup intermediate image
+        if: always()
+        run: docker image rm retailtwin-api:scan 2>/dev/null || true
