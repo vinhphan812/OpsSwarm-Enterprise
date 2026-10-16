@@ -32,6 +32,12 @@ export const INITIAL_CAMERA_POSITION: Tuple3 = [
 export const MAX_POLAR_ANGLE = Math.PI / 2 - 0.08;
 /** Keep a slight tilt at the top so a straight-down view never flips the azimuth. */
 export const MIN_POLAR_ANGLE = 0.12;
+/**
+ * Lowest the camera may go, in meters above the ground. `MAX_POLAR_ANGLE` holds the camera
+ * above its orbit point only; an orbit point picked under the cursor adds a focal offset
+ * that the polar limit does not see, so the camera is also held above this height.
+ */
+export const MIN_CAMERA_HEIGHT = 0.3;
 
 /** Seconds for the camera to settle after a wheel step or a drag. */
 export const CAMERA_SMOOTH_TIME = 0.25;

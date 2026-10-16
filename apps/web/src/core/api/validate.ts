@@ -217,5 +217,7 @@ export function parseCandidate(raw: unknown): Candidate {
     kpis,
     evaluator_version: raw.evaluator_version as string,
     provenance: raw.provenance as string,
+    recommended: raw.recommended === true,
+    rationale: isText(raw.rationale) ? raw.rationale : null,
   };
 }

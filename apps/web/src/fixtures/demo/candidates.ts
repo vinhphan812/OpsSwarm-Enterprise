@@ -52,6 +52,11 @@ const DEMO_CANDIDATE_PROVENANCES: Record<string, string> = {
     "Leaves the stockout risk where it is.",
 };
 
+/** The candidate the demo agent recommends, and its reason: demo data for the "AI recommends" star (#207). */
+const DEMO_RECOMMENDED = "cand-b";
+const DEMO_RATIONALE =
+  "Nearly the full plan's service level for far less movement: restock P003 and widen P004 instead of moving three products.";
+
 /** `actions` on `base` as candidate `candidateId` of `simulationId`, with a proposal version of its own. */
 export function candidateOf(
   base: StoreResponse,
@@ -69,6 +74,8 @@ export function candidateOf(
     kpis: Object.entries(DEMO_SCORES[candidateId] ?? {}).map(([name, value]) => ({ name, value, unit: "share", source: DEMO_EVALUATOR })),
     evaluator_version: DEMO_EVALUATOR,
     provenance: DEMO_CANDIDATE_PROVENANCES[candidateId] ?? "No provenance provided.",
+    recommended: candidateId === DEMO_RECOMMENDED,
+    rationale: candidateId === DEMO_RECOMMENDED ? DEMO_RATIONALE : null,
   };
 }
 

@@ -26,7 +26,14 @@ export type CandidateComparison = {
   rows: KpiRow[];
   /** The proposal with the single highest served `business_score`, or null (none scored, or a tie). */
   topScoreId: string | null;
+  /** The proposal the agent recommends (`recommended`), or null when none is served. Never picked by the FE. */
+  recommendedId: string | null;
 };
+
+/** "Plan A", "Plan B", … by served order: the label a proposal goes by in the UI. */
+export function planLetter(index: number): string {
+  return String.fromCharCode(65 + (index % 26));
+}
 
 /** Digits after the point of `value` as written, so a delta keeps the served precision. */
 function decimals(value: number): number {
@@ -74,7 +81,14 @@ export function compareCandidates(candidates: Candidate[]): CandidateComparison 
     return { name, baseline: before, cells };
   });
 
-  return { baseline, proposals, rows, topScoreId: topScore(rows, proposals) };
+  const recommendedId = proposals.find((candidate) => candidate.recommended === true)?.candidate_id ?? null;
+  return { baseline, proposals, rows: businessScoreFirst(rows), topScoreId: topScore(rows, proposals), recommendedId };
+}
+
+/** The business score leads: it is the one number the plans are ranked by. The rest keep their served order. */
+function businessScoreFirst(rows: KpiRow[]): KpiRow[] {
+  const score = rows.find((row) => row.name === KPI_NAME.BusinessScore);
+  return score ? [score, ...rows.filter((row) => row !== score)] : rows;
 }
 
 function topScore(rows: KpiRow[], proposals: Candidate[]): string | null {
