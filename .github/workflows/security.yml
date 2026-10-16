@@ -31,14 +31,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Scan committed files for secrets (Trivy container)
         run: |
           docker run --rm -v "$PWD:/work:ro" aquasec/trivy:0.65.0 fs --scanners secret --severity HIGH,CRITICAL --exit-code 1 /work
 
       - name: Python project dependency vulnerabilities
         run: |
-          python3 -m venv /tmp/retailtwin-app-venv
-          python3 -m venv /tmp/retailtwin-audit-venv
+          "${{ env.pythonLocation }}/python" --version
+          "${{ env.pythonLocation }}/python" -m venv --clear /tmp/retailtwin-app-venv
+          "${{ env.pythonLocation }}/python" -m venv --clear /tmp/retailtwin-audit-venv
           /tmp/retailtwin-app-venv/bin/python -m pip install --upgrade pip
           /tmp/retailtwin-app-venv/bin/python -m pip install ./apps/api
           /tmp/retailtwin-audit-venv/bin/python -m pip install pip-audit
