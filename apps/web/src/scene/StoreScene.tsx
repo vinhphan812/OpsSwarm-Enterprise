@@ -20,6 +20,7 @@ import {
 import { useCameraActivity } from "@/hooks/cameraActivity.hook";
 import { useFitCamera } from "@/hooks/fitCamera.hook";
 import { useFocusSelection } from "@/hooks/focusSelection.hook";
+import { useSimulationZoom } from "@/hooks/simulationZoom.hook";
 import { useOrbitAroundPointer } from "@/hooks/orbitPoint.hook";
 import { useStockModels } from "@/hooks/stockModels.hook";
 import { Decor } from "./entities/decor/Decor";
@@ -41,12 +42,14 @@ import type { ProductFixture, StoreFixture } from "@/types/scene.type";
 
 /**
  * Keeps the camera framing the whole store as the canvas resizes, orbits around the pointer, flies to a
- * selection, and notes when the user moves it.
+ * selection, comes in from the closed building when the Simulation view opens, and notes when the user
+ * moves it.
  */
 function FrameCamera() {
   useFitCamera();
   useOrbitAroundPointer();
   useFocusSelection();
+  useSimulationZoom();
   useCameraActivity();
   return null;
 }
