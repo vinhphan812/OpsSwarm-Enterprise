@@ -1,8 +1,10 @@
 // Mock HTMLCanvasElement.getContext for jsdom (which lacks native canvas).
-// jsdom auto-discovers the 'canvas' package if installed; this supplements
-// it with a basic 2D fallback for procedural texture creation in R3F scenes.
-if (typeof HTMLCanvasElement !== "undefined" && !HTMLCanvasElement.prototype.getContext) {
+// jsdom defines getContext but throws when called; unconditionally replace it
+// with a working mock to ensure R3F scene tests can create procedural textures.
+if (typeof HTMLCanvasElement !== "undefined") {
   HTMLCanvasElement.prototype.getContext = function (contextType: string) {
+    // Return mock for any context type (2d, webgl, webgl2) to support both
+    // Canvas 2D texture creation and R3F WebGL renderer initialization.
     return { ...createCanvasMock() } as ReturnType<HTMLCanvasElement["getContext"]>;
   };
 }
@@ -13,7 +15,7 @@ function createCanvasMock() {
     "fillRect", "clearRect", "getImageData", "putImageData", "createImageData",
     "setTransform", "resetTransform", "drawImage", "save", "restore",
     "beginPath", "moveTo", "lineTo", "closePath", "stroke", "fill", "clip",
-    "rect", "arc", "measureText", "createLinearGradient", "createRadialGradient",
+    "rect", "arc", "ellipse", "measureText", "createLinearGradient", "createRadialGradient",
     "createPattern", "translate", "scale", "rotate", "transform", "font",
     "textAlign", "textBaseline", "fillText", "strokeText",
     "drawFocusFromIfNeeded", "scrollPathIntoView", "getBoxObjectFor",
