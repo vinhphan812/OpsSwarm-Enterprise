@@ -58,6 +58,13 @@ class Settings(BaseSettings):
     # reproducible evidence. See ADR 0039 and `recovery.py`.
     recovery_auto_enabled: bool = Field(default=False)
 
+    # ── Feature flags (issue #36) ───────────────────────────────────────────
+    # When true, GET /traffic/heatmap serves a deterministic zone heatmap from
+    # the synthetic traffic simulator. Off by default so day-0 routes stay
+    # unchanged. The simulator itself is always importable; the flag only
+    # gates the public route.
+    traffic_enabled: bool = Field(default=False)
+
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
 

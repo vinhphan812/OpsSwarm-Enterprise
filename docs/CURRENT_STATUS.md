@@ -40,6 +40,7 @@ Implemented on `main`:
 - autonomous investigations for gate G03 (#50, ADR 0023). With `AUTONOMY_ENABLED=true`, `POST /events` hands each new `sale.completed` to the Observer. A background run then investigates, plans, and records a `pending` proposal and its Decision for the approve route. Each stage is a `GET /agent/events` entry with the event's correlation id. It never writes the Live Twin. The default is off. `GET /agent/events` and `GET /simulations/{id}/candidates` no longer return 500;
 - one Gemini inventory read for issue #2 (ADR 0021) in `apps/api/retailtwin_api/agents/orchestrator/inventory_read.py`. `read_inventory` asks the injected provider for exactly one `get_inventory` call and executes it with `READ` granted. The request does not offer a simulation or commit tool. The typed Live Twin document is the result; model prose is ignored. A missing SKU returns `not_found`. No call, another tool, or another SKU fails closed. The Vertex adapter sends `functionCallingConfig` for that choice. CI uses `FakeLlmProvider`. A live call on 2026-10-14 with `gemini-2.5-flash` in `us-central1` read `store-001` / `P001` (shelf `A01`, slot `A01-S01`, 5 facings, 18 on the shelf, 42 in the backroom, version 3) and the tool output matched that Firestore document. An unknown SKU returned `not_found` and was not created. This does not write the Live Twin, does not call Vertex from Cloud Run, and does not pass foundation gate #10 or gates G02–G06;
 - deterministic `sale.completed` publisher. The lander claims each `event_id` in Firestore `store_event_claims`. The landing lease chooses who may submit the derived insert, and that insert uses one BigQuery job id for the claim generation, so a takeover joins the same job. A replay of the same payload is a duplicate. A different payload is a conflict and does not replace the claim or the row. `correlation_id` is kept on the message and the row. A rejected message is quarantined before it is acknowledged;
+- deterministic customer-traffic simulator for issue #36 (ADR 0041) in `apps/api/retailtwin_api/synthetic/traffic.py`. `TrafficSimulator` wraps a seeded `random.Random` and emits one `TrafficEvent` per `(minute, zone)` cell of a window. `aggregate_heatmap(events)` sums `customer_count * dwell_seconds` per zone, rounded to two decimals. `Settings.traffic_enabled` (default off) gates a `GET /traffic/heatmap?store_id=...&window_minutes=60` route that returns the heatmap as `TrafficHeatmapResponse`. When the flag is off the route returns 503 `traffic_disabled`. The simulator and aggregator stay importable; only the public route is gated. The wire contract is intentionally separate from `sales_events` — a future `traffic_events` BigQuery table (follow-up) carries the same shape; this module writes only the in-process stream so the contract is locked before any table is provisioned.
 - 3D move cue of issue #23 in `apps/web`. When the twin state on screen moves a product, its items hop from the source slot to the destination, an outline marks where it stood, and the light hands over from the source slot to the destination, flashes on arrival and fades out, and the product card says where it came from. The cue is read from the state diff (#91), so it shows for Live changes and for the Simulation view against Live, and leaving a proposal plays the move back;
 - 3D facings cue for issue #24 in `apps/web`. Cap facings at slot capacity, flag overflow, and cue changes;
 - 3D replenishment cue for issue #25 in `apps/web`. A recent stock change shows `Shelf +N` / `Backroom -N` on the product card and details dialog and glows on the slot of a shelf gain; a change that is not a matching backroom → shelf transfer is flagged as `inconsistentTransfer` until the next change; shelf units past what the facings hold show as `+N not shown`. Works in the Live and Simulation views under `?twin=memory|demo`;
@@ -70,7 +71,7 @@ Implemented on `main`:
 - merge-conflict markers CI for issue #133 (PR #147). Block merge-conflict markers in every change;
 - security CI for issues #146 and #188. Secret/dependency and container scans before deploy;
 - Cloud Run deployment verification for issue #187. Verify public Cloud Run deployment;
-- ADR 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, and 0039;
+- ADR 0001, 0002, 0003, 0004, 0005, 0006, 0007, 0008, 0009, 0010, 0011, 0012, 0014, 0015, 0016, 0017, 0018, 0019, 0020, 0021, 0039, and 0041;
 - tracked `apps/web/package-lock.json`.
 
 ## Google Cloud foundation
@@ -102,6 +103,7 @@ Baseline (PR #68):
 
 The following have been implemented since the 2026-10-08 baseline:
 
+- Synthetic customer-traffic simulator + zone heatmap, gated by `TRAFFIC_ENABLED` (issue #36, PR #36);
 - Firestore-backed Live Twin and seed/reset (issue #6, PR #106);
 - Cloud Run production deployment (issue #9, PR #111, #113);
 - Provider-neutral LLM runtime (issue #85, PR #109);
@@ -138,8 +140,11 @@ Do not infer implementation merely because a component is documented in the targ
 - Later analytical tables such as product performance and simulation results;
 - end-to-end autonomous scenario;
 - Demo data for production build (issue #135, active PR #197);
+<<<<<<< HEAD
 - submission gates G02–G06;
+- `traffic_events` BigQuery table, Investigator binding to the heatmap, and the 3D heatmap rendering (issue #36 follow-ups);
 - advanced optimizer activation (issue #54). The optimizer ships behind the simulator's optional `ranker` parameter; activating it is a one-line injection once G06 (#53) records reproducible flagship evidence.
+
 
 ## Current release-gate status
 
