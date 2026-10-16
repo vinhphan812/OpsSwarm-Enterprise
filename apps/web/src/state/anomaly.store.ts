@@ -5,6 +5,8 @@ import type { AnomaliesResponse, Anomaly } from "@/types/anomaly.type";
 type AnomalyStore = {
   /** Open anomalies, as the anomaly API last served them. */
   anomalies: Anomaly[];
+  /** Whether the anomaly feed has been served at least once, so an empty list means none open. */
+  served: boolean;
   /** Why the last read of the anomalies failed; null once a read succeeds. `anomalies` keeps the last list. */
   readError: string | null;
   /** Replaces every open anomaly with a fresh `GET /anomalies` response, and clears `readError`. */
@@ -24,8 +26,9 @@ type AnomalyStore = {
  */
 export const useAnomalyStore = create<AnomalyStore>()((set) => ({
   anomalies: [],
+  served: false,
   readError: null,
-  setAll: (response) => set({ anomalies: response.anomalies, readError: null }),
+  setAll: (response) => set({ anomalies: response.anomalies, served: true, readError: null }),
   fail: (readError) => set({ readError }),
   raise: (anomaly) =>
     set((state) => ({

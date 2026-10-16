@@ -35,9 +35,11 @@ test("reads apps/api by default, and shows an API failure without crashing", asy
   const paths = fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname);
   expect(paths).toContain("/store");
   expect(paths).toContain("/health");
-  // Revenue and promotions are read when their lens (or a product's details) opens, not on load.
+  // Promotions are read when their lens opens, not on load. Only today's revenue is read on
+  // load, for the KPI strip; the longer windows wait for the Revenue lens.
   expect(paths).not.toContain("/promotions");
-  expect(paths).not.toContain("/revenue");
+  const revenueReads = fetchMock.mock.calls.map(([url]) => new URL(String(url))).filter((url) => url.pathname === "/revenue");
+  expect(revenueReads.map((url) => url.searchParams.get("period"))).toEqual(["today"]);
   expect(screen.getByRole("heading", { name: "Agent Activity" })).toBeTruthy();
   expect(screen.getByRole("main")).toBeTruthy();
   expect(screen.getByRole("textbox", { name: "SKU" })).toBeTruthy();

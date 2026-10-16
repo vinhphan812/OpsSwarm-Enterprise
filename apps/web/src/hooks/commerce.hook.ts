@@ -7,7 +7,9 @@ import { notify } from "@/core/notify";
 import type { PromotionsSummary } from "@/types/promotion.type";
 import type { RevenueSummary } from "@/types/revenue.type";
 import type { RetailTwinClient } from "@/types/api.type";
-import type { RevenuePeriod } from "@/enums/commerce.enum";
+import { REVENUE_PERIOD, type RevenuePeriod } from "@/enums/commerce.enum";
+import { REVENUE_TODAY_REFRESH_MS } from "@/constants/app.constant";
+import type { TimedRead } from "@/core/twin/kpiStrip";
 import { emptyPromotions, emptyRevenue } from "@/fixtures/commerceFixture";
 import { storeFixture } from "@/fixtures/storeFixture";
 import { useTwinStore } from "@/state/twin.store";
@@ -94,6 +96,37 @@ export function useRevenue(
   const storeId = useStoreId();
   const placeholder = useMemo(() => emptyRevenue(storeId, period), [storeId, period]);
   return useCachedRead(client, `revenue:${storeId}:${period}`, (api) => api.revenue(period), placeholder);
+}
+
+/**
+ * Today's `GET /revenue` for the KPI strip, with the time it landed; null until it has, never
+ * a report of zeros. Read again every `REVENUE_TODAY_REFRESH_MS`. A failed read keeps the last
+ * good one, which the strip stops showing once it is stale (`revenueToday`), and does not
+ * toast: the strip says so itself.
+ */
+export function useRevenueToday(client: RetailTwinClient | undefined = commerceClient()): TimedRead<RevenueSummary> | null {
+  const storeId = useStoreId();
+  const [state, setState] = useState<{ read: TimedRead<RevenueSummary> | null; checkedAt: number }>({ read: null, checkedAt: 0 });
+
+  useEffect(() => {
+    setState({ read: null, checkedAt: 0 });
+    if (!client) return;
+    let cancelled = false;
+    const load = () =>
+      client.revenue(REVENUE_PERIOD.Today).then(
+        (value) => !cancelled && setState({ read: { value, readAt: Date.now() }, checkedAt: Date.now() }),
+        // Keeps the last good read, and renders again so the strip sees it age.
+        () => !cancelled && setState((prev) => ({ ...prev, checkedAt: Date.now() })),
+      );
+    void load();
+    const timer = window.setInterval(load, REVENUE_TODAY_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [client, storeId]);
+
+  return state.read;
 }
 
 /** `GET /promotions`, read when the Promotions lens opens. Read only; empty until it lands. */

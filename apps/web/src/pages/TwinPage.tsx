@@ -4,6 +4,7 @@ import {
 } from "@/components/layout/AgentActivityPanel";
 import { BuildBadge } from "@/components/layout/BuildBadge";
 import { CameraHelp } from "@/components/layout/CameraHelp";
+import { KpiStrip } from "@/components/layout/KpiStrip";
 import { AgentFocusCaption } from "@/components/twin/AgentFocusCaption";
 import { LensSwitcher } from "@/components/layout/LensSwitcher";
 import { ViewModeSwitch } from "@/components/layout/ViewModeSwitch";
@@ -44,6 +45,7 @@ export function TwinPage() {
           <LensSwitcher />
           <ViewModeSwitch />
         </div>
+        <KpiStrip />
         <div className="absolute bottom-4 left-4 z-10">
           <CameraHelp />
         </div>
