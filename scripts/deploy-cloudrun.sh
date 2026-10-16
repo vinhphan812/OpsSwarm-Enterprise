@@ -81,7 +81,7 @@ gcloud run deploy "${SERVICE}" \
   --cpu 1 \
   --timeout 60 \
   --concurrency 80 \
-  --set-env-vars "^|^APP_ENV=production|LOG_LEVEL=INFO|CORS_ORIGINS=https://retailtwin-ai-511002.web.app,https://retailtwin-ai-511002.firebaseapp.com,http://localhost:5173,http://127.0.0.1:5173"
+  --set-env-vars "^|^APP_ENV=production|LOG_LEVEL=INFO|STORE_FIXTURE_PATH=data/schemas/store-state.demo.json|CORS_ORIGINS=https://retailtwin-ai-511002.web.app,https://retailtwin-ai-511002.firebaseapp.com,http://localhost:5173,http://127.0.0.1:5173"
 
 REVISION="$(gcloud run services describe "${SERVICE}" \
   --region "${REGION}" \
