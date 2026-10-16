@@ -10,6 +10,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
+    // React Three Fiber scene tests exceed 5s default on self-hosted runners.
+    testTimeout: 20_000,
+    // jsdom environment setup is slow on self-hosted runners; give workers
+    // extra time to teardown cleanly before Vitest kills them.
+    poolOptions: { forks: { teardownTimeout: 120_000 } },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
