@@ -33,6 +33,7 @@ from retailtwin_api.llm.factory import create_provider, llm_config_from_settings
 from retailtwin_api.settings import Settings, get_settings
 from retailtwin_api.simulation import SimulationRepository, _build_state
 from retailtwin_api.store import LiveTwinStore, StoreReader, open_memory_live_store, open_store
+from retailtwin_api.version import __version__, git_sha
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="RetailTwin API",
-        version="0.1.0",
+        # ADR 0025: the FastAPI advertised version derives from the canonical
+        # VERSION file so /openapi.json matches /health and /version.
+        version=__version__,
         description="Day-0 retail store event API. Structured JSON logs and "
         "correlation IDs are enabled in all environments.",
     )
@@ -140,6 +143,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "flagship_wired": app.state.flagship_controller.is_configured
             if getattr(app.state, "flagship_controller", None) is not None
             else False,
+            "version": __version__,
+            "git_sha": git_sha,
         },
     )
     return app

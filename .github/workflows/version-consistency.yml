@@ -1,0 +1,109 @@
+name: Version Consistency Gate
+
+# ADR 0025: enforces that the canonical /VERSION file, the API process,
+# the Web bundle, and any release-tag CHANGELOG entry stay in lockstep.
+# Always runs regardless of which files change — a versioning regression
+# is independent of the file paths involved.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: version-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  consistency:
+    name: Canonical Version Consistency
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Tags are needed so the gate can read existing release tags and
+          # verify a matching CHANGELOG section exists for them.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Verify /VERSION is strict SemVer
+        run: |
+          set -euo pipefail
+          if [ ! -f VERSION ]; then
+            echo "::error::VERSION file missing at repo root."
+            exit 1
+          fi
+          RAW=$(cat VERSION)
+          if ! echo "$RAW" | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' >/dev/null; then
+            echo "::error::VERSION must contain strict SemVer (MAJOR.MINOR.PATCH); got '$RAW'."
+            exit 1
+          fi
+          echo "VERSION=$RAW"
+
+      - name: Install API package (read-only check)
+        working-directory: apps/api
+        run: |
+          python -m pip install --quiet --disable-pip-version-check -e .
+
+      - name: Verify API module reports the canonical SemVer
+        working-directory: apps/api
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          API_VERSION=$(python -c "from retailtwin_api.version import __version__; print(__version__)")
+          FILE_VERSION=$(cat ../../VERSION | tr -d '[:space:]')
+          echo "API version   = $API_VERSION"
+          echo "VERSION file  = $FILE_VERSION"
+          if [ "$API_VERSION" != "$FILE_VERSION" ]; then
+            echo "::error::API reports $API_VERSION but VERSION file is $FILE_VERSION."
+            exit 1
+          fi
+
+      - name: Verify Web bundle would embed the canonical SemVer
+        working-directory: apps/web
+        env:
+          PYTHONPATH: .
+        run: |
+          set -euo pipefail
+          # Replicate the reading logic in apps/web/vite.config.ts without
+          # requiring npm install. The config reads /VERSION at config time
+          # and validates the same regex.
+          FILE_VERSION=$(cat ../../VERSION | tr -d '[:space:]')
+          if ! echo "$FILE_VERSION" | grep -E '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' >/dev/null; then
+            echo "::error::VERSION must be strict SemVer before the Web build reads it."
+            exit 1
+          fi
+          echo "Web VITE_APP_VERSION would be $FILE_VERSION"
+
+      - name: Verify CHANGELOG entry exists for any release tag
+        run: |
+          set -euo pipefail
+          TAGS=$(git tag --points-at HEAD | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' || true)
+          if [ -z "$TAGS" ]; then
+            echo "No release tag on HEAD — CHANGELOG check skipped."
+            exit 0
+          fi
+          for TAG in $TAGS; do
+            VERSION="${TAG#v}"
+            if ! grep -E "^## \\[${VERSION}\\]" CHANGELOG.md >/dev/null; then
+              echo "::error::Tag $TAG requires a '## [${VERSION}]' section in CHANGELOG.md."
+              exit 1
+            fi
+            echo "Tag $TAG has matching CHANGELOG entry."
+          done
+
+      - name: Run consistency script (full audit)
+        run: |
+          set -euo pipefail
+          python scripts/check_version_consistency.py

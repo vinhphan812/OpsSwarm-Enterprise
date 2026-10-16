@@ -35,6 +35,7 @@ from retailtwin_api.schemas import (
     CheckoutResponse,
     StoreEvent,
     StoreResponse,
+    VersionResponse,
 )
 from retailtwin_api.simulation_repository import SimulationReadRepository
 from retailtwin_api.simulation_schemas import (
@@ -52,6 +53,7 @@ from retailtwin_api.simulation_schemas import (
     SimulationStatus,
 )
 from retailtwin_api.store import StoreReader
+from retailtwin_api.version import __version__, build_time, full_version, git_sha
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -114,6 +116,10 @@ def health(
     - status="degraded" only when store is not loaded OR when an analytics call
                        actually raises (e.g. GCP unreachable).  Empty responses
                        (a store with no anomalies today) are NOT degraded.
+
+    The response also reports the canonical SemVer (``version``) and the build
+    commit (``git_sha``) so dashboards and uptime checks can pin the deployed
+    artifact (ADR 0025).
     """
     if not store.loaded:
         return HealthResponse(
@@ -123,6 +129,8 @@ def health(
             app_env=request.app.state.settings.app_env,
             store_id=store.store_id,
             fixture_loaded=False,
+            version=__version__,
+            git_sha=git_sha,
         )
     try:
         anomalies.list_anomalies(store_id=store.store_id, limit=1)
@@ -136,6 +144,8 @@ def health(
             app_env=request.app.state.settings.app_env,
             store_id=store.store_id,
             fixture_loaded=True,
+            version=__version__,
+            git_sha=git_sha,
         )
     return HealthResponse(
         status="ok",
@@ -144,6 +154,27 @@ def health(
         app_env=request.app.state.settings.app_env,
         store_id=store.store_id,
         fixture_loaded=True,
+        version=__version__,
+        git_sha=git_sha,
+    )
+
+
+@router.get("/version", response_model=VersionResponse, include_in_schema=True)
+def version() -> VersionResponse:
+    """Build identity for the running process (ADR 0025).
+
+    Reports the canonical SemVer (``version``), the commit the artifact was
+    built from (``git_sha``), the time the module was first imported
+    (``build_time``), and the SemVer plus build metadata combined
+    (``full_version``). Used by ops dashboards, the Web footer, and CI to
+    verify a release tag matches the deployed artifact.
+    """
+    return VersionResponse(
+        version=__version__,
+        git_sha=git_sha,
+        build_time=build_time,
+        service="retailtwin-api",
+        full_version=full_version(),
     )
 
 

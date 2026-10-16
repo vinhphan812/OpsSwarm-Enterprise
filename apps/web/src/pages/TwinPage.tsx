@@ -2,6 +2,7 @@ import {
   AgentActivityOpenButton,
   AgentActivityPanel,
 } from "@/components/layout/AgentActivityPanel";
+import { BuildBadge } from "@/components/layout/BuildBadge";
 import { CameraHelp } from "@/components/layout/CameraHelp";
 import { AgentFocusCaption } from "@/components/twin/AgentFocusCaption";
 import { LensSwitcher } from "@/components/layout/LensSwitcher";
@@ -51,6 +52,7 @@ export function TwinPage() {
         <EntityInspector />
         <ProductDetailsDialog />
         <TwinIssuesNotice />
+        <BuildBadge />
       </main>
       <AgentActivityPanel />
     </>

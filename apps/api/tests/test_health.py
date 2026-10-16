@@ -4,6 +4,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
+from retailtwin_api import version as version_module
 from retailtwin_api.main import create_app
 from retailtwin_api.settings import DEFAULT_FIXTURE, Settings
 
@@ -20,6 +21,8 @@ def test_health_reports_the_loaded_fixture(client) -> None:
         "app_env": "test",
         "store_id": "store-001",
         "fixture_loaded": True,
+        "version": version_module.__version__,
+        "git_sha": version_module.git_sha,
     }
 
 
