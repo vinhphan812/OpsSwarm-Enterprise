@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createMemoryTwin, patchProduct, type MemoryTwin } from "@/core/api/sources/memorySource";
 import { commitSimulation, createMemoryReviewer, discardSimulation, openSimulation } from "@/core/twin/memorySimulation";
-import { ACTION_TYPE, GUARD_VERDICT, REVIEW_DECISION, REVIEW_REASON, SIMULATION_STATUS } from "@/enums/simulation.enum";
+import { ACTION_TYPE, GUARD_GATE, GUARD_VERDICT, REVIEW_DECISION, REVIEW_REASON, SIMULATION_STATUS } from "@/enums/simulation.enum";
 import { demoStoreState } from "@/fixtures/demo/store";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { useTwinStore } from "@/state/twin.store";
@@ -101,6 +101,15 @@ describe("simulations on the memory twin", () => {
       verdict: GUARD_VERDICT.Allow,
       reason_code: null,
       live_context_version: pushed[0].context_version,
+      detail_code: null,
+      // The memory guard runs one gate, and reports only that one.
+      guard: {
+        verdict: GUARD_VERDICT.Allow,
+        reason_code: "ALLOWED",
+        context_version: simulation.base_context_version,
+        failed_gate: null,
+        checks: [{ gate: GUARD_GATE.Freshness, passed: true, detail: "" }],
+      },
     });
     expect(pushed).toHaveLength(1);
     expect(useTwinStore.getState().simulation).toBeNull();
@@ -117,7 +126,11 @@ describe("simulations on the memory twin", () => {
       status: SIMULATION_STATUS.Evaluated,
       verdict: GUARD_VERDICT.RefreshRequired,
       reason_code: REVIEW_REASON.LiveMoved,
-      live_context_version: null,
+      live_context_version: live.context_version,
+      guard: {
+        failed_gate: GUARD_GATE.Freshness,
+        checks: [{ gate: GUARD_GATE.Freshness, passed: false, detail: expect.stringContaining(live.context_version) }],
+      },
     });
     expect(twin.current()).toEqual(live);
     expect(useTwinStore.getState().simulation).toBe(simulation);
@@ -157,6 +170,8 @@ describe("simulations on the memory twin", () => {
       verdict: null,
       reason_code: REVIEW_REASON.ProposalChanged,
       live_context_version: null,
+      detail_code: null,
+      guard: null,
     });
     expect(useTwinStore.getState().simulation).toBe(replaced);
     expect(twin.current()).toEqual(before);

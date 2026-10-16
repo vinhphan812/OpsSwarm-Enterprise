@@ -10,6 +10,7 @@ import { GUARD_VERDICT, REVIEW_DECISION, SIMULATION_STATUS } from "@/enums/simul
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { demoSimulation } from "@/fixtures/demo/simulation";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { useGuardStore } from "@/state/guard.store";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation } from "@/types/simulation.type";
@@ -39,6 +40,7 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(() => {
   cleanup();
   useUiStore.getState().setViewMode(VIEW_MODE.Live);
+  useGuardStore.getState().clear();
 });
 
 describe("Accept and Reject on the simulation banner", () => {
@@ -63,6 +65,8 @@ describe("Accept and Reject on the simulation banner", () => {
       verdict: GUARD_VERDICT.Allow,
       reason_code: null,
       live_context_version: "store-001:v2",
+      detail_code: null,
+      guard: null,
     };
     const reviewer = vi.fn<SimulationReviewer>(async () => result);
     render(<SimulationBanner reviewer={reviewer} />);
@@ -102,6 +106,8 @@ describe("Accept and Reject on the simulation banner", () => {
         verdict: null,
         reason_code: null,
         live_context_version: null,
+        detail_code: null,
+        guard: null,
       }),
     );
     expect(notify.info).toHaveBeenCalledWith("sim-demo-001 rejected", "The store did not change.");
@@ -118,6 +124,8 @@ describe("Accept and Reject on the simulation banner", () => {
       verdict,
       reason_code,
       live_context_version: null,
+      detail_code: null,
+      guard: null,
     });
     const reviewer = vi
       .fn<SimulationReviewer>()
@@ -147,6 +155,8 @@ describe("Accept and Reject on the simulation banner", () => {
       verdict: null,
       reason_code: "proposal_changed",
       live_context_version: null,
+      detail_code: null,
+      guard: null,
     }));
     render(<SimulationBanner reviewer={reviewer} />);
 
@@ -168,6 +178,8 @@ describe("Accept and Reject on the simulation banner", () => {
       verdict: null,
       reason_code: null,
       live_context_version: null,
+      detail_code: null,
+      guard: null,
     }));
     render(<SimulationBanner reviewer={reviewer} />);
 

@@ -10,6 +10,7 @@ import {
   type ReviewDecision,
 } from "@/enums/simulation.enum";
 import { VIEW_MODE } from "@/enums/ui.enum";
+import { useGuardStore } from "@/state/guard.store";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation } from "@/types/simulation.type";
@@ -22,7 +23,8 @@ const reviewKey = (simulation: Simulation) => `${simulation.simulation_id}@${sim
  * screen changes when the live feed and the simulation feed say so, never here. An
  * evaluated run can be reviewed once; after a committed or rejected answer it waits for
  * the run to close. A review is of one proposal (`state.context_version`), so a proposal
- * replaced under the same run id can be reviewed again.
+ * replaced under the same run id can be reviewed again. The guard's answer to an approval
+ * is kept in `useGuardStore` for the guard card.
  */
 export function useSimulationReview(reviewer: SimulationReviewer | null, simulation: Simulation | null) {
   const { t } = useTranslation();
@@ -31,7 +33,9 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
 
   const announce = (result: ReviewResult, base: string) => {
     const id = result.simulation_id;
-    const reason = result.reason_code ?? t("simulation.review.noReason");
+    const reason = result.reason_code
+      ? t(`guard.reason.${result.reason_code}`, { defaultValue: result.reason_code })
+      : t("simulation.review.noReason");
     const proposalChanged = result.reason_code === REVIEW_REASON.ProposalChanged;
     if (result.decision === REVIEW_DECISION.Reject) {
       if (result.status !== SIMULATION_STATUS.Rejected) {
@@ -73,6 +77,9 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
     try {
       const result = await reviewer(simulation, decision);
       announce(result, simulation.base_context_version);
+      if (result.decision === REVIEW_DECISION.Approve) {
+        useGuardStore.getState().record({ result, base_context_version: simulation.base_context_version });
+      }
       // The rejected proposal leaves the screen; its changes go back to Live in 3D.
       if (result.status === SIMULATION_STATUS.Rejected && useUiStore.getState().viewMode === VIEW_MODE.Simulation) {
         useTwinStore.getState().leaveProposal(simulation.state);

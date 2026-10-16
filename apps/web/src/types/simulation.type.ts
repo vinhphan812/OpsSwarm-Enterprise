@@ -104,10 +104,33 @@ export type ReviewRequest = {
   proposal_context_version: string;
 };
 
+/** One gate the Decision Context Guard ran, from `DCGVerdictResult.policy_result.checks`. */
+export type GuardCheck = {
+  /** A `GUARD_GATE` such as `freshness`; any other is shown as served. */
+  gate: string;
+  passed: boolean;
+  /** Why the gate failed; empty when it passed. */
+  detail: string;
+};
+
+/**
+ * What the Decision Context Guard answered on an approval (`SimulationReviewResponse.guard`).
+ * The gates run in order and stop at the first failure, so a gate after `failed_gate` has no check.
+ */
+export type GuardResult = {
+  verdict: GuardVerdict;
+  /** The guard's own code, such as `VERSION_STALE` or `INFEASIBLE_ACTION`. */
+  reason_code: string;
+  /** The Live version the decision was made against. */
+  context_version: string;
+  /** The gate that refused the decision, or null when every gate passed. */
+  failed_gate: string | null;
+  checks: GuardCheck[];
+};
+
 /**
  * The answer to a review. An approval is not a commit: the guard decides, and only on
  * ALLOW does the Executor apply the actions. Live then changes through `GET /store`.
- * TODO(BE): FE proposal, see `ReviewRequest`.
  */
 export type ReviewResult = {
   simulation_id: string;
@@ -118,6 +141,10 @@ export type ReviewResult = {
   verdict: GuardVerdict | null;
   /** Why the guard answered as it did (`DCGVerdictResult.reason_code`), or null. */
   reason_code: string | null;
-  /** Live version after an executed commit, else null. */
+  /** Live version after an executed commit, or the Live version a refusal was checked against; else null. */
   live_context_version: string | null;
+  /** The guard or Executor code behind `reason_code`, such as `VERSION_STALE`, or null. */
+  detail_code: string | null;
+  /** The guard's gate-by-gate answer, when the guard ran; null otherwise. */
+  guard: GuardResult | null;
 };

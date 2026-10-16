@@ -34,7 +34,7 @@ const piece = (id: string, file: string, at: [number, number], fit: DecorItem["f
 const city = (id: string, file: string, at: [number, number], rotationY = 0) =>
   piece(id, file, at, { scale: [CITY, CITY, CITY] }, rotationY);
 
-/** Inside: plants in the free corners and by the door, the door mat, a bin, and the cart and basket bay. */
+/** Inside: plants in the free corners and by the door, the door mat, a bin, and the basket bay. */
 const INSIDE: DecorItem[] = [
   piece("plant-back-left", "tinytreats/zz-plant.glb", [-6.45, -5.05], { height: 1.1 }, 0, 0),
   piece("plant-front-left", "tinytreats/sansevieria.glb", [-6.45, 5.0], { height: 1.15 }, 0, 0),
@@ -42,9 +42,8 @@ const INSIDE: DecorItem[] = [
   piece("plant-door", "tinytreats/sansevieria.glb", [GLAZING.doorX - GLAZING.doorWidth / 2 - 0.35, -5.1], { height: 1.05 }, 0, 0),
   piece("door-mat", "kenney-furniture/rugDoormat.glb", [GLAZING.doorX, -5.05], { width: 1.8 }, 0, 0.002),
   piece("bin-exit", "kenney-furniture/trashcan.glb", [GLAZING.doorX - GLAZING.doorWidth / 2 - 0.95, -5.15], { height: 0.75 }, 0, 0),
-  // The cart and basket bay: the railed pocket by the door, between BR02 (x = 2.7), the cross
+  // The basket bay: the railed pocket by the door, between BR02 (x = 2.7), the cross
   // rail BR05 (z = -2.2), and the door divider BR03/BR04 (x = 4.4).
-  piece("cart", "kenney-mini-market/shopping-cart.glb", [3.85, -2.95], { height: 1.0 }, 0, 0),
   ...[0, 1, 2].map((i) =>
     piece(`basket-${i}`, "kenney-mini-market/shopping-basket.glb", [3.1, -2.75], { height: 0.28 }, 0.1 * i, 0.16 * i),
   ),

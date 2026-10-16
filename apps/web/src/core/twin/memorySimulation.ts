@@ -1,17 +1,18 @@
 import type { MemoryTwin } from "@/core/api/sources/memorySource";
 import {
+  GUARD_GATE,
   GUARD_VERDICT,
   REVIEW_DECISION,
   REVIEW_REASON,
   SIMULATION_STATUS,
+  type GuardVerdict,
   type ReviewDecision,
-  type ReviewReason,
 } from "@/enums/simulation.enum";
 import { simulationOf, DEMO_ACTIONS } from "@/fixtures/demo/simulation";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { shownSimulation, useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
-import type { ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
+import type { GuardResult, ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
 import type { SimulationReviewer } from "./simulationReview";
 
 /**
@@ -39,9 +40,10 @@ export function openSimulation(twin: MemoryTwin, actions: SimulationAction[] = D
  * stays open. A rejection then closes the run; Live moving on does not stop it, since a
  * rejection never writes Live. An approval goes through a minimal guard that answers
  * REFRESH_REQUIRED (`live_moved`) once Live has moved on since the simulation started,
- * and ALLOW otherwise. On ALLOW the proposed state is written to the twin, which pushes it
- * to the live feed; the web app's Live view changes only through that feed. Throws when
- * `simulation` is not the open one.
+ * and ALLOW otherwise. That guard reports the one gate it runs, `freshness`, and no other.
+ * On ALLOW the proposed state is written to the twin, which pushes it to the live feed;
+ * the web app's Live view changes only through that feed. Throws when `simulation` is not
+ * the open one.
  */
 export function reviewOnTwin(twin: MemoryTwin, simulation: Simulation, decision: ReviewDecision): ReviewResult {
   const { setSimulation } = useTwinStore.getState();
@@ -49,20 +51,39 @@ export function reviewOnTwin(twin: MemoryTwin, simulation: Simulation, decision:
   if (!open || open.simulation_id !== simulation.simulation_id) {
     throw new Error(`${simulation.simulation_id} is not open.`);
   }
-  const result = { simulation_id: simulation.simulation_id, decision, reason_code: null, live_context_version: null };
+  const result = {
+    simulation_id: simulation.simulation_id,
+    decision,
+    reason_code: null,
+    live_context_version: null,
+    detail_code: null,
+    guard: null,
+  };
   const reject = decision === REVIEW_DECISION.Reject;
-  const refused = (reason_code: ReviewReason): ReviewResult => ({
-    ...result,
-    status: SIMULATION_STATUS.Evaluated,
-    verdict: reject ? null : GUARD_VERDICT.RefreshRequired,
-    reason_code,
-  });
-  if (open.state.context_version !== simulation.state.context_version) return refused(REVIEW_REASON.ProposalChanged);
+  if (open.state.context_version !== simulation.state.context_version) {
+    return {
+      ...result,
+      status: SIMULATION_STATUS.Evaluated,
+      verdict: reject ? null : GUARD_VERDICT.RefreshRequired,
+      reason_code: REVIEW_REASON.ProposalChanged,
+    };
+  }
   if (reject) {
     setSimulation(null);
     return { ...result, status: SIMULATION_STATUS.Rejected, verdict: null };
   }
-  if (twin.current().context_version !== simulation.base_context_version) return refused(REVIEW_REASON.LiveMoved);
+  const live = twin.current().context_version;
+  if (live !== simulation.base_context_version) {
+    const detail = `Live is at ${live}; the proposal was built on ${simulation.base_context_version}.`;
+    return {
+      ...result,
+      status: SIMULATION_STATUS.Evaluated,
+      verdict: GUARD_VERDICT.RefreshRequired,
+      reason_code: REVIEW_REASON.LiveMoved,
+      live_context_version: live,
+      guard: freshnessGuard(simulation, GUARD_VERDICT.RefreshRequired, REVIEW_REASON.LiveMoved, detail),
+    };
+  }
   const committed = twin.update(() => structuredClone(simulation.state));
   setSimulation(null);
   return {
@@ -70,6 +91,19 @@ export function reviewOnTwin(twin: MemoryTwin, simulation: Simulation, decision:
     status: SIMULATION_STATUS.Committed,
     verdict: GUARD_VERDICT.Allow,
     live_context_version: committed.context_version,
+    guard: freshnessGuard(simulation, GUARD_VERDICT.Allow, "ALLOWED", ""),
+  };
+}
+
+/** The memory guard's answer: its one `freshness` check, failed when `detail` says why. */
+function freshnessGuard(simulation: Simulation, verdict: GuardVerdict, reason_code: string, detail: string): GuardResult {
+  const passed = verdict === GUARD_VERDICT.Allow;
+  return {
+    verdict,
+    reason_code,
+    context_version: simulation.base_context_version,
+    failed_gate: passed ? null : GUARD_GATE.Freshness,
+    checks: [{ gate: GUARD_GATE.Freshness, passed, detail }],
   };
 }
 

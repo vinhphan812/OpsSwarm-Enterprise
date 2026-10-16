@@ -65,9 +65,24 @@ describe("parseReviewResult", () => {
     reason_code: null,
     live_context_version: "store-001:v2",
   };
+  const guard = {
+    verdict: "REFRESH_REQUIRED",
+    reason_code: "VERSION_STALE",
+    context_version: "store-001:v1",
+    context_hash: "abc",
+    expiry: "2026-10-15T10:00:00Z",
+    policy_result: {
+      failed_gate: "freshness",
+      checks: [
+        { gate: "integrity", passed: true, detail: "" },
+        { gate: "freshness", passed: false, detail: "P002 is at v3." },
+      ],
+      store_id: "store-001",
+    },
+  };
 
   it("accepts an approval and a rejection, filling in missing optional fields", () => {
-    expect(parseReviewResult(approved)).toEqual(approved);
+    expect(parseReviewResult(approved)).toEqual({ ...approved, detail_code: null, guard: null });
     expect(parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "rejected" })).toEqual({
       simulation_id: "sim-1",
       decision: "reject",
@@ -75,7 +90,50 @@ describe("parseReviewResult", () => {
       verdict: null,
       reason_code: null,
       live_context_version: null,
+      detail_code: null,
+      guard: null,
     });
+  });
+
+  it("reads apps/api's answer: approved/rejected, upper-case reasons, and the guard's checks", () => {
+    const served = {
+      simulation_id: "sim-1",
+      decision: "approved",
+      status: "evaluated",
+      verdict: "REFRESH_REQUIRED",
+      reason_code: "VERSION_STALE",
+      live_context_version: "store-001:v3",
+      detail_code: "VERSION_STALE",
+      guard,
+    };
+    expect(parseReviewResult(served)).toEqual({
+      ...served,
+      decision: "approve",
+      guard: {
+        verdict: "REFRESH_REQUIRED",
+        reason_code: "VERSION_STALE",
+        context_version: "store-001:v1",
+        failed_gate: "freshness",
+        checks: [
+          { gate: "integrity", passed: true, detail: "" },
+          { gate: "freshness", passed: false, detail: "P002 is at v3." },
+        ],
+      },
+    });
+    // A refusal before the guard runs leaves the run pending and sends no guard.
+    expect(
+      parseReviewResult({ ...served, status: "pending", reason_code: "VERSION_MISMATCH", detail_code: null, guard: null }),
+    ).toMatchObject({ status: "pending", guard: null });
+  });
+
+  it("rejects a malformed guard answer", () => {
+    const served = { ...approved, status: "evaluated", verdict: "REFRESH_REQUIRED" };
+    expect(() => parseReviewResult({ ...served, guard: "ok" })).toThrow(/guard/);
+    expect(() => parseReviewResult({ ...served, guard: { ...guard, verdict: "MAYBE" } })).toThrow(/guard/);
+    expect(() =>
+      parseReviewResult({ ...served, guard: { ...guard, policy_result: { checks: [{ gate: "freshness" }] } } }),
+    ).toThrow(/guard/);
+    expect(() => parseReviewResult({ ...served, guard: { ...guard, policy_result: { checks: "all" } } })).toThrow(/guard/);
   });
 
   it("rejects an approval without a guard verdict, or an unknown verdict, decision or status", () => {
@@ -87,17 +145,18 @@ describe("parseReviewResult", () => {
     expect(() => parseReviewResult("ok")).toThrow(InvalidTwinStateError);
   });
 
-  it("rejects a rejection that carries a guard verdict", () => {
-    const rejected = { simulation_id: "sim-1", decision: "reject", status: "rejected", verdict: null };
-    expect(() => parseReviewResult({ ...rejected, verdict: "ALLOW" })).toThrow(/verdict/);
-    expect(() => parseReviewResult({ ...rejected, verdict: "DENY" })).toThrow(/verdict/);
-    expect(() => parseReviewResult({ ...rejected, verdict: "REFRESH_REQUIRED" })).toThrow(/verdict/);
+  it("drops a verdict and a guard on a rejection, which never reaches the guard", () => {
+    const rejected = { simulation_id: "sim-1", decision: "rejected", status: "rejected", verdict: "ALLOW", guard };
+    expect(parseReviewResult(rejected)).toMatchObject({ decision: "reject", verdict: null, guard: null });
   });
 
-  it("rejects a status that does not fit the decision", () => {
+  it("rejects a commit the guard did not allow, or an allowed approval left rejected", () => {
     expect(() => parseReviewResult({ ...approved, status: "rejected" })).toThrow(/status/);
+    expect(() => parseReviewResult({ ...approved, verdict: "DENY" })).toThrow(/status/);
     expect(() => parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "committed" })).toThrow(/status/);
     expect(parseReviewResult({ ...approved, status: "evaluated", verdict: "DENY" }).status).toBe("evaluated");
+    // Approving a run that was already rejected is refused, and the run stays rejected.
+    expect(parseReviewResult({ ...approved, status: "rejected", verdict: "DENY" }).status).toBe("rejected");
     expect(
       parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "evaluated", reason_code: "proposal_changed" }),
     ).toMatchObject({ status: "evaluated", verdict: null, reason_code: "proposal_changed" });

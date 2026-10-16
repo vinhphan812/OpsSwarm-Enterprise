@@ -128,10 +128,7 @@ export function StoreStatus({ client = isDemoMode() ? undefined : defaultClient 
                     <span className="store-status-dot" data-state={row.state} />
                     <span className="store-status-sku">{row.sku}</span>
                     <span className="store-status-muted">{row.slot_id}</span>
-                    <span>
-                      {row.shelf_quantity}
-                      <span className="store-status-faint">/{row.facings}</span>
-                    </span>
+                    <span>{row.shelf_quantity}</span>
                     <span>{row.backroom_quantity}</span>
                   </button>
                 </li>

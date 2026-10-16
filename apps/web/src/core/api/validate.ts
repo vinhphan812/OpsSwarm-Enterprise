@@ -1,7 +1,14 @@
 import i18n from "@/i18n";
 import type { Messages } from "@/i18n/locales/en";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
-import type { Candidate, CandidateKPI, ReviewResult, Simulation, SimulationAction } from "@/types/simulation.type";
+import type {
+  Candidate,
+  CandidateKPI,
+  GuardResult,
+  ReviewResult,
+  Simulation,
+  SimulationAction,
+} from "@/types/simulation.type";
 import { ACTION_TYPE, GUARD_VERDICT, REVIEW_DECISION, SIMULATION_STATUS } from "@/enums/simulation.enum";
 
 /** Why a product is not drawn: a key under `issue` in the locale files. */
@@ -143,41 +150,69 @@ export function parseSimulation(raw: unknown): Simulation {
   };
 }
 
-const DECISIONS: readonly unknown[] = Object.values(REVIEW_DECISION);
+/** apps/api's names for a decision (`approved` / `rejected`), and the FE's own. */
+const DECISIONS: Record<string, ReviewResult["decision"]> = {
+  approved: REVIEW_DECISION.Approve,
+  rejected: REVIEW_DECISION.Reject,
+  [REVIEW_DECISION.Approve]: REVIEW_DECISION.Approve,
+  [REVIEW_DECISION.Reject]: REVIEW_DECISION.Reject,
+};
 const VERDICTS: readonly unknown[] = Object.values(GUARD_VERDICT);
-/** What a run can be after each decision: done, or still evaluated when the review was refused. */
-const APPROVAL_STATUSES: readonly unknown[] = [SIMULATION_STATUS.Committed, SIMULATION_STATUS.Evaluated];
-const REJECTION_STATUSES: readonly unknown[] = [SIMULATION_STATUS.Rejected, SIMULATION_STATUS.Evaluated];
 const textOrNull = (value: unknown) => value === null || value === undefined || isText(value);
 
+/** Checks the guard's answer on an approval; null when the guard did not run. */
+function parseGuard(raw: unknown): GuardResult | null {
+  if (raw === null || raw === undefined) return null;
+  const invalid = () => new InvalidTwinStateError("invalidField", { field: "guard" });
+  if (!isObject(raw) || !VERDICTS.includes(raw.verdict) || !isText(raw.reason_code) || !isText(raw.context_version)) {
+    throw invalid();
+  }
+  const policy = raw.policy_result ?? {};
+  if (!isObject(policy) || !textOrNull(policy.failed_gate)) throw invalid();
+  const checks = policy.checks ?? [];
+  if (!Array.isArray(checks)) throw invalid();
+  return {
+    verdict: raw.verdict as GuardResult["verdict"],
+    reason_code: raw.reason_code,
+    context_version: raw.context_version,
+    failed_gate: (policy.failed_gate as string | null | undefined) ?? null,
+    checks: checks.map((check: unknown) => {
+      if (!isObject(check) || !isText(check.gate) || typeof check.passed !== "boolean") throw invalid();
+      return { gate: check.gate, passed: check.passed, detail: typeof check.detail === "string" ? check.detail : "" };
+    }),
+  };
+}
+
 /**
- * Checks a `POST /simulations/{id}/approve|reject` answer against the FE's proposed
- * contract. An approval must carry the guard's verdict and a rejection none, and the run's
- * status must fit the decision; anything off throws.
+ * Checks a `POST /simulations/{id}/approve|reject` answer. An approval carries the guard's
+ * verdict; a rejection never reaches the guard, so any verdict on it is dropped. Only an
+ * approval the guard allowed can leave the run committed. Anything off throws.
  */
 export function parseReviewResult(raw: unknown): ReviewResult {
   if (!isObject(raw)) throw new InvalidTwinStateError("notObject");
   if (!isText(raw.simulation_id)) throw new InvalidTwinStateError("missingField", { field: "simulation_id" });
-  if (!DECISIONS.includes(raw.decision)) throw new InvalidTwinStateError("invalidField", { field: "decision" });
+  const decision = typeof raw.decision === "string" ? DECISIONS[raw.decision] : undefined;
+  if (!decision) throw new InvalidTwinStateError("invalidField", { field: "decision" });
   if (!STATUSES.includes(raw.status)) throw new InvalidTwinStateError("invalidField", { field: "status" });
-  const verdict = raw.verdict ?? null;
-  const approval = raw.decision === REVIEW_DECISION.Approve;
-  if (approval ? !VERDICTS.includes(verdict) : verdict !== null) {
-    throw new InvalidTwinStateError("invalidField", { field: "verdict" });
-  }
-  if (!(approval ? APPROVAL_STATUSES : REJECTION_STATUSES).includes(raw.status)) {
+  const approval = decision === REVIEW_DECISION.Approve;
+  const verdict = approval ? (raw.verdict ?? null) : null;
+  if (approval && !VERDICTS.includes(verdict)) throw new InvalidTwinStateError("invalidField", { field: "verdict" });
+  const allowed = verdict === GUARD_VERDICT.Allow;
+  if (raw.status === SIMULATION_STATUS.Committed ? !allowed : allowed && raw.status === SIMULATION_STATUS.Rejected) {
     throw new InvalidTwinStateError("invalidField", { field: "status" });
   }
-  for (const field of ["reason_code", "live_context_version"] as const) {
+  for (const field of ["reason_code", "live_context_version", "detail_code"] as const) {
     if (!textOrNull(raw[field])) throw new InvalidTwinStateError("invalidField", { field });
   }
   return {
     simulation_id: raw.simulation_id,
-    decision: raw.decision as ReviewResult["decision"],
+    decision,
     status: raw.status as ReviewResult["status"],
     verdict: verdict as ReviewResult["verdict"],
     reason_code: (raw.reason_code as string | null | undefined) ?? null,
     live_context_version: (raw.live_context_version as string | null | undefined) ?? null,
+    detail_code: (raw.detail_code as string | null | undefined) ?? null,
+    guard: approval ? parseGuard(raw.guard) : null,
   };
 }
 

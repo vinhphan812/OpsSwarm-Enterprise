@@ -19,7 +19,10 @@ export const ACTION_TYPE = {
 } as const;
 export type ActionType = (typeof ACTION_TYPE)[keyof typeof ACTION_TYPE];
 
-/** A person's answer to an evaluated proposal. TODO(BE): FE proposal for the review routes. */
+/**
+ * A person's answer to an evaluated proposal, as the FE names it. apps/api answers with
+ * `approved` / `rejected`; `parseReviewResult` maps those back to these.
+ */
 export const REVIEW_DECISION = {
   /** Send the proposal to the guard; the Executor commits it only on ALLOW. */
   Approve: "approve",
@@ -37,14 +40,33 @@ export const GUARD_VERDICT = {
 } as const;
 export type GuardVerdict = (typeof GUARD_VERDICT)[keyof typeof GUARD_VERDICT];
 
-/** Why a review was refused without a commit (`ReviewResult.reason_code`). TODO(BE): FE proposal for the review routes. */
+/**
+ * Why a review ended as it did (`ReviewResult.reason_code`). The upper-case codes are the ones
+ * apps/api serves (`DecisionReviewReasonCode`); the lower-case ones are the memory twin's.
+ */
 export const REVIEW_REASON = {
   /** Live is no longer at the proposal's `base_context_version`. Refuses an approval only. */
   LiveMoved: "live_moved",
   /** The run's proposal was replaced since it was reviewed. Refuses an approval and a rejection. */
   ProposalChanged: "proposal_changed",
+  /** The review was sent against a Live version that has moved on; checked before the guard runs. */
+  VersionMismatch: "VERSION_MISMATCH",
+  /** The guard found Live newer than the decision's context. */
+  VersionStale: "VERSION_STALE",
 } as const;
 export type ReviewReason = (typeof REVIEW_REASON)[keyof typeof REVIEW_REASON];
+
+/** The Decision Context Guard's gates, in the order it runs them (`GATES` in the apps/api guard). */
+export const GUARD_GATE = {
+  Integrity: "integrity",
+  Evidence: "evidence",
+  Context: "context",
+  Freshness: "freshness",
+  Feasibility: "feasibility",
+  Policy: "policy",
+} as const;
+export type GuardGate = (typeof GUARD_GATE)[keyof typeof GUARD_GATE];
+export const GUARD_GATES: readonly string[] = Object.values(GUARD_GATE);
 
 /**
  * KPI names a candidate is scored on: the fields of the `simulation-kpi-v1` evaluator
