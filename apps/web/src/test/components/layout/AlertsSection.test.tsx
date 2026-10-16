@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { MotionGlobalConfig } from "framer-motion";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AgentActivityPanel } from "@/components/layout/AgentActivityPanel";
+import { ALERTS_SHOWN } from "@/constants/app.constant";
 import { ANOMALY_SEVERITY, ANOMALY_TYPE } from "@/enums/anomaly.enum";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import { TWIN_STATUS } from "@/enums/twin.enum";
@@ -30,6 +31,7 @@ const p003 = () => demoAnomalies(state).anomalies.find((anomaly) => anomaly.sku 
 
 const alertList = () => screen.getByRole("list", { name: "Open alerts and opportunities" });
 const alertButton = (name: RegExp) => within(alertList()).getByRole("button", { name });
+const dialogList = () => screen.getByRole("list", { name: "All open alerts and opportunities" });
 
 beforeEach(() => {
   usePanelStore.setState({ open: true });
@@ -58,14 +60,37 @@ describe("Alerts & opportunities", () => {
     expect(item.getAttribute("data-severity")).toBe("medium");
   });
 
-  test("lists the worst first and marks every other kind as an alert", () => {
+  test("lists the worst few first, and every one in the Show all dialog", () => {
+    const total = demoAnomalies(state).anomalies.length;
     useAnomalyStore.getState().setAll(demoAnomalies(state));
     render(<AgentActivityPanel />);
-    const items = within(alertList()).getAllByRole("button");
-    expect(items).toHaveLength(demoAnomalies(state).anomalies.length);
+    const inPanel = within(alertList()).getAllByRole("button");
+    expect(inPanel).toHaveLength(ALERTS_SHOWN);
+    expect(inPanel[0].getAttribute("data-severity")).toBe("critical");
+
+    fireEvent.click(screen.getByRole("button", { name: `Show all ${total}` }));
+    const items = within(dialogList()).getAllByRole("button");
+    expect(items).toHaveLength(total);
     expect(items[0].getAttribute("data-severity")).toBe("critical");
     expect(items.at(-1)!.getAttribute("data-severity")).toBe("low");
     expect(items.filter((item) => item.getAttribute("data-category") === "opportunity")).toHaveLength(1);
+  });
+
+  test("the Show all dialog filters by kind and by search", () => {
+    useAnomalyStore.getState().setAll(demoAnomalies(state));
+    render(<AgentActivityPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /^Show all \d+$/ }));
+
+    fireEvent.click(screen.getByRole("radio", { name: /Opportunities/ }));
+    const opportunities = within(dialogList()).getAllByRole("button");
+    expect(opportunities).toHaveLength(1);
+    expect(opportunities[0].getAttribute("data-category")).toBe("opportunity");
+
+    fireEvent.click(screen.getByRole("radio", { name: /All/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search title, SKU, or shelf" }), { target: { value: "p003" } });
+    expect(within(dialogList()).getAllByRole("button").map((item) => item.getAttribute("aria-label"))).toEqual([
+      expect.stringMatching(/P003/),
+    ]);
   });
 
   test("moves through the lifecycle as the correlated agent run goes on, and leaves once resolved", () => {
@@ -150,13 +175,15 @@ describe("Alerts & opportunities", () => {
     expect(screen.queryByText("No open alerts or opportunities.")).toBeNull();
   });
 
-  test("an alert about a whole shelf focuses that shelf", () => {
+  test("an alert about a whole shelf, picked in the dialog, focuses that shelf and closes the dialog", async () => {
     useAnomalyStore.getState().setAll(demoAnomalies(state));
     render(<AgentActivityPanel />);
-    const item = alertButton(/Shelf A02 breaks its planogram/);
+    fireEvent.click(screen.getByRole("button", { name: /^Show all \d+$/ }));
+    const item = within(dialogList()).getByRole("button", { name: /Shelf A02 breaks its planogram/ });
     expect(within(item).getByText("Shelf A02")).toBeTruthy();
     fireEvent.click(item);
     expect(useUiStore.getState()).toMatchObject({ selectedEntityId: "A02", selectedEntityType: ENTITY_TYPE.Shelf });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   test("shows an anomaly as apps/api serves it today: detector title and description, no run to follow", () => {

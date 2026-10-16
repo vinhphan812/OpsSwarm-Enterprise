@@ -7,10 +7,12 @@ import type { SimulationReviewer } from "@/core/twin/simulationReview";
 import { ACTION_TYPE, REVIEW_DECISION } from "@/enums/simulation.enum";
 import { useProposalChanges, useShownSimulation } from "@/hooks/activeTwin.hook";
 import { useSimulationReview } from "@/hooks/simulationReview.hook";
+import { useGuardStore } from "@/state/guard.store";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { SimulationAction } from "@/types/simulation.type";
 import { CandidatePanel } from "./CandidatePanel";
+import { GuardCard } from "./GuardCard";
 
 /** One action as the run serves it, so the reviewer sees what Accept would commit. */
 function useActionLabel() {
@@ -63,14 +65,15 @@ function ProposalActions({ actions }: { actions: SimulationAction[] }) {
  * While the Simulation view is on: a frame around the 3D view and a label naming the run,
  * the live state it started from, its proposed actions, and that nothing in it has been
  * executed. Says so when Live has moved on since. With a `reviewer`, an evaluated run gets
- * Accept and Reject, which only send the review; see `useSimulationReview`. Renders
- * nothing in the Live view.
+ * Accept and Reject, which only send the review; see `useSimulationReview`. Once the run
+ * has been approved, the guard's answer shows under it. Renders nothing in the Live view.
  */
 export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationReviewer | null }) {
   const { t } = useTranslation();
   const simulation = useShownSimulation();
   const liveVersion = useTwinStore((state) => state.live?.context_version ?? null);
   const { review, pending, settled, canReview } = useSimulationReview(reviewer, simulation);
+  const guardReview = useGuardStore((state) => state.last);
   if (!simulation) return null;
 
   const behind = liveVersion !== null && isNewerVersion(liveVersion, simulation.base_context_version);
@@ -123,6 +126,11 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
                 {t("simulation.review.accept")}
               </Button>
             </Tooltip>
+          </div>
+        ) : null}
+        {guardReview?.result.simulation_id === simulation.simulation_id ? (
+          <div className="simulation-banner-guard">
+            <GuardCard review={guardReview} />
           </div>
         ) : null}
         <CandidatePanel />

@@ -433,7 +433,7 @@ body {
   color: var(--color-ink-muted);
 }
 
-/* Alerts & opportunities, above the timeline. Capped so the timeline stays in view. */
+/* Alerts & opportunities, above the timeline. Capped by count, not height: no scroll box inside the panel. */
 .alerts-section {
   margin-bottom: 18px;
 }
@@ -442,11 +442,27 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 280px;
   margin: 0;
   padding: 0;
-  overflow: auto;
   list-style: none;
+}
+
+.alerts-more {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: none;
+  border: 1px dashed var(--color-line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.alerts-more:hover {
+  border-color: var(--color-line-strong);
 }
 
 .alert-item {
@@ -912,6 +928,148 @@ tr[data-open="true"] .receipt-caret {
   flex: 0 0 auto;
   gap: 8px;
   margin-left: auto;
+}
+
+/* The guard's answer under the run details, a row of its own like the candidate panel. */
+.simulation-banner-guard {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* ---- Decision Context Guard: verdict, reason, and the gates it ran ---- */
+.guard-card {
+  --verdict-color: var(--color-accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--verdict-color);
+  border-radius: 10px;
+}
+
+.guard-card[data-verdict="ALLOW"] {
+  --verdict-color: var(--color-good);
+}
+
+.guard-card[data-verdict="REFRESH_REQUIRED"] {
+  --verdict-color: var(--color-warning);
+}
+
+.guard-card[data-verdict="DENY"] {
+  --verdict-color: var(--color-anomaly-high);
+}
+
+.guard-card[data-verdict="HUMAN_REVIEW"] {
+  --verdict-color: var(--color-series-1);
+}
+
+.guard-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.guard-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-soft);
+}
+
+.guard-card-verdict {
+  padding: 1px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--verdict-color);
+  background: color-mix(in srgb, var(--verdict-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--verdict-color) 45%, transparent);
+  border-radius: 999px;
+}
+
+.guard-card-meta {
+  margin: 0;
+  color: var(--color-ink-muted);
+}
+
+.guard-card-reason,
+.guard-card-outcome {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.guard-card-versions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.guard-card-versions span {
+  font-weight: 400;
+  color: var(--color-ink-soft);
+}
+
+.guard-card-gates {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guard-card-gates li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 2px 8px;
+}
+
+.guard-gate-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.guard-card-gates li[data-state="passed"] .guard-gate-icon {
+  color: var(--color-good);
+}
+
+.guard-card-gates li[data-state="failed"] {
+  font-weight: 600;
+}
+
+.guard-card-gates li[data-state="failed"] .guard-gate-icon,
+.guard-card-gates li[data-state="failed"] .guard-gate-state {
+  color: var(--verdict-color);
+}
+
+.guard-card-gates li[data-state="notRun"] {
+  color: var(--color-ink-faint);
+}
+
+.guard-gate-state {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.guard-gate-detail {
+  grid-column: 2 / -1;
+  font-weight: 400;
+  color: var(--color-ink-soft);
 }
 
 /* Why the agent moved the camera: bottom center of the 3D view, clear of the camera help on the left. */
