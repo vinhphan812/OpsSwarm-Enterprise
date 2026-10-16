@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     # Off by default so tests and local runs do not call a model per event.
     autonomy_enabled: bool = Field(default=False)
 
+    # ── Automatic recovery (issue #55) ─────────────────────────────────────
+    # When true, the Executor attempts a bounded inverse action after a
+    # Verifier regression. Off by default until G06 submission gate has
+    # reproducible evidence. See ADR 0039 and `recovery.py`.
+    recovery_auto_enabled: bool = Field(default=False)
+
     # ── Logging ──────────────────────────────────────────────────────────────
     log_level: str = Field(default="INFO")
 

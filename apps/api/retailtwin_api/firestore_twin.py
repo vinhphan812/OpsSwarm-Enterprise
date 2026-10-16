@@ -208,6 +208,11 @@ class InventoryDocument(BaseModel):
     backroom_quantity: int = Field(ge=0)
     version: int = Field(ge=1)
     updated_at: datetime
+    # Optional ceiling used by the recovery commit port to refuse an inverse
+    # ``deplete_shelf`` that would push the backroom past its capacity. None
+    # means "no ceiling tracked by the Live Twin"; the inverse still validates
+    # shelf subtraction under the same No-Stale-Commit path.
+    backroom_capacity: int | None = Field(default=None, ge=0)
 
     def to_product_inventory(self) -> dict[str, Any]:
         return {
@@ -231,6 +236,7 @@ class InventorySeed(BaseModel):
     facings: int = Field(ge=0)
     shelf_quantity: int = Field(ge=0)
     backroom_quantity: int = Field(ge=0)
+    backroom_capacity: int | None = Field(default=None, ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +388,17 @@ def _opt_string_field(fields: dict[str, _FirestoreField], name: str) -> str | No
     return f.stringValue
 
 
+def _opt_int_field(fields: dict[str, _FirestoreField], name: str) -> int | None:
+    """Read an optional integer field; ``None`` when the document does not carry it."""
+    f = fields.get(name)
+    if f is None or f.integerValue is None:
+        return None
+    try:
+        return int(f.integerValue)
+    except ValueError as exc:
+        raise TwinUnavailable(f"Document field {name!r} is not a valid integer.") from exc
+
+
 def _commit_update_time(body: str) -> str:
     try:
         payload = json.loads(body)
@@ -407,6 +424,7 @@ def _parse_inventory_doc(doc: _FirestoreDocument) -> InventoryDocument:
         backroom_quantity=_int_field(fields, "backroom_quantity"),
         version=_int_field(fields, "version"),
         updated_at=_timestamp(_opt_string_field(fields, "updated_at") or "1970-01-01T00:00:00Z"),
+        backroom_capacity=_opt_int_field(fields, "backroom_capacity"),
     )
 
 
@@ -636,24 +654,20 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
         # Upsert all seed items as inventory subcollection documents.
         for seed in items:
             inv_doc = _doc_name(self._config, COLLECTION_STORE, store_id, "inventory", seed.sku)
-            writes.append(
-                {
-                    "update": {
-                        "name": inv_doc,
-                        "fields": {
-                            "store_id": {"stringValue": store_id},
-                            "sku": {"stringValue": seed.sku},
-                            "shelf_id": {"stringValue": seed.shelf_id},
-                            "slot_id": {"stringValue": seed.slot_id},
-                            "facings": {"integerValue": str(seed.facings)},
-                            "shelf_quantity": {"integerValue": str(seed.shelf_quantity)},
-                            "backroom_quantity": {"integerValue": str(seed.backroom_quantity)},
-                            "version": {"integerValue": "1"},
-                            "updated_at": {"timestampValue": now.isoformat()},
-                        },
-                    }
-                }
-            )
+            seed_fields: dict[str, Any] = {
+                "store_id": {"stringValue": store_id},
+                "sku": {"stringValue": seed.sku},
+                "shelf_id": {"stringValue": seed.shelf_id},
+                "slot_id": {"stringValue": seed.slot_id},
+                "facings": {"integerValue": str(seed.facings)},
+                "shelf_quantity": {"integerValue": str(seed.shelf_quantity)},
+                "backroom_quantity": {"integerValue": str(seed.backroom_quantity)},
+                "version": {"integerValue": "1"},
+                "updated_at": {"timestampValue": now.isoformat()},
+            }
+            if seed.backroom_capacity is not None:
+                seed_fields["backroom_capacity"] = {"integerValue": str(seed.backroom_capacity)}
+            writes.append({"update": {"name": inv_doc, "fields": seed_fields}})
 
         payload: dict[str, Any] = {"writes": writes}
         response = self._call(
@@ -855,7 +869,7 @@ class _UrllibAuthRequest:
 
 
 def _inventory_fields(item: InventoryDocument, now: datetime) -> dict[str, Any]:
-    return {
+    fields: dict[str, Any] = {
         "store_id": {"stringValue": item.store_id},
         "sku": {"stringValue": item.sku},
         "shelf_id": {"stringValue": item.shelf_id},
@@ -866,6 +880,9 @@ def _inventory_fields(item: InventoryDocument, now: datetime) -> dict[str, Any]:
         "version": {"integerValue": str(item.version)},
         "updated_at": {"timestampValue": now.isoformat()},
     }
+    if item.backroom_capacity is not None:
+        fields["backroom_capacity"] = {"integerValue": str(item.backroom_capacity)}
+    return fields
 
 
 def _bump_version(version: str) -> str:
@@ -939,6 +956,7 @@ class InMemoryTwinRepository(LiveTwinRepository):
                 backroom_quantity=item.backroom_quantity,
                 version=item.version,
                 updated_at=datetime.now(timezone.utc),
+                backroom_capacity=item.backroom_capacity,
             )
             store[item.sku] = doc
             return doc
@@ -963,6 +981,7 @@ class InMemoryTwinRepository(LiveTwinRepository):
                     backroom_quantity=seed.backroom_quantity,
                     version=1,
                     updated_at=now,
+                    backroom_capacity=seed.backroom_capacity,
                 )
 
     def reset(self, store_id: str) -> None:
