@@ -14,6 +14,10 @@ class HealthResponse(BaseModel):
     app_env: str
     store_id: str
     fixture_loaded: bool
+    # ADR 0025: the process reports the canonical SemVer plus the build commit.
+    # The git SHA is informational build metadata; the SemVer drives compatibility.
+    version: str
+    git_sha: str
 
 
 class ReadyResponse(BaseModel):
@@ -23,6 +27,16 @@ class ReadyResponse(BaseModel):
     service: Literal["retailtwin-api"]
     store_id: str
     correlation_id: str
+
+
+class VersionResponse(BaseModel):
+    """``GET /version`` payload — the canonical SemVer plus build metadata."""
+
+    version: str
+    git_sha: str
+    build_time: str
+    service: Literal["retailtwin-api"]
+    full_version: str
 
 
 class ProductInventory(BaseModel):

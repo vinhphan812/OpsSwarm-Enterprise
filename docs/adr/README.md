@@ -55,4 +55,5 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0021](0021-require-one-gemini-inventory-read.md) | Require one Gemini inventory read | Accepted |
 | [0022](0022-draw-demo-stock-with-glb-models.md) | Draw demo stock with GLB models, primitives as the fallback | Accepted |
 | [0023](0023-start-investigations-from-accepted-sales.md) | Start investigations from accepted sales | Accepted |
+| [0025](0025-canonical-application-versioning.md) | Canonicalize application versioning across API and Web | Accepted |
 | [0026](0026-supply-chain-security-gates.md) | Add lightweight supply-chain and security gates for release artifacts | Accepted |
