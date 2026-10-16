@@ -30,6 +30,9 @@ export const selectionColor = () => themeColor("--color-selection", "#ffffff");
 /** Outline and slot light of a recent change in the scene, from the `--color-change` theme token. */
 export const changeColor = () => themeColor("--color-change", "#3987e5");
 
+/** The line from a moved product's old slot to its new one, from the `--color-move` theme token. */
+export const moveColor = () => themeColor("--color-move", "#9d5cff");
+
 const ANOMALY_FALLBACK: Record<AnomalySeverity, string> = {
   [ANOMALY_SEVERITY.Critical]: "#e5177e",
   [ANOMALY_SEVERITY.High]: "#ff4d3d",

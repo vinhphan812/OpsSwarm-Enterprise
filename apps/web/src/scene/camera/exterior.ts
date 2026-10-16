@@ -1,4 +1,6 @@
-import { EXTERIOR_VIEW, MAX_DISTANCE_FACTOR } from "@/constants/camera.constant";
+import { EXTERIOR_VIEW, MAX_DISTANCE_FACTOR, ORBIT_TARGET } from "@/constants/camera.constant";
+import type { Tuple3 } from "@/types/scene.type";
+import type { FocusView } from "./focus";
 
 /** The camera controls' distance and zoom-out cap, as `CameraControls` has them. */
 type Zoom = { distance: number; maxDistance: number };
@@ -18,3 +20,12 @@ export function exteriorLevel({ distance, maxDistance }: Zoom): number {
 
 /** At or past this level the store counts as closed up: every wall stands. */
 export const EXTERIOR_WALLS_AT = 0.5;
+
+/**
+ * Where the camera goes when the Simulation view opens: back to `home`, the view the app opens
+ * on (the whole store, open, from the usual angle). Null when the store is already open (no
+ * roof showing), so a camera the user has brought in stays where it is.
+ */
+export function simulationView(home: Tuple3, zoom: Zoom): FocusView | null {
+  return exteriorLevel(zoom) > 0 ? { position: home, target: ORBIT_TARGET } : null;
+}

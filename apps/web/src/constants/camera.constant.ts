@@ -23,6 +23,7 @@ export const MAX_DISTANCE_FACTOR = 2.4;
  */
 export const EXTERIOR_VIEW = { from: 1.25, to: 1.6 } as const;
 
+
 export const INITIAL_CAMERA_POSITION: Tuple3 = [
   ORBIT_TARGET[0] + INITIAL_CAMERA_OFFSET[0],
   ORBIT_TARGET[1] + INITIAL_CAMERA_OFFSET[1],

@@ -1,6 +1,13 @@
-import { Box3, Matrix4, Quaternion, Vector3 } from "three";
-import { MOVE_ARC_HEIGHT, MOVE_ARRIVAL_FLASH, MOVE_SLOT_HANDOFF } from "@/constants/scene.constant";
-import { MOVE_MARK_IN_MS, MOVE_MARK_OUT_MS, MOVE_TWEEN_MS } from "@/constants/twin.constant";
+import { Box3, Matrix4, QuadraticBezierCurve3, Quaternion, Vector3 } from "three";
+import {
+  MOVE_ARC_HEIGHT,
+  MOVE_ARRIVAL_FLASH,
+  MOVE_ARROW_CLEARANCE,
+  MOVE_ARROW_LIFT,
+  MOVE_ARROW_RISE,
+  MOVE_SLOT_HANDOFF,
+} from "@/constants/scene.constant";
+import { CHANGE_CUE_MS, MOVE_MARK_IN_MS, MOVE_MARK_OUT_MS, MOVE_TWEEN_MS } from "@/constants/twin.constant";
 import { ENTITY_TYPE } from "@/enums/scene.enum";
 import type { ProductMove, SlotRef } from "@/core/twin/stateDiff";
 import { entityMatrix } from "@/scene/utils/transform";
@@ -12,7 +19,8 @@ import { surfaceMatrix, surfacesOf } from "./surfaces";
  * The scene's cue for the moves of a recent change. `offsets` take each moved product's
  * items from their destination back to their source slot; `ghost` is what stood at the
  * source before the move, and `sources` the frame of each source slot's surface, to
- * outline it in; `fromSlots` and `toSlots` are the source and destination slots to light up.
+ * outline it in; `fromSlots` and `toSlots` are the source and destination slots to light up,
+ * and `arrows` run from each source slot to its destination.
  */
 export type MoveCue = {
   at: number;
@@ -21,6 +29,7 @@ export type MoveCue = {
   sources: Map<string, Matrix4>;
   fromSlots: Matrix4[];
   toSlots: Matrix4[];
+  arrows: QuadraticBezierCurve3[];
 };
 
 /** How thick the light laid over a moved product's slots is, in meters. */
@@ -46,6 +55,18 @@ function slotCenter({ toWorld, slot }: SlotFrame): Vector3 {
   return new Vector3(slot.offset, 0, 0).applyMatrix4(toWorld);
 }
 
+/**
+ * An arc from just above one slot to just above another, high enough over both to read
+ * against the shelves, and higher the farther apart they are.
+ */
+export function moveArrow(from: Vector3, to: Vector3): QuadraticBezierCurve3 {
+  const start = from.clone().setY(from.y + MOVE_ARROW_LIFT);
+  const end = to.clone().setY(to.y + MOVE_ARROW_LIFT);
+  const control = start.clone().add(end).multiplyScalar(0.5);
+  control.y = Math.max(start.y, end.y) + MOVE_ARROW_CLEARANCE + MOVE_ARROW_RISE * start.distanceTo(end);
+  return new QuadraticBezierCurve3(start, control, end);
+}
+
 /** A thin slab over the whole slot, just above its surface. */
 function slotLight({ toWorld, slot, surface }: SlotFrame): Matrix4 {
   const local = new Matrix4().compose(
@@ -69,6 +90,7 @@ export function moveCueOf(store: StoreFixture, change: RecentChange | null): Mov
   const sources = new Map<string, Matrix4>();
   const fromSlots: Matrix4[] = [];
   const toSlots: Matrix4[] = [];
+  const arrows: QuadraticBezierCurve3[] = [];
   for (const move of change.diff.moved) {
     const product = placed.get(move.sku);
     if (product?.shelfId !== move.to.shelf_id || product.slotId !== move.to.slot_id) continue;
@@ -80,10 +102,11 @@ export function moveCueOf(store: StoreFixture, change: RecentChange | null): Mov
     sources.set(move.sku, from.toWorld);
     fromSlots.push(slotLight(from));
     toSlots.push(slotLight(to));
+    arrows.push(moveArrow(slotCenter(from), slotCenter(to)));
   }
   if (shown.length === 0) return null;
   const ghost = storeBefore(store, change, new Set(shown.map((move) => move.sku)));
-  return { at: change.at, offsets, ghost, sources, fromSlots, toSlots };
+  return { at: change.at, offsets, ghost, sources, fromSlots, toSlots, arrows };
 }
 
 /** `store`'s layout with the products in `skus` as they stood before `change`; any other product is left out. */
@@ -152,12 +175,14 @@ export function ghostOutlines(cue: MoveCue, items: { matrix: Matrix4; productId:
 }
 
 /**
- * True while the outline and slot lights of a move appeared at `at` still show at `now`:
- * while the items travel, then `MOVE_MARK_OUT_MS` more to fade out. With reduced motion
- * there is no fade, so they go the moment the items would have arrived.
+ * True while the ghost, arrow and slot lights of a move appeared at `at` still show at
+ * `now`: while the items travel, `hold` more at full strength (the Simulation view's
+ * `MOVE_MARK_HOLD_SIMULATION_MS`, else none), then `MOVE_MARK_OUT_MS` to fade out. With reduced
+ * motion nothing moves or fades: they hold still, the final state marked, for as long as
+ * the change cue lasts (`CHANGE_CUE_MS`).
  */
-export function marksShown(at: number, now: number, motion = true): boolean {
-  return now - at < MOVE_TWEEN_MS + (motion ? MOVE_MARK_OUT_MS : 0);
+export function marksShown(at: number, now: number, motion = true, hold = 0): boolean {
+  return now - at < (motion ? MOVE_TWEEN_MS + hold + MOVE_MARK_OUT_MS : CHANGE_CUE_MS);
 }
 
 /** How strongly each mark of a move shows, from 0 to 1; `flash` is the destination's extra glow. */
@@ -168,20 +193,21 @@ export const STEADY_MARKS: MarkLevels = { ghost: 1, from: 1, to: 1, flash: 0 };
 
 /**
  * The marks of a move appeared at `at`, at `now`. They fade in over `MOVE_MARK_IN_MS`.
- * While the items travel the light hands over: the source slot dims and the destination
- * brightens. When the items land the destination flashes, and everything fades out over
- * `MOVE_MARK_OUT_MS`.
+ * While the items travel the light hands over: the source dims and the destination
+ * brightens. When the items land the destination flashes for `MOVE_MARK_OUT_MS`; the marks
+ * hold for `hold` more, then fade out over `MOVE_MARK_OUT_MS`.
  */
-export function markLevels(at: number, now: number): MarkLevels {
+export function markLevels(at: number, now: number, hold = 0): MarkLevels {
   const elapsed = now - at;
   const fadeIn = clamp01(elapsed / MOVE_MARK_IN_MS);
-  const fadeOut = 1 - clamp01((elapsed - MOVE_TWEEN_MS) / MOVE_MARK_OUT_MS);
+  const fadeOut = 1 - clamp01((elapsed - MOVE_TWEEN_MS - hold) / MOVE_MARK_OUT_MS);
   const level = fadeIn * fadeOut;
   const done = easeInOut(moveProgress(at, now));
+  const landed = elapsed - MOVE_TWEEN_MS;
   return {
     ghost: level,
     from: level * (1 - MOVE_SLOT_HANDOFF * done),
     to: level * (1 - MOVE_SLOT_HANDOFF * (1 - done)),
-    flash: elapsed >= MOVE_TWEEN_MS ? MOVE_ARRIVAL_FLASH * fadeOut : 0,
+    flash: landed >= 0 ? MOVE_ARRIVAL_FLASH * level * (1 - clamp01(landed / MOVE_MARK_OUT_MS)) : 0,
   };
 }

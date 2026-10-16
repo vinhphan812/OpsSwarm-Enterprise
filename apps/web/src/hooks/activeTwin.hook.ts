@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { aiChanges, type AiChanges } from "@/core/twin/aiChanges";
 import { diffStates, isEmptyDiff, type StateDiff } from "@/core/twin/stateDiff";
 import { useAnomalyStore } from "@/state/anomaly.store";
 import { activeState, shownSimulation, useTwinStore } from "@/state/twin.store";
@@ -31,6 +32,13 @@ export function useProposalChanges(): StateDiff | null {
     const diff = diffStates(live, simulation.state);
     return isEmptyDiff(diff) ? null : diff;
   }, [simulation, live]);
+}
+
+/** The AI CHANGES of the proposal on screen against Live; null in the Live view. */
+export function useProposalAiChanges(): AiChanges | null {
+  const simulation = useShownSimulation();
+  const live = useTwinStore((twin) => twin.live);
+  return useMemo(() => (simulation && live ? aiChanges(live, simulation.state) : null), [simulation, live]);
 }
 
 /**

@@ -4,8 +4,14 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { Matrix4, Vector3, type InstancedMesh, type Object3D } from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProductInspector } from "@/components/twin/ProductInspector";
-import { MOVE_ARC_HEIGHT } from "@/constants/scene.constant";
-import { MOVE_MARK_IN_MS, MOVE_MARK_OUT_MS, MOVE_TWEEN_MS } from "@/constants/twin.constant";
+import { MOVE_ARC_HEIGHT, MOVE_ARROW_LIFT } from "@/constants/scene.constant";
+import {
+  CHANGE_CUE_MS,
+  MOVE_MARK_HOLD_SIMULATION_MS,
+  MOVE_MARK_IN_MS,
+  MOVE_MARK_OUT_MS,
+  MOVE_TWEEN_MS,
+} from "@/constants/twin.constant";
 import { diffStates } from "@/core/twin/stateDiff";
 import { TWIN_STATUS } from "@/enums/twin.enum";
 import { VIEW_MODE } from "@/enums/ui.enum";
@@ -14,7 +20,16 @@ import { demoStoreState } from "@/fixtures/demo/store";
 import { toSceneStore } from "@/scene/layout";
 import { TwinStoreContents } from "@/scene/StoreScene";
 import { buildStock } from "@/scene/entities/stock/Stock";
-import { ghostOutlines, markLevels, marksShown, moveCueOf, moveProgress, tweenMatrix } from "@/scene/entities/stock/moveCue";
+import { lineLevel } from "@/scene/entities/stock/MoveArrows";
+import {
+  ghostOutlines,
+  markLevels,
+  marksShown,
+  moveArrow,
+  moveCueOf,
+  moveProgress,
+  tweenMatrix,
+} from "@/scene/entities/stock/moveCue";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 
@@ -50,6 +65,33 @@ describe("moveCueOf", () => {
     expect(cue.ghost.products.map((product) => product.productId).sort()).toEqual(MOVED);
   });
 
+  it("draws one arrow per move, from above the source slot to above the destination", () => {
+    const cue = moveCueOf(simulated, change)!;
+    expect(cue.arrows).toHaveLength(MOVED.length);
+    for (const arrow of cue.arrows) {
+      expect(arrow.v0.distanceTo(arrow.v2)).toBeGreaterThan(0.1);
+      // The arc rises over both ends, so it reads against the shelves.
+      expect(arrow.v1.y).toBeGreaterThan(Math.max(arrow.v0.y, arrow.v2.y));
+    }
+  });
+
+  it("lifts an arrow's ends off the slots and raises it more for a longer move", () => {
+    const near = moveArrow(new Vector3(0, 1, 0), new Vector3(1, 1, 0));
+    const far = moveArrow(new Vector3(0, 1, 0), new Vector3(6, 1, 0));
+    expect(near.v0.y).toBeCloseTo(1 + MOVE_ARROW_LIFT);
+    expect(near.v2.y).toBeCloseTo(1 + MOVE_ARROW_LIFT);
+    expect(far.v1.y).toBeGreaterThan(near.v1.y);
+    expect(near.v1.x).toBeCloseTo(0.5);
+  });
+
+  it("fades a move's line out as the roof closes the store over it", () => {
+    expect(lineLevel(1, 0)).toBe(1);
+    expect(lineLevel(0.5, 0)).toBe(0.5);
+    expect(lineLevel(1, 0.5)).toBe(0.5);
+    // Zoomed out to a closed building: the line would float over the roof, so it is gone.
+    expect(lineLevel(1, 1)).toBe(0);
+  });
+
   it("shows nothing when the scene does not have the product where the move put it", () => {
     expect(moveCueOf(toSceneStore(live).store, change)).toBeNull();
     expect(moveCueOf(simulated, null)).toBeNull();
@@ -74,9 +116,22 @@ describe("moveCueOf", () => {
     expect(marksShown(1000, 1000)).toBe(true);
     expect(marksShown(1000, 1000 + MOVE_TWEEN_MS)).toBe(true);
     expect(marksShown(1000, 1000 + MOVE_TWEEN_MS + MOVE_MARK_OUT_MS)).toBe(false);
-    // Reduced motion has no fade: they go when the items would have arrived.
-    expect(marksShown(1000, 1000 + MOVE_TWEEN_MS - 1, false)).toBe(true);
-    expect(marksShown(1000, 1000 + MOVE_TWEEN_MS, false)).toBe(false);
+    // Reduced motion has no animation: the marks hold still, the final state marked, for the whole cue.
+    expect(marksShown(1000, 1000 + MOVE_TWEEN_MS + MOVE_MARK_OUT_MS, false)).toBe(true);
+    expect(marksShown(1000, 1000 + CHANGE_CUE_MS - 1, false)).toBe(true);
+    expect(marksShown(1000, 1000 + CHANGE_CUE_MS, false)).toBe(false);
+  });
+
+  it("holds the marks for `hold` before they fade, with the arrival flash still brief", () => {
+    const hold = MOVE_MARK_HOLD_SIMULATION_MS;
+    expect(MOVE_TWEEN_MS + hold + MOVE_MARK_OUT_MS).toBeLessThanOrEqual(CHANGE_CUE_MS);
+    expect(marksShown(1000, 1000 + MOVE_TWEEN_MS + MOVE_MARK_OUT_MS, true, hold)).toBe(true);
+    expect(marksShown(1000, 1000 + MOVE_TWEEN_MS + hold + MOVE_MARK_OUT_MS, true, hold)).toBe(false);
+    const holding = markLevels(1000, 1000 + MOVE_TWEEN_MS + hold - 1, hold);
+    expect(holding.ghost).toBe(1);
+    expect(holding.to).toBe(1);
+    expect(holding.flash).toBe(0);
+    expect(markLevels(1000, 1000 + MOVE_TWEEN_MS + hold + MOVE_MARK_OUT_MS / 2, hold).ghost).toBeCloseTo(0.5);
   });
 
   it("fades the marks in, hands the light from source to destination, flashes on arrival and fades out", () => {
@@ -179,17 +234,21 @@ describe("move cue in the scene", () => {
     const start = now;
     expect(scene.slotLights()).toBe(MOVED_SLOTS);
     expect(scene.find("stock-ghost-outline")).toHaveLength(MOVED.length);
+    expect(scene.find("stock-ghost-fill")).toHaveLength(MOVED.length);
+    expect(scene.find("stock-move-arrow")).toHaveLength(MOVED.length);
 
     await scene.frameAt(start + MOVE_TWEEN_MS / 2);
     expect(scene.p007()).toHaveLength(p007AtState.length);
     expect(atState(scene.p007())).toBe(false);
     expect(scene.marked()).toBe(true);
 
-    // The items land where the state puts them; the outline and lights then fade out.
+    // The items land where the state puts them; in the Simulation view the marks hold a while, then fade out.
     await scene.frameAt(start + MOVE_TWEEN_MS);
     expect(atState(scene.p007())).toBe(true);
     expect(scene.marked()).toBe(true);
     await scene.frameAt(start + MOVE_TWEEN_MS + MOVE_MARK_OUT_MS);
+    expect(scene.marked()).toBe(true);
+    await scene.frameAt(start + MOVE_TWEEN_MS + MOVE_MARK_HOLD_SIMULATION_MS + MOVE_MARK_OUT_MS);
     expect(scene.marked()).toBe(false);
   });
 
@@ -201,6 +260,12 @@ describe("move cue in the scene", () => {
     expect(atState(scene.p007())).toBe(true);
     expect(scene.slotLights()).toBe(MOVED_SLOTS);
     expect(scene.find("stock-ghost-").length).toBeGreaterThan(0);
+    expect(scene.find("stock-move-arrow")).toHaveLength(MOVED.length);
+    // No animation, but the final state stays marked after the tween would have ended.
+    const start = now;
+    await scene.frameAt(start + MOVE_TWEEN_MS + MOVE_MARK_OUT_MS);
+    expect(atState(scene.p007())).toBe(true);
+    expect(scene.marked()).toBe(true);
   });
 
   it("leaves Live alone while the Simulation view shows the move, and plays the move back on the way out", async () => {

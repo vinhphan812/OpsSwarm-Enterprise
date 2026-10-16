@@ -229,6 +229,13 @@ export const en = {
       pending: ", not reached",
     },
   },
+  aiChanges: {
+    title: "AI changes",
+    moved: "Moved",
+    facings: "Facings",
+    replenished: "Replenished",
+    row: "{{sku}}, {{kind}} {{detail}}. Show it in 3D",
+  },
   alerts: {
     section: "Alerts & opportunities",
     list: "Open alerts and opportunities",
@@ -309,7 +316,6 @@ export const en = {
     changes: {
       count_one: "{{count}} change",
       count_other: "{{count}} changes",
-      focus: "Show {{sku}} in 3D",
       focusAction: "{{action}}. Show {{sku}} in 3D",
     },
     review: {
