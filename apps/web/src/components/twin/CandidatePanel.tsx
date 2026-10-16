@@ -11,7 +11,7 @@ import type { CandidateKPI } from "@/types/simulation.type";
 import { DemoBadge } from "./DemoBadge";
 
 /** A served number as written, padded to two decimals: 0.4 is "0.40", 0.125 stays "0.125". */
-function formatNumber(value: number, sign = false): string {
+export function formatNumber(value: number, sign = false): string {
   const text = value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 10 });
   return sign && value > 0 ? `+${text}` : text;
 }

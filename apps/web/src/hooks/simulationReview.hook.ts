@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/core/notify";
+import { impactOf } from "@/core/twin/aiImpact";
 import type { SimulationReviewer } from "@/core/twin/simulationReview";
 import {
   GUARD_VERDICT,
@@ -11,7 +12,8 @@ import {
 } from "@/enums/simulation.enum";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { useGuardStore } from "@/state/guard.store";
-import { useTwinStore } from "@/state/twin.store";
+import { useImpactStore } from "@/state/impact.store";
+import { selectedCandidate, useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation } from "@/types/simulation.type";
 
@@ -24,7 +26,8 @@ const reviewKey = (simulation: Simulation) => `${simulation.simulation_id}@${sim
  * evaluated run can be reviewed once; after a committed or rejected answer it waits for
  * the run to close. A review is of one proposal (`state.context_version`), so a proposal
  * replaced under the same run id can be reviewed again. The guard's answer to an approval
- * is kept in `useGuardStore` for the guard card.
+ * is kept in `useGuardStore` for the guard card. An executed approval records its AI
+ * Impact: the accepted candidate's KPIs against the baseline's, or none without a candidate.
  */
 export function useSimulationReview(reviewer: SimulationReviewer | null, simulation: Simulation | null) {
   const { t } = useTranslation();
@@ -74,11 +77,18 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
   const review = async (decision: ReviewDecision) => {
     if (!reviewer || !simulation || pending) return;
     setPending(decision);
+    // What was on screen when the review was sent: the run closes once it is committed.
+    const twin = useTwinStore.getState();
+    const candidateId = selectedCandidate(twin)?.candidate_id ?? null;
+    const candidates = twin.candidates;
     try {
       const result = await reviewer(simulation, decision);
       announce(result, simulation.base_context_version);
       if (result.decision === REVIEW_DECISION.Approve) {
         useGuardStore.getState().record({ result, base_context_version: simulation.base_context_version });
+      }
+      if (result.verdict === GUARD_VERDICT.Allow && result.status === SIMULATION_STATUS.Committed) {
+        useImpactStore.getState().record(impactOf(candidates, simulation.simulation_id, candidateId));
       }
       // The rejected proposal leaves the screen; its changes go back to Live in 3D.
       if (result.status === SIMULATION_STATUS.Rejected && useUiStore.getState().viewMode === VIEW_MODE.Simulation) {

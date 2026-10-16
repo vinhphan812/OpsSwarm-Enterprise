@@ -18,3 +18,9 @@ export const REVENUE_TODAY_REFRESH_MS = 60_000;
 
 /** How old the last good read of today's revenue may get before the KPI strip stops showing it, in ms. */
 export const REVENUE_TODAY_STALE_MS = 5 * 60_000;
+
+/** How long the AI Impact toast stays over the 3D view, in ms. */
+export const IMPACT_TOAST_MS = 8000;
+
+/** KPI rows the AI Impact toast shows, in served order; the card in the panel shows them all. */
+export const IMPACT_TOAST_ROWS = 3;

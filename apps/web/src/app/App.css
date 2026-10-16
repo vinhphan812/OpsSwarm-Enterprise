@@ -154,6 +154,20 @@ body {
   color: var(--color-ink-soft);
 }
 
+/* A section's title on the left, its controls (Follow agent) on the right, on one row. */
+.activity-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.activity-section-head .activity-section-title {
+  margin: 0;
+}
+
 .activity-count {
   min-width: 20px;
   padding: 1px 6px;
@@ -1209,6 +1223,159 @@ tr[data-open="true"] .receipt-caret {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-accent);
+}
+
+/* ─── AI Impact: baseline vs the accepted plan, in the panel and briefly over the 3D view ─── */
+
+.impact-card,
+.impact-toast {
+  padding: 10px 12px;
+  font-size: 13px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-left: 3px solid var(--color-good);
+  border-radius: 8px;
+}
+
+.impact-toast {
+  position: absolute;
+  bottom: 64px;
+  left: 50%;
+  z-index: 11;
+  width: min(420px, calc(100% - 32px));
+  translate: -50% 0;
+  background: color-mix(in srgb, var(--color-panel) 94%, transparent);
+  border-color: var(--color-line-strong);
+  border-left-color: var(--color-good);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.impact-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.impact-title {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.impact-plan {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.impact-toast-close {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-ink-muted);
+  cursor: pointer;
+}
+
+.impact-columns {
+  display: flex;
+  justify-content: flex-end;
+  gap: 18px;
+  padding-right: 58px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+.impact-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 2px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.impact-row {
+  display: grid;
+  grid-template-columns: 1fr auto 52px;
+  align-items: center;
+  gap: 10px;
+}
+
+.impact-kpi {
+  color: var(--color-ink-soft);
+}
+
+.impact-values {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+}
+
+.impact-after {
+  font-weight: 650;
+  color: var(--color-ink);
+}
+
+.impact-delta {
+  justify-self: end;
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-muted);
+}
+
+.impact-delta[data-trend="better"] {
+  color: var(--color-good);
+}
+
+.impact-delta[data-trend="worse"] {
+  color: var(--color-alert);
+}
+
+.impact-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.impact-note {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-ink-muted);
+}
+
+.impact-verifier {
+  margin: 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-line);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-ink-muted);
+}
+
+.impact-verifier[data-status="REGRESSION"] {
+  color: var(--color-alert);
+}
+
+.impact-compare {
+  flex: none;
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 /* ─── Candidate Panel ─────────────────────────────────────────────────────────── */
