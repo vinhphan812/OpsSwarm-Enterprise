@@ -70,6 +70,16 @@ export type Candidate = {
   evaluator_version: string;
   /** Provenance of this candidate. */
   provenance: string;
+  /**
+   * True on the candidate the agent recommends; the panel stars it. Absent or false on the
+   * others. TODO(BE): FE proposal (#83, #207); the FE never picks one itself.
+   */
+  recommended?: boolean;
+  /**
+   * The agent's one-line reason for recommending this candidate, shown as "Why AI chose";
+   * null or absent when none is served. TODO(BE): FE proposal (#83, #207).
+   */
+  rationale?: string | null;
 };
 
 /** `GET /simulations/{simulation_id}/candidates`. */

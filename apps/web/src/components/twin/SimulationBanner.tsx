@@ -28,23 +28,29 @@ function useActionLabel() {
 }
 
 /**
- * The products the proposal on screen changes against Live, outlined in 3D. Picking one
- * selects it, and the camera flies to it. No KPI values here.
+ * The actions of the proposal on screen, one tag each, under how many products it changes
+ * against Live (those are outlined in 3D). Picking a tag selects its product, and the
+ * camera flies to it. No KPI values here.
  */
-function ProposalChanges() {
+function ProposalActions({ actions }: { actions: SimulationAction[] }) {
   const { t } = useTranslation();
+  const actionLabel = useActionLabel();
   const changes = useProposalChanges();
   const select = useUiStore((state) => state.select);
-  const skus = changes ? changedSkus(changes) : [];
-  if (!skus.length) return null;
+  const count = changes ? changedSkus(changes).length : 0;
+  if (!actions.length) return null;
   return (
     <div className="simulation-banner-diff">
-      <span className="simulation-banner-meta">{t("simulation.changes.count", { count: skus.length })}</span>
-      <ul className="simulation-banner-changes" aria-label={t("simulation.changes.count", { count: skus.length })}>
-        {skus.map((sku) => (
-          <li key={sku}>
-            <button type="button" aria-label={t("simulation.changes.focus", { sku })} onClick={() => select(sku)}>
-              {sku}
+      {count ? <span className="simulation-banner-meta">{t("simulation.changes.count", { count })}</span> : null}
+      <ul className="simulation-banner-changes" aria-label={t("simulation.actions.label")}>
+        {actions.map((action, index) => (
+          <li key={`${action.type}-${action.sku}-${index}`}>
+            <button
+              type="button"
+              aria-label={t("simulation.changes.focusAction", { action: actionLabel(action), sku: action.sku })}
+              onClick={() => select(action.sku)}
+            >
+              {actionLabel(action)}
             </button>
           </li>
         ))}
@@ -62,7 +68,6 @@ function ProposalChanges() {
  */
 export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationReviewer | null }) {
   const { t } = useTranslation();
-  const actionLabel = useActionLabel();
   const simulation = useShownSimulation();
   const liveVersion = useTwinStore((state) => state.live?.context_version ?? null);
   const { review, pending, settled, canReview } = useSimulationReview(reviewer, simulation);
@@ -86,14 +91,7 @@ export function SimulationBanner({ reviewer = null }: { reviewer?: SimulationRev
             {" · "}
             {t("simulation.basedOn", { version: simulation.base_context_version })}
           </span>
-          {simulation.actions.length ? (
-            <ul className="simulation-banner-changes" aria-label={t("simulation.actions.label")}>
-              {simulation.actions.map((action, index) => (
-                <li key={`${action.type}-${action.sku}-${index}`}>{actionLabel(action)}</li>
-              ))}
-            </ul>
-          ) : null}
-          <ProposalChanges />
+          <ProposalActions actions={simulation.actions} />
           {behind ? <span className="simulation-banner-stale">{t("simulation.liveMoved", { version: liveVersion })}</span> : null}
           {settled ? <span className="simulation-banner-meta">{t("simulation.review.waiting")}</span> : null}
         </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareCandidates, kpiDelta, kpiTrend } from "@/core/twin/candidateComparison";
+import { compareCandidates, kpiDelta, kpiTrend, planLetter } from "@/core/twin/candidateComparison";
 import { demoStoreState } from "@/fixtures/demo/store";
 import { BASELINE_CANDIDATE_ID, KPI_NAME, KPI_TREND } from "@/enums/simulation.enum";
 import type { Candidate, CandidateKPI } from "@/types/simulation.type";
@@ -53,9 +53,9 @@ describe("compareCandidates", () => {
     expect(comparison.proposals.map((item) => item.candidate_id)).toEqual(["A", "B"]);
   });
 
-  it("lists every KPI once, in the order first served, with the exact served values", () => {
+  it("lists every KPI once, the business score first and the rest in the order first served, with the exact served values", () => {
     const { rows } = compareCandidates([baseline, a, b]);
-    expect(rows.map((row) => row.name)).toEqual([KPI_NAME.StockoutRisk, KPI_NAME.ServiceLevel, KPI_NAME.BusinessScore, KPI_NAME.MovementCost]);
+    expect(rows.map((row) => row.name)).toEqual([KPI_NAME.BusinessScore, KPI_NAME.StockoutRisk, KPI_NAME.ServiceLevel, KPI_NAME.MovementCost]);
     const service = rows.find((row) => row.name === KPI_NAME.ServiceLevel)!;
     expect(service.baseline).toBe(baseline.kpis[1]);
     expect(service.cells.A?.kpi).toBe(a.kpis[1]);
@@ -79,6 +79,17 @@ describe("compareCandidates", () => {
   it("marks the proposal with the highest business score, never the baseline", () => {
     const high = candidate("high-baseline", []);
     expect(compareCandidates([baseline, a, b, high]).topScoreId).toBe("A");
+  });
+
+  it("takes the recommended plan only from the served flag, never from the scores", () => {
+    expect(compareCandidates([baseline, a, b]).recommendedId).toBeNull();
+    expect(compareCandidates([baseline, a, { ...b, recommended: true }]).recommendedId).toBe("B");
+    // The baseline is never a plan to recommend.
+    expect(compareCandidates([{ ...baseline, recommended: true }, a]).recommendedId).toBeNull();
+  });
+
+  it("labels the plans A, B, C in served order", () => {
+    expect([0, 1, 2].map(planLetter)).toEqual(["A", "B", "C"]);
   });
 
   it("marks no top score on a tie or when nothing is scored", () => {

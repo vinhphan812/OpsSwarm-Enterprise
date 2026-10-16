@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sampleStoreState } from "@/test/sampleState";
 import { patchProduct } from "@/core/api/sources/memorySource";
-import { InvalidTwinStateError, parseReviewResult, parseStoreState } from "@/core/api/validate";
+import { InvalidTwinStateError, parseCandidate, parseReviewResult, parseStoreState } from "@/core/api/validate";
 
 const issueFor = (patch: Parameters<typeof patchProduct>[2]) => {
   const { state, issues } = parseStoreState(patchProduct(sampleStoreState(), "P001", patch));
@@ -101,5 +101,30 @@ describe("parseReviewResult", () => {
     expect(
       parseReviewResult({ simulation_id: "sim-1", decision: "reject", status: "evaluated", reason_code: "proposal_changed" }),
     ).toMatchObject({ status: "evaluated", verdict: null, reason_code: "proposal_changed" });
+  });
+});
+
+describe("parseCandidate", () => {
+  const raw = (extra: Record<string, unknown> = {}) => ({
+    candidate_id: "cand-b",
+    simulation_id: "sim-1",
+    proposed_actions: [],
+    state: sampleStoreState(),
+    kpis: [],
+    evaluator_version: "simulation-kpi-v1",
+    provenance: "test",
+    ...extra,
+  });
+
+  it("reads the agent's recommendation and rationale when served (#207)", () => {
+    expect(parseCandidate(raw({ recommended: true, rationale: "Less movement." }))).toMatchObject({
+      recommended: true,
+      rationale: "Less movement.",
+    });
+  });
+
+  it("treats a missing or malformed recommendation as none", () => {
+    expect(parseCandidate(raw())).toMatchObject({ recommended: false, rationale: null });
+    expect(parseCandidate(raw({ recommended: "yes", rationale: "  " }))).toMatchObject({ recommended: false, rationale: null });
   });
 });

@@ -1,10 +1,11 @@
-import { Button, Tooltip } from "@heroui/react";
+import { Tooltip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
 import { useState } from "react";
-import { CandidateIcon, CheckIcon, ChevronDownIcon } from "@/components/icons";
-import { compareCandidates, type KpiCell } from "@/core/twin/candidateComparison";
+import { CandidateIcon, ChevronDownIcon } from "@/components/icons";
+import { compareCandidates, planLetter, type KpiCell } from "@/core/twin/candidateComparison";
 import { selectedCandidate, useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
+import { KPI_NAME } from "@/enums/simulation.enum";
 import { VIEW_MODE } from "@/enums/ui.enum";
 import type { CandidateKPI } from "@/types/simulation.type";
 import { DemoBadge } from "./DemoBadge";
@@ -69,19 +70,22 @@ function KpiValue({ cell, scored }: { cell: KpiCell | undefined; scored: boolean
 }
 
 /**
- * Compares the candidates of the open run (#39): one column per proposal, the served
- * `baseline` as Current, and a row per KPI with each value and its move from Current.
- * Picking a column shows that candidate in the Simulation view (#27). Every value is the
- * one served; the only arithmetic is the display-only difference to the baseline. Says so
- * when there is no baseline, a candidate is not scored, or the last read failed. Renders
- * only in the Simulation view, while the run has candidates. Never writes Live.
+ * Compares the candidates of the open run (#39): one column per proposal, labelled Plan A,
+ * B, C in served order, the served `baseline` as Current, and a row per KPI, the business
+ * score first, with each value and its move from Current. The plan the agent recommends
+ * (`recommended`) is starred, with its rationale under the table when one is served (#207);
+ * with none served, the highest served business score is marked instead. Picking a column
+ * shows that candidate in the Simulation view (#27). Every value is the one served; the only
+ * arithmetic is the display-only difference to the baseline. Says so when there is no
+ * baseline, a candidate is not scored, or the last read failed. Renders only in the
+ * Simulation view, while the run has candidates. Never writes Live.
  */
 export function CandidatePanel() {
   const { t } = useTranslation();
   const viewMode = useUiStore((state) => state.viewMode);
   const twin = useTwinStore();
   const selected = selectedCandidate(twin);
-  const { baseline, proposals, rows, topScoreId } = compareCandidates(
+  const { baseline, proposals, rows, topScoreId, recommendedId } = compareCandidates(
     twin.candidates.filter((candidate) => candidate.simulation_id === twin.simulation?.simulation_id),
   );
 
@@ -89,14 +93,17 @@ export function CandidatePanel() {
 
   const select = (id: string | null) => useTwinStore.getState().selectCandidate(id);
   const label = (kpi: Pick<CandidateKPI, "name">) => t(`proposal.kpi.${kpi.name}`, { defaultValue: kpi.name });
-  const columnClass = (id: string) => (id === selected?.candidate_id ? "selected" : undefined);
+  const plans = new Map(proposals.map(({ candidate_id }, index) => [candidate_id, t("proposal.compare.plan", { letter: planLetter(index) })]));
+  const planOf = (id: string) => plans.get(id) ?? id;
+  const columnClass = (id: string) =>
+    [id === selected?.candidate_id ? "selected" : "", id === recommendedId ? "recommended" : ""].filter(Boolean).join(" ") || undefined;
   const evaluators = [...new Set(proposals.map((candidate) => candidate.evaluator_version))].join(", ");
+  const recommended = proposals.find((candidate) => candidate.candidate_id === recommendedId);
 
   return (
     <div className="candidate-panel" role="region" aria-label={t("proposal.compare.label")}>
       <div className="candidate-panel-header">
         <span className="candidate-panel-title">
-          <CandidateIcon className="h-4 w-4 shrink-0" />
           {t("proposal.compare.title")}
           <DemoBadge />
         </span>
@@ -112,8 +119,10 @@ export function CandidatePanel() {
         <table className="candidate-table">
           <thead>
             <tr>
-              <th scope="col">{t("proposal.compare.kpi")}</th>
-              {baseline ? <th scope="col">{t("proposal.compare.current")}</th> : null}
+              <th scope="col">
+                <span className="sr-only">{t("proposal.compare.kpi")}</span>
+              </th>
+              {baseline ? <th scope="col" className="candidate-current">{t("proposal.compare.current")}</th> : null}
               {proposals.map(({ candidate_id }) => (
                 <th key={candidate_id} scope="col" className={columnClass(candidate_id)}>
                   <Tooltip content={t("proposal.candidate.switchHint", { id: candidate_id })} delay={300}>
@@ -123,29 +132,26 @@ export function CandidatePanel() {
                       aria-pressed={candidate_id === selected?.candidate_id}
                       onClick={() => select(candidate_id)}
                     >
-                      {candidate_id === selected?.candidate_id ? <CheckIcon className="h-3 w-3" /> : null}
-                      {candidate_id}
+                      {candidate_id === recommendedId ? <CandidateIcon className="candidate-star" /> : null}
+                      {planOf(candidate_id)}
                     </button>
                   </Tooltip>
-                  {candidate_id === topScoreId ? <span className="candidate-top">{t("proposal.compare.topScore")}</span> : null}
+                  {candidate_id === recommendedId ? (
+                    <span className="candidate-badge recommended">{t("proposal.compare.recommended")}</span>
+                  ) : candidate_id === topScoreId && !recommendedId ? (
+                    <span className="candidate-badge">{t("proposal.compare.topScore")}</span>
+                  ) : null}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <th scope="row">{t("proposal.compare.actions")}</th>
-              {baseline ? <td>{baseline.proposed_actions.length}</td> : null}
-              {proposals.map((candidate) => (
-                <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
-                  {candidate.proposed_actions.length}
-                </td>
-              ))}
-            </tr>
             {rows.map((row) => (
-              <tr key={row.name}>
+              <tr key={row.name} className={row.name === KPI_NAME.BusinessScore ? "candidate-score-row" : undefined}>
                 <th scope="row">{label(row)}</th>
-                {baseline ? <td>{row.baseline ? formatKpiValue(row.baseline.value, row.baseline.unit) : "—"}</td> : null}
+                {baseline ? (
+                  <td className="candidate-current">{row.baseline ? formatKpiValue(row.baseline.value, row.baseline.unit) : "—"}</td>
+                ) : null}
                 {proposals.map((candidate) => (
                   <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
                     <KpiValue cell={row.cells[candidate.candidate_id]} scored={candidate.kpis.length > 0} />
@@ -153,32 +159,46 @@ export function CandidatePanel() {
                 ))}
               </tr>
             ))}
+            <tr>
+              <th scope="row">{t("proposal.compare.actions")}</th>
+              {baseline ? <td className="candidate-current">{baseline.proposed_actions.length}</td> : null}
+              {proposals.map((candidate) => (
+                <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
+                  {candidate.proposed_actions.length}
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
       {rows.length ? (
-        baseline ? <p className="candidate-panel-meta">{t("proposal.compare.deltaNote")}</p> : null
+        baseline ? <p className="candidate-panel-meta candidate-delta-note">{t("proposal.compare.deltaNote")}</p> : null
       ) : (
         <span className="candidate-panel-no-kpis">{t("proposal.candidate.noKpis")}</span>
       )}
 
+      {recommended?.rationale ? (
+        <p className="candidate-rationale">
+          <CandidateIcon className="candidate-star" />
+          <span>
+            <strong>{t("proposal.compare.whyChose", { plan: planOf(recommended.candidate_id) })}</strong> {recommended.rationale}
+          </span>
+        </p>
+      ) : null}
+
       {selected ? <ProvenanceSection text={selected.provenance} /> : null}
 
       <div className="candidate-selector">
-        <Tooltip content={t("proposal.candidate.showSimulation")} delay={300}>
-          <Button
-            size="sm"
-            variant={selected ? "light" : "bordered"}
-            className={`candidate-selector-btn simulation-btn${selected ? "" : " active"}`}
-            onPress={() => select(null)}
-            aria-pressed={selected === null}
-          >
-            {t("proposal.candidate.simulationProposal")}
-          </Button>
-        </Tooltip>
         <span className="candidate-panel-meta">
-          {selected ? t("proposal.compare.showing", { id: selected.candidate_id }) : t("proposal.compare.pick")}
+          {selected ? t("proposal.compare.showing", { plan: planOf(selected.candidate_id) }) : t("proposal.compare.pick")}
         </span>
+        {selected ? (
+          <Tooltip content={t("proposal.candidate.showSimulation")} delay={300}>
+            <button type="button" className="candidate-back" onClick={() => select(null)}>
+              {t("proposal.candidate.simulationProposal")}
+            </button>
+          </Tooltip>
+        ) : null}
       </div>
     </div>
   );

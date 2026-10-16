@@ -297,6 +297,7 @@ export const en = {
       count_one: "{{count}} change",
       count_other: "{{count}} changes",
       focus: "Show {{sku}} in 3D",
+      focusAction: "{{action}}. Show {{sku}} in 3D",
     },
     review: {
       label: "Review this proposal",
@@ -325,8 +326,8 @@ export const en = {
       noKpis: "No KPI scores available yet",
       provenance: "Provenance",
       switchHint: "Switch to {{id}}",
-      showSimulation: "Show the original proposal",
-      simulationProposal: "Original",
+      showSimulation: "Show the run's own proposal again",
+      simulationProposal: "Back to the original proposal",
     },
     compare: {
       label: "Compare candidates",
@@ -336,6 +337,9 @@ export const en = {
       current: "Current",
       actions: "Actions",
       topScore: "Top score",
+      plan: "Plan {{letter}}",
+      recommended: "AI recommends",
+      whyChose: "Why AI chose {{plan}}:",
       notScored: "Not scored",
       delta: "{{delta}} vs Current, {{trend}}",
       trend: {
@@ -343,11 +347,11 @@ export const en = {
         worse: "worse",
         same: "no change",
       },
-      deltaNote: "Under each value: its difference from Current, both as served.",
+      deltaNote: "Small numbers: change from Current. Green is better, red is worse.",
       noBaseline: "No baseline served: before values and differences are not available.",
       readFailed: "Couldn't refresh the candidates; showing the last values served.",
-      showing: "Showing {{id}} in 3D",
-      pick: "Pick a candidate to show it in 3D",
+      showing: "Showing {{plan}} in 3D",
+      pick: "Pick a plan to show it in 3D",
     },
     kpi: {
       stockout_risk: "Stockout risk",

@@ -158,12 +158,12 @@ describe("changes list on the banner", () => {
     render(<SimulationBanner />);
     expect(screen.getByText("2 changes")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Show P004 in 3D" }));
+    fireEvent.click(screen.getByRole("button", { name: /Show P004 in 3D$/ }));
     expect(useUiStore.getState()).toMatchObject({ selectedEntityId: "P004", selectedEntityType: ENTITY_TYPE.Product });
 
     act(() => useTwinStore.getState().selectCandidate("cand-c"));
     expect(screen.getByText("3 changes")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Show P004 in 3D" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Show P004 in 3D$/ })).toBeNull();
   });
 
   it("shows nothing in the Live view", () => {

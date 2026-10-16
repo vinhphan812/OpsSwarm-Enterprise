@@ -32,7 +32,8 @@ afterEach(() => {
   useTwinStore.setState(useTwinStore.getInitialState(), true);
 });
 
-const column = (id: string) => screen.getByRole("button", { name: new RegExp(`^${id}$`) });
+/** The column button of a plan, by its label: the demo serves cand-a, cand-b, cand-c as Plan A, B, C. */
+const column = (plan: string) => screen.getByRole("button", { name: new RegExp(`^${plan}$`) });
 /** The cells of the row headed `label`, as text. */
 const row = (label: string) =>
   Array.from(screen.getByRole("rowheader", { name: label }).parentElement!.querySelectorAll("td")).map((cell) => cell.textContent);
@@ -54,8 +55,8 @@ describe("CandidatePanel", () => {
     open();
     render(<CandidatePanel />);
     expect(screen.getByRole("region", { name: "Compare candidates" })).toBeTruthy();
-    for (const id of ["cand-a", "cand-b", "cand-c"]) expect(column(id).getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByText("Pick a candidate to show it in 3D")).toBeTruthy();
+    for (const plan of ["Plan A", "Plan B", "Plan C"]) expect(column(plan).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("Pick a plan to show it in 3D")).toBeTruthy();
   });
 
   it("offers the baseline as the Current column, never as a candidate to select", () => {
@@ -84,31 +85,55 @@ describe("CandidatePanel", () => {
     expect(screen.getAllByLabelText("+0.30 vs Current, worse")[0]!.dataset.trend).toBe("worse");
   });
 
-  it("marks the candidate with the highest served business score", () => {
+  it("leads with the business score, the number the plans are ranked by", () => {
     open();
     render(<CandidatePanel />);
-    const top = screen.getByText("Top score");
-    expect(top.closest("th")!.textContent).toContain("cand-b");
+    expect(screen.getAllByRole("rowheader").map((cell) => cell.textContent)[0]).toBe("Business score");
+  });
+
+  it("stars the plan the agent recommends, with its served rationale under the table", () => {
+    open();
+    render(<CandidatePanel />);
+    const badge = screen.getByText("AI recommends");
+    expect(badge.closest("th")!.textContent).toContain("Plan B");
+    expect(screen.getByText("Why AI chose Plan B:").parentElement!.textContent).toMatch(/far less movement/);
+    expect(screen.queryByText("Top score")).toBeNull();
+  });
+
+  it("hides the rationale line when none is served, and never writes one itself", () => {
+    const { candidates } = open();
+    act(() => useTwinStore.getState().setCandidates(candidates.map((item) => ({ ...item, rationale: null }))));
+    render(<CandidatePanel />);
+    expect(screen.getByText("AI recommends")).toBeTruthy();
+    expect(screen.queryByText(/Why AI chose/)).toBeNull();
+  });
+
+  it("with no recommendation served, stars nothing and marks the highest served business score", () => {
+    const { candidates } = open();
+    act(() => useTwinStore.getState().setCandidates(candidates.map((item) => ({ ...item, recommended: false }))));
+    render(<CandidatePanel />);
+    expect(screen.queryByText("AI recommends")).toBeNull();
+    expect(screen.getByText("Top score").closest("th")!.textContent).toContain("Plan B");
   });
 
   it("selects a candidate from its column, and the Simulation view shows that candidate's state", () => {
     const { candidates } = open();
     render(<CandidatePanel />);
-    act(() => fireEvent.click(column("cand-c")));
+    act(() => fireEvent.click(column("Plan C")));
     expect(useTwinStore.getState().selectedCandidateId).toBe("cand-c");
     const shown = shownSimulation(useTwinStore.getState(), VIEW_MODE.Simulation)!;
     const cand = candidates.find((item) => item.candidate_id === "cand-c")!;
     expect(shown.state).toBe(cand.state);
     expect(shown.actions).toBe(cand.proposed_actions);
-    expect(column("cand-c").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("Showing cand-c in 3D")).toBeTruthy();
+    expect(column("Plan C").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("Showing Plan C in 3D")).toBeTruthy();
 
-    act(() => fireEvent.click(column("cand-a")));
+    act(() => fireEvent.click(column("Plan A")));
     expect(useTwinStore.getState().selectedCandidateId).toBe("cand-a");
-    expect(column("cand-c").getAttribute("aria-pressed")).toBe("false");
+    expect(column("Plan C").getAttribute("aria-pressed")).toBe("false");
   });
 
-  it("goes back to the simulation's own proposal with Original, and keeps the comparison", () => {
+  it("goes back to the simulation's own proposal, and keeps the comparison", () => {
     open();
     act(() => useTwinStore.getState().selectCandidate("cand-a"));
     render(<CandidatePanel />);

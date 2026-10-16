@@ -826,9 +826,11 @@ tr[data-open="true"] .receipt-caret {
   z-index: 10;
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px 20px;
   max-width: min(600px, calc(100% - 32px));
+  max-height: calc(100% - 76px);
+  overflow-y: auto;
   padding: 10px 12px 10px 14px;
   font-size: 12px;
   color: var(--color-ink);
@@ -863,13 +865,28 @@ tr[data-open="true"] .receipt-caret {
   list-style: none;
 }
 
-.simulation-banner-changes li {
+.simulation-banner-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.simulation-banner-changes button {
   padding: 1px 8px;
+  font: inherit;
   font-size: 11px;
   color: var(--color-ink);
+  cursor: pointer;
   background: color-mix(in srgb, var(--color-simulation) 16%, transparent);
   border: 1px solid color-mix(in srgb, var(--color-simulation) 35%, transparent);
   border-radius: 999px;
+}
+
+.simulation-banner-changes button:hover,
+.simulation-banner-changes button:focus-visible {
+  border-color: var(--color-simulation);
+  background: color-mix(in srgb, var(--color-simulation) 28%, transparent);
 }
 
 .simulation-banner-title {
@@ -946,8 +963,10 @@ tr[data-open="true"] .receipt-caret {
 
 .candidate-panel-header {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
 }
 
 .candidate-panel-title {
@@ -992,7 +1011,7 @@ tr[data-open="true"] .receipt-caret {
 
 .candidate-table th,
 .candidate-table td {
-  padding: 3px 8px;
+  padding: 5px 10px;
   text-align: right;
   white-space: nowrap;
   vertical-align: top;
@@ -1011,28 +1030,76 @@ tr[data-open="true"] .receipt-caret {
   color: var(--color-ink-muted);
 }
 
-/* The selected candidate's column, the one on screen in 3D. */
+.candidate-table thead th {
+  vertical-align: bottom;
+}
+
+/* Current is the reference, not a choice: quieter than the plans. */
+.candidate-table .candidate-current {
+  color: var(--color-ink-muted);
+}
+
+/* The plan the agent recommends: a faint tint down its column. */
+.candidate-table .recommended {
+  background: color-mix(in srgb, var(--color-good) 7%, transparent);
+}
+
+/* The selected plan's column, the one on screen in 3D: stronger, with a rule on top. */
 .candidate-table .selected {
-  background: color-mix(in srgb, var(--color-simulation) 14%, transparent);
+  background: color-mix(in srgb, var(--color-simulation) 16%, transparent);
+}
+
+.candidate-table thead th.selected {
+  box-shadow: inset 0 2px 0 var(--color-simulation);
+}
+
+/* The business score leads the table and ranks the plans. */
+.candidate-score-row th[scope="row"],
+.candidate-score-row td {
+  font-size: 13px;
+  border-bottom-color: color-mix(in srgb, var(--color-line) 80%, transparent);
+}
+
+.candidate-score-row th[scope="row"] {
+  font-weight: 650;
+  color: var(--color-ink);
+}
+
+.candidate-score-row .candidate-cell-value {
+  font-size: 14px;
 }
 
 .candidate-column-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 8px;
+  padding: 2px 4px;
   font: inherit;
-  font-weight: 600;
-  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--color-ink-soft);
   cursor: pointer;
   background: none;
-  border: 1px solid color-mix(in srgb, var(--color-simulation) 35%, transparent);
-  border-radius: 999px;
+  border: 0;
+  border-radius: 4px;
+}
+
+.candidate-column-btn:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .candidate-column-btn[aria-pressed="true"] {
-  border-color: var(--color-simulation);
-  background: color-mix(in srgb, var(--color-simulation) 24%, transparent);
+  color: var(--color-ink);
+}
+
+.candidate-star {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--color-warning);
+  fill: currentColor;
 }
 
 .candidate-column-btn:focus-visible {
@@ -1040,12 +1107,43 @@ tr[data-open="true"] .receipt-caret {
   outline-offset: 2px;
 }
 
-.candidate-top {
+.candidate-badge {
   display: block;
   margin-top: 2px;
   font-size: 10px;
   font-weight: 600;
   color: var(--color-good);
+}
+
+.candidate-badge.recommended {
+  color: var(--color-warning);
+}
+
+.candidate-delta-note {
+  margin: 6px 0 0;
+}
+
+/* "Why AI chose": the agent's own reason, served with the recommended plan. */
+.candidate-rationale {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+  background: color-mix(in srgb, var(--color-warning) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 25%, transparent);
+  border-radius: 8px;
+}
+
+.candidate-rationale .candidate-star {
+  margin-top: 3px;
+}
+
+.candidate-rationale strong {
+  font-weight: 650;
+  color: var(--color-ink);
 }
 
 .candidate-cell-value {
@@ -1123,22 +1221,26 @@ tr[data-open="true"] .receipt-caret {
 .candidate-selector {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--color-line) 30%, transparent);
 }
 
-.candidate-selector-btn {
+.candidate-back {
+  padding: 0;
+  font: inherit;
   font-size: 11px;
   font-weight: 600;
+  color: var(--color-simulation);
+  cursor: pointer;
+  background: none;
+  border: 0;
 }
 
-.candidate-selector-btn.active {
-  border-color: var(--color-simulation);
-}
-
-.simulation-btn {
-  font-size: 11px;
-  color: var(--color-ink-muted);
+.candidate-back:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
