@@ -1,0 +1,4446 @@
+{
+  "store_id": "store-001",
+  "version": "v1",
+  "products": [
+    {
+      "sku": "P001",
+      "shelf_id": "A01",
+      "slot_id": "A01-S01",
+      "facings": 3,
+      "shelf_quantity": 8,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P002",
+      "shelf_id": "A01",
+      "slot_id": "A01-S20",
+      "facings": 2,
+      "shelf_quantity": 10,
+      "backroom_quantity": 10
+    },
+    {
+      "sku": "P003",
+      "shelf_id": "A01",
+      "slot_id": "A01-S21",
+      "facings": 2,
+      "shelf_quantity": 0,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P004",
+      "shelf_id": "A02",
+      "slot_id": "A02-S19",
+      "facings": 3,
+      "shelf_quantity": 2,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P005",
+      "shelf_id": "A03",
+      "slot_id": "A03-S22",
+      "facings": 2,
+      "shelf_quantity": 12,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P006",
+      "shelf_id": "B01",
+      "slot_id": "B01-S19",
+      "facings": 3,
+      "shelf_quantity": 9,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P007",
+      "shelf_id": "B02",
+      "slot_id": "B02-S20",
+      "facings": 2,
+      "shelf_quantity": 1,
+      "backroom_quantity": 0
+    },
+    {
+      "sku": "P008",
+      "shelf_id": "C01",
+      "slot_id": "C01-S21",
+      "facings": 2,
+      "shelf_quantity": 14,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P009",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S01",
+      "facings": 2,
+      "shelf_quantity": 6,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P010",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S01",
+      "facings": 2,
+      "shelf_quantity": 0,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P011",
+      "shelf_id": "PR01",
+      "slot_id": "PR01-S01",
+      "facings": 4,
+      "shelf_quantity": 30,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P012",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S01",
+      "facings": 3,
+      "shelf_quantity": 18,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P013",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S07",
+      "facings": 2,
+      "shelf_quantity": 6,
+      "backroom_quantity": 10
+    },
+    {
+      "sku": "P014",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S08",
+      "facings": 2,
+      "shelf_quantity": 8,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P015",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S05",
+      "facings": 2,
+      "shelf_quantity": 3,
+      "backroom_quantity": 6
+    },
+    {
+      "sku": "P016",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S02",
+      "facings": 3,
+      "shelf_quantity": 9,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P018",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S05",
+      "facings": 3,
+      "shelf_quantity": 12,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P020",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S03",
+      "facings": 3,
+      "shelf_quantity": 9,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P101",
+      "shelf_id": "A01",
+      "slot_id": "A01-S02",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P102",
+      "shelf_id": "A01",
+      "slot_id": "A01-S03",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P103",
+      "shelf_id": "A01",
+      "slot_id": "A01-S06",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P104",
+      "shelf_id": "A01",
+      "slot_id": "A01-S07",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P105",
+      "shelf_id": "A01",
+      "slot_id": "A01-S09",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P106",
+      "shelf_id": "A01",
+      "slot_id": "A01-S10",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P107",
+      "shelf_id": "A01",
+      "slot_id": "A01-S12",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P108",
+      "shelf_id": "A01",
+      "slot_id": "A01-S13",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P109",
+      "shelf_id": "A01",
+      "slot_id": "A01-S14",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P110",
+      "shelf_id": "A01",
+      "slot_id": "A01-S15",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P111",
+      "shelf_id": "A01",
+      "slot_id": "A01-S17",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P112",
+      "shelf_id": "A01",
+      "slot_id": "A01-S18",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P113",
+      "shelf_id": "A01",
+      "slot_id": "A01-S22",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P114",
+      "shelf_id": "A01",
+      "slot_id": "A01-S23",
+      "facings": 4,
+      "shelf_quantity": 16,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P115",
+      "shelf_id": "A01",
+      "slot_id": "A01-S24",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P116",
+      "shelf_id": "A01",
+      "slot_id": "A01-S25",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P117",
+      "shelf_id": "A01",
+      "slot_id": "A01-S26",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P118",
+      "shelf_id": "A01",
+      "slot_id": "A01-S27",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P119",
+      "shelf_id": "A01",
+      "slot_id": "A01-S28",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 52
+    },
+    {
+      "sku": "P120",
+      "shelf_id": "A01",
+      "slot_id": "A01-S29",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P121",
+      "shelf_id": "A01",
+      "slot_id": "A01-S30",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P122",
+      "shelf_id": "A01",
+      "slot_id": "A01-S31",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P123",
+      "shelf_id": "A01",
+      "slot_id": "A01-S32",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P124",
+      "shelf_id": "A01",
+      "slot_id": "A01-S34",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P125",
+      "shelf_id": "A01",
+      "slot_id": "A01-S35",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P126",
+      "shelf_id": "A01",
+      "slot_id": "A01-S37",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P127",
+      "shelf_id": "A01",
+      "slot_id": "A01-S38",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P128",
+      "shelf_id": "A01",
+      "slot_id": "A01-S40",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P129",
+      "shelf_id": "A01",
+      "slot_id": "A01-S41",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P130",
+      "shelf_id": "A01",
+      "slot_id": "A01-S42",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P131",
+      "shelf_id": "A01",
+      "slot_id": "A01-S43",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P132",
+      "shelf_id": "A01",
+      "slot_id": "A01-S45",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P133",
+      "shelf_id": "A01",
+      "slot_id": "A01-S46",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P134",
+      "shelf_id": "A01",
+      "slot_id": "A01-S47",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P135",
+      "shelf_id": "A01",
+      "slot_id": "A01-S49",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P136",
+      "shelf_id": "A01",
+      "slot_id": "A01-S50",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P137",
+      "shelf_id": "A01",
+      "slot_id": "A01-S51",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P138",
+      "shelf_id": "A01",
+      "slot_id": "A01-S52",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P139",
+      "shelf_id": "A01",
+      "slot_id": "A01-S53",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P140",
+      "shelf_id": "A01",
+      "slot_id": "A01-S54",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P141",
+      "shelf_id": "A01",
+      "slot_id": "A01-S55",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P142",
+      "shelf_id": "A01",
+      "slot_id": "A01-S56",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P143",
+      "shelf_id": "A01",
+      "slot_id": "A01-S57",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P144",
+      "shelf_id": "A01",
+      "slot_id": "A01-S59",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P145",
+      "shelf_id": "A01",
+      "slot_id": "A01-S60",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P146",
+      "shelf_id": "A01",
+      "slot_id": "A01-S63",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P147",
+      "shelf_id": "A01",
+      "slot_id": "A01-S64",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P148",
+      "shelf_id": "A01",
+      "slot_id": "A01-S65",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P149",
+      "shelf_id": "A01",
+      "slot_id": "A01-S66",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P150",
+      "shelf_id": "A01",
+      "slot_id": "A01-S67",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P151",
+      "shelf_id": "A01",
+      "slot_id": "A01-S68",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P152",
+      "shelf_id": "A01",
+      "slot_id": "A01-S69",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P153",
+      "shelf_id": "A01",
+      "slot_id": "A01-S70",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P154",
+      "shelf_id": "A01",
+      "slot_id": "A01-S71",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P155",
+      "shelf_id": "A02",
+      "slot_id": "A02-S01",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P156",
+      "shelf_id": "A02",
+      "slot_id": "A02-S02",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P157",
+      "shelf_id": "A02",
+      "slot_id": "A02-S71",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P158",
+      "shelf_id": "A02",
+      "slot_id": "A02-S04",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P159",
+      "shelf_id": "A02",
+      "slot_id": "A02-S05",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P160",
+      "shelf_id": "A02",
+      "slot_id": "A02-S06",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P161",
+      "shelf_id": "A02",
+      "slot_id": "A02-S07",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P162",
+      "shelf_id": "A02",
+      "slot_id": "A02-S08",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P163",
+      "shelf_id": "A02",
+      "slot_id": "A02-S09",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P164",
+      "shelf_id": "A02",
+      "slot_id": "A02-S13",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P165",
+      "shelf_id": "A02",
+      "slot_id": "A02-S15",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P166",
+      "shelf_id": "A02",
+      "slot_id": "A02-S16",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 55
+    },
+    {
+      "sku": "P167",
+      "shelf_id": "A02",
+      "slot_id": "A02-S17",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P168",
+      "shelf_id": "A02",
+      "slot_id": "A02-S18",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P169",
+      "shelf_id": "A02",
+      "slot_id": "A02-S23",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P170",
+      "shelf_id": "A02",
+      "slot_id": "A02-S24",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P171",
+      "shelf_id": "A02",
+      "slot_id": "A02-S27",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P172",
+      "shelf_id": "A02",
+      "slot_id": "A02-S28",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P173",
+      "shelf_id": "A02",
+      "slot_id": "A02-S29",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P174",
+      "shelf_id": "A02",
+      "slot_id": "A02-S30",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P175",
+      "shelf_id": "A02",
+      "slot_id": "A02-S33",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P176",
+      "shelf_id": "A02",
+      "slot_id": "A02-S34",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P177",
+      "shelf_id": "A02",
+      "slot_id": "A02-S35",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P178",
+      "shelf_id": "A02",
+      "slot_id": "A02-S37",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P179",
+      "shelf_id": "A02",
+      "slot_id": "A02-S38",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P180",
+      "shelf_id": "A02",
+      "slot_id": "A02-S39",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P181",
+      "shelf_id": "A02",
+      "slot_id": "A02-S40",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P182",
+      "shelf_id": "A02",
+      "slot_id": "A02-S43",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P183",
+      "shelf_id": "A02",
+      "slot_id": "A02-S44",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P184",
+      "shelf_id": "A02",
+      "slot_id": "A02-S45",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P185",
+      "shelf_id": "A02",
+      "slot_id": "A02-S46",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P186",
+      "shelf_id": "A02",
+      "slot_id": "A02-S48",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P187",
+      "shelf_id": "A02",
+      "slot_id": "A02-S49",
+      "facings": 4,
+      "shelf_quantity": 16,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P188",
+      "shelf_id": "A02",
+      "slot_id": "A02-S50",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P189",
+      "shelf_id": "A02",
+      "slot_id": "A02-S51",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P190",
+      "shelf_id": "A02",
+      "slot_id": "A02-S52",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P191",
+      "shelf_id": "A02",
+      "slot_id": "A02-S53",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P192",
+      "shelf_id": "A02",
+      "slot_id": "A02-S54",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 47
+    },
+    {
+      "sku": "P193",
+      "shelf_id": "A02",
+      "slot_id": "A02-S55",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P194",
+      "shelf_id": "A02",
+      "slot_id": "A02-S57",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P195",
+      "shelf_id": "A02",
+      "slot_id": "A02-S60",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P196",
+      "shelf_id": "A02",
+      "slot_id": "A02-S61",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P197",
+      "shelf_id": "A02",
+      "slot_id": "A02-S62",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P198",
+      "shelf_id": "A02",
+      "slot_id": "A02-S63",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P199",
+      "shelf_id": "A02",
+      "slot_id": "A02-S64",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P200",
+      "shelf_id": "A02",
+      "slot_id": "A02-S65",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P201",
+      "shelf_id": "A02",
+      "slot_id": "A02-S69",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P202",
+      "shelf_id": "A02",
+      "slot_id": "A02-S70",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P203",
+      "shelf_id": "A02",
+      "slot_id": "A02-S72",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P204",
+      "shelf_id": "A03",
+      "slot_id": "A03-S01",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P205",
+      "shelf_id": "A03",
+      "slot_id": "A03-S02",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P206",
+      "shelf_id": "A03",
+      "slot_id": "A03-S04",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P207",
+      "shelf_id": "A03",
+      "slot_id": "A03-S05",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P208",
+      "shelf_id": "A03",
+      "slot_id": "A03-S06",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P209",
+      "shelf_id": "A03",
+      "slot_id": "A03-S08",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P210",
+      "shelf_id": "A03",
+      "slot_id": "A03-S09",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P211",
+      "shelf_id": "A03",
+      "slot_id": "A03-S10",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P212",
+      "shelf_id": "A03",
+      "slot_id": "A03-S11",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P213",
+      "shelf_id": "A03",
+      "slot_id": "A03-S12",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P214",
+      "shelf_id": "A03",
+      "slot_id": "A03-S13",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P215",
+      "shelf_id": "A03",
+      "slot_id": "A03-S14",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 52
+    },
+    {
+      "sku": "P216",
+      "shelf_id": "A03",
+      "slot_id": "A03-S15",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P217",
+      "shelf_id": "A03",
+      "slot_id": "A03-S16",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P218",
+      "shelf_id": "A03",
+      "slot_id": "A03-S17",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P219",
+      "shelf_id": "A03",
+      "slot_id": "A03-S18",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P220",
+      "shelf_id": "A03",
+      "slot_id": "A03-S19",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P221",
+      "shelf_id": "A03",
+      "slot_id": "A03-S21",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P222",
+      "shelf_id": "A03",
+      "slot_id": "A03-S24",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P223",
+      "shelf_id": "A03",
+      "slot_id": "A03-S25",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P224",
+      "shelf_id": "A03",
+      "slot_id": "A03-S26",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P225",
+      "shelf_id": "A03",
+      "slot_id": "A03-S30",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P226",
+      "shelf_id": "A03",
+      "slot_id": "A03-S32",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P227",
+      "shelf_id": "A03",
+      "slot_id": "A03-S33",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P228",
+      "shelf_id": "A03",
+      "slot_id": "A03-S34",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P229",
+      "shelf_id": "A03",
+      "slot_id": "A03-S37",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P230",
+      "shelf_id": "A03",
+      "slot_id": "A03-S38",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P231",
+      "shelf_id": "A03",
+      "slot_id": "A03-S39",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 52
+    },
+    {
+      "sku": "P232",
+      "shelf_id": "A03",
+      "slot_id": "A03-S40",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P233",
+      "shelf_id": "A03",
+      "slot_id": "A03-S41",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P234",
+      "shelf_id": "A03",
+      "slot_id": "A03-S42",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P235",
+      "shelf_id": "A03",
+      "slot_id": "A03-S44",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P236",
+      "shelf_id": "A03",
+      "slot_id": "A03-S45",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P237",
+      "shelf_id": "A03",
+      "slot_id": "A03-S46",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P238",
+      "shelf_id": "A03",
+      "slot_id": "A03-S51",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P239",
+      "shelf_id": "A03",
+      "slot_id": "A03-S52",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P240",
+      "shelf_id": "A03",
+      "slot_id": "A03-S53",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P241",
+      "shelf_id": "A03",
+      "slot_id": "A03-S55",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P242",
+      "shelf_id": "A03",
+      "slot_id": "A03-S57",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P243",
+      "shelf_id": "A03",
+      "slot_id": "A03-S58",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P244",
+      "shelf_id": "A03",
+      "slot_id": "A03-S60",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P245",
+      "shelf_id": "A03",
+      "slot_id": "A03-S61",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P246",
+      "shelf_id": "A03",
+      "slot_id": "A03-S62",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P247",
+      "shelf_id": "A03",
+      "slot_id": "A03-S63",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 47
+    },
+    {
+      "sku": "P248",
+      "shelf_id": "A03",
+      "slot_id": "A03-S64",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P249",
+      "shelf_id": "A03",
+      "slot_id": "A03-S66",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P250",
+      "shelf_id": "A03",
+      "slot_id": "A03-S67",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P251",
+      "shelf_id": "A03",
+      "slot_id": "A03-S68",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P252",
+      "shelf_id": "A03",
+      "slot_id": "A03-S69",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P253",
+      "shelf_id": "A03",
+      "slot_id": "A03-S72",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P254",
+      "shelf_id": "B01",
+      "slot_id": "B01-S01",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P255",
+      "shelf_id": "B01",
+      "slot_id": "B01-S02",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P256",
+      "shelf_id": "B01",
+      "slot_id": "B01-S04",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P257",
+      "shelf_id": "B01",
+      "slot_id": "B01-S05",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P258",
+      "shelf_id": "B01",
+      "slot_id": "B01-S06",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P259",
+      "shelf_id": "B01",
+      "slot_id": "B01-S07",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P260",
+      "shelf_id": "B01",
+      "slot_id": "B01-S08",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P261",
+      "shelf_id": "B01",
+      "slot_id": "B01-S09",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P262",
+      "shelf_id": "B01",
+      "slot_id": "B01-S11",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P263",
+      "shelf_id": "B01",
+      "slot_id": "B01-S14",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P264",
+      "shelf_id": "B01",
+      "slot_id": "B01-S16",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P265",
+      "shelf_id": "B01",
+      "slot_id": "B01-S18",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P266",
+      "shelf_id": "B01",
+      "slot_id": "B01-S20",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P267",
+      "shelf_id": "B01",
+      "slot_id": "B01-S21",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P268",
+      "shelf_id": "B01",
+      "slot_id": "B01-S23",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P269",
+      "shelf_id": "B01",
+      "slot_id": "B01-S24",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P270",
+      "shelf_id": "B01",
+      "slot_id": "B01-S25",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P271",
+      "shelf_id": "B01",
+      "slot_id": "B01-S26",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P272",
+      "shelf_id": "B01",
+      "slot_id": "B01-S28",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P273",
+      "shelf_id": "B01",
+      "slot_id": "B01-S29",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P274",
+      "shelf_id": "B01",
+      "slot_id": "B01-S30",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P275",
+      "shelf_id": "B01",
+      "slot_id": "B01-S31",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P276",
+      "shelf_id": "B01",
+      "slot_id": "B01-S33",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P277",
+      "shelf_id": "B01",
+      "slot_id": "B01-S34",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P278",
+      "shelf_id": "B01",
+      "slot_id": "B01-S35",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P279",
+      "shelf_id": "B01",
+      "slot_id": "B01-S37",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P280",
+      "shelf_id": "B01",
+      "slot_id": "B01-S38",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P281",
+      "shelf_id": "B01",
+      "slot_id": "B01-S39",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P282",
+      "shelf_id": "B01",
+      "slot_id": "B01-S40",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P283",
+      "shelf_id": "B01",
+      "slot_id": "B01-S41",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P284",
+      "shelf_id": "B01",
+      "slot_id": "B01-S42",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P285",
+      "shelf_id": "B01",
+      "slot_id": "B01-S43",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P286",
+      "shelf_id": "B01",
+      "slot_id": "B01-S45",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P287",
+      "shelf_id": "B01",
+      "slot_id": "B01-S46",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P288",
+      "shelf_id": "B01",
+      "slot_id": "B01-S47",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P289",
+      "shelf_id": "B01",
+      "slot_id": "B01-S48",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P290",
+      "shelf_id": "B01",
+      "slot_id": "B01-S49",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P291",
+      "shelf_id": "B01",
+      "slot_id": "B01-S51",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P292",
+      "shelf_id": "B01",
+      "slot_id": "B01-S52",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P293",
+      "shelf_id": "B01",
+      "slot_id": "B01-S53",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P294",
+      "shelf_id": "B01",
+      "slot_id": "B01-S54",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P295",
+      "shelf_id": "B01",
+      "slot_id": "B01-S56",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P296",
+      "shelf_id": "B01",
+      "slot_id": "B01-S57",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P297",
+      "shelf_id": "B01",
+      "slot_id": "B01-S59",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P298",
+      "shelf_id": "B01",
+      "slot_id": "B01-S60",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P299",
+      "shelf_id": "B01",
+      "slot_id": "B01-S61",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P300",
+      "shelf_id": "B01",
+      "slot_id": "B01-S62",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P301",
+      "shelf_id": "B01",
+      "slot_id": "B01-S63",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P302",
+      "shelf_id": "B01",
+      "slot_id": "B01-S64",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P303",
+      "shelf_id": "B01",
+      "slot_id": "B01-S65",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P304",
+      "shelf_id": "B01",
+      "slot_id": "B01-S66",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P305",
+      "shelf_id": "B01",
+      "slot_id": "B01-S67",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P306",
+      "shelf_id": "B01",
+      "slot_id": "B01-S68",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P307",
+      "shelf_id": "B01",
+      "slot_id": "B01-S69",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P308",
+      "shelf_id": "B01",
+      "slot_id": "B01-S70",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P309",
+      "shelf_id": "B01",
+      "slot_id": "B01-S71",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P310",
+      "shelf_id": "B01",
+      "slot_id": "B01-S72",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P311",
+      "shelf_id": "B02",
+      "slot_id": "B02-S02",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P312",
+      "shelf_id": "B02",
+      "slot_id": "B02-S05",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P313",
+      "shelf_id": "B02",
+      "slot_id": "B02-S06",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P314",
+      "shelf_id": "B02",
+      "slot_id": "B02-S07",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P315",
+      "shelf_id": "B02",
+      "slot_id": "B02-S08",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P316",
+      "shelf_id": "B02",
+      "slot_id": "B02-S10",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P317",
+      "shelf_id": "B02",
+      "slot_id": "B02-S13",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P318",
+      "shelf_id": "B02",
+      "slot_id": "B02-S14",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P319",
+      "shelf_id": "B02",
+      "slot_id": "B02-S15",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P320",
+      "shelf_id": "B02",
+      "slot_id": "B02-S16",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P321",
+      "shelf_id": "B02",
+      "slot_id": "B02-S17",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P322",
+      "shelf_id": "B02",
+      "slot_id": "B02-S18",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P323",
+      "shelf_id": "B02",
+      "slot_id": "B02-S19",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P324",
+      "shelf_id": "B02",
+      "slot_id": "B02-S21",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P325",
+      "shelf_id": "B02",
+      "slot_id": "B02-S25",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P326",
+      "shelf_id": "B02",
+      "slot_id": "B02-S26",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P327",
+      "shelf_id": "B02",
+      "slot_id": "B02-S27",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P328",
+      "shelf_id": "B02",
+      "slot_id": "B02-S28",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P329",
+      "shelf_id": "B02",
+      "slot_id": "B02-S30",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P330",
+      "shelf_id": "B02",
+      "slot_id": "B02-S33",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 55
+    },
+    {
+      "sku": "P331",
+      "shelf_id": "B02",
+      "slot_id": "B02-S34",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P332",
+      "shelf_id": "B02",
+      "slot_id": "B02-S35",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P333",
+      "shelf_id": "B02",
+      "slot_id": "B02-S36",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P334",
+      "shelf_id": "B02",
+      "slot_id": "B02-S37",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P335",
+      "shelf_id": "B02",
+      "slot_id": "B02-S38",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P336",
+      "shelf_id": "B02",
+      "slot_id": "B02-S41",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P337",
+      "shelf_id": "B02",
+      "slot_id": "B02-S42",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P338",
+      "shelf_id": "B02",
+      "slot_id": "B02-S45",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P339",
+      "shelf_id": "B02",
+      "slot_id": "B02-S47",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P340",
+      "shelf_id": "B02",
+      "slot_id": "B02-S48",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P341",
+      "shelf_id": "B02",
+      "slot_id": "B02-S49",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P342",
+      "shelf_id": "B02",
+      "slot_id": "B02-S50",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P343",
+      "shelf_id": "B02",
+      "slot_id": "B02-S52",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P344",
+      "shelf_id": "B02",
+      "slot_id": "B02-S53",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P345",
+      "shelf_id": "B02",
+      "slot_id": "B02-S54",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P346",
+      "shelf_id": "B02",
+      "slot_id": "B02-S55",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P347",
+      "shelf_id": "B02",
+      "slot_id": "B02-S62",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P348",
+      "shelf_id": "B02",
+      "slot_id": "B02-S63",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P349",
+      "shelf_id": "B02",
+      "slot_id": "B02-S64",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P350",
+      "shelf_id": "B02",
+      "slot_id": "B02-S65",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P351",
+      "shelf_id": "B02",
+      "slot_id": "B02-S67",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P352",
+      "shelf_id": "B02",
+      "slot_id": "B02-S68",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P353",
+      "shelf_id": "B02",
+      "slot_id": "B02-S69",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P354",
+      "shelf_id": "B02",
+      "slot_id": "B02-S70",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P355",
+      "shelf_id": "B02",
+      "slot_id": "B02-S71",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P356",
+      "shelf_id": "B02",
+      "slot_id": "B02-S72",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P357",
+      "shelf_id": "B03",
+      "slot_id": "B03-S01",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P358",
+      "shelf_id": "B03",
+      "slot_id": "B03-S02",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P359",
+      "shelf_id": "B03",
+      "slot_id": "B03-S04",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P360",
+      "shelf_id": "B03",
+      "slot_id": "B03-S05",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P361",
+      "shelf_id": "B03",
+      "slot_id": "B03-S06",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P362",
+      "shelf_id": "B03",
+      "slot_id": "B03-S08",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P363",
+      "shelf_id": "B03",
+      "slot_id": "B03-S09",
+      "facings": 4,
+      "shelf_quantity": 16,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P364",
+      "shelf_id": "B03",
+      "slot_id": "B03-S11",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P365",
+      "shelf_id": "B03",
+      "slot_id": "B03-S12",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P366",
+      "shelf_id": "B03",
+      "slot_id": "B03-S13",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P367",
+      "shelf_id": "B03",
+      "slot_id": "B03-S14",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P368",
+      "shelf_id": "B03",
+      "slot_id": "B03-S15",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P369",
+      "shelf_id": "B03",
+      "slot_id": "B03-S17",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P370",
+      "shelf_id": "B03",
+      "slot_id": "B03-S18",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P371",
+      "shelf_id": "B03",
+      "slot_id": "B03-S20",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P372",
+      "shelf_id": "B03",
+      "slot_id": "B03-S22",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P373",
+      "shelf_id": "B03",
+      "slot_id": "B03-S23",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P374",
+      "shelf_id": "B03",
+      "slot_id": "B03-S25",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P375",
+      "shelf_id": "B03",
+      "slot_id": "B03-S26",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P376",
+      "shelf_id": "B03",
+      "slot_id": "B03-S28",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P377",
+      "shelf_id": "B03",
+      "slot_id": "B03-S29",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P378",
+      "shelf_id": "B03",
+      "slot_id": "B03-S30",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P379",
+      "shelf_id": "B03",
+      "slot_id": "B03-S31",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 59
+    },
+    {
+      "sku": "P380",
+      "shelf_id": "B03",
+      "slot_id": "B03-S34",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P381",
+      "shelf_id": "B03",
+      "slot_id": "B03-S35",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P382",
+      "shelf_id": "B03",
+      "slot_id": "B03-S36",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P383",
+      "shelf_id": "B03",
+      "slot_id": "B03-S37",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P384",
+      "shelf_id": "B03",
+      "slot_id": "B03-S38",
+      "facings": 4,
+      "shelf_quantity": 16,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P385",
+      "shelf_id": "B03",
+      "slot_id": "B03-S42",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P386",
+      "shelf_id": "B03",
+      "slot_id": "B03-S43",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P387",
+      "shelf_id": "B03",
+      "slot_id": "B03-S44",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P388",
+      "shelf_id": "B03",
+      "slot_id": "B03-S45",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P389",
+      "shelf_id": "B03",
+      "slot_id": "B03-S46",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P390",
+      "shelf_id": "B03",
+      "slot_id": "B03-S47",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P391",
+      "shelf_id": "B03",
+      "slot_id": "B03-S49",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P392",
+      "shelf_id": "B03",
+      "slot_id": "B03-S51",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P393",
+      "shelf_id": "B03",
+      "slot_id": "B03-S52",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P394",
+      "shelf_id": "B03",
+      "slot_id": "B03-S53",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P395",
+      "shelf_id": "B03",
+      "slot_id": "B03-S54",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P396",
+      "shelf_id": "B03",
+      "slot_id": "B03-S55",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P397",
+      "shelf_id": "B03",
+      "slot_id": "B03-S57",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P398",
+      "shelf_id": "B03",
+      "slot_id": "B03-S58",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P399",
+      "shelf_id": "B03",
+      "slot_id": "B03-S59",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P400",
+      "shelf_id": "B03",
+      "slot_id": "B03-S60",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P401",
+      "shelf_id": "B03",
+      "slot_id": "B03-S61",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P402",
+      "shelf_id": "B03",
+      "slot_id": "B03-S62",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P403",
+      "shelf_id": "B03",
+      "slot_id": "B03-S65",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P404",
+      "shelf_id": "B03",
+      "slot_id": "B03-S66",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P405",
+      "shelf_id": "B03",
+      "slot_id": "B03-S68",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P406",
+      "shelf_id": "B03",
+      "slot_id": "B03-S71",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P407",
+      "shelf_id": "B03",
+      "slot_id": "B03-S72",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P408",
+      "shelf_id": "C01",
+      "slot_id": "C01-S02",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P409",
+      "shelf_id": "C01",
+      "slot_id": "C01-S03",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P410",
+      "shelf_id": "C01",
+      "slot_id": "C01-S05",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P411",
+      "shelf_id": "C01",
+      "slot_id": "C01-S06",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P412",
+      "shelf_id": "C01",
+      "slot_id": "C01-S07",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P413",
+      "shelf_id": "C01",
+      "slot_id": "C01-S08",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 52
+    },
+    {
+      "sku": "P414",
+      "shelf_id": "C01",
+      "slot_id": "C01-S09",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P415",
+      "shelf_id": "C01",
+      "slot_id": "C01-S10",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P416",
+      "shelf_id": "C01",
+      "slot_id": "C01-S11",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P417",
+      "shelf_id": "C01",
+      "slot_id": "C01-S12",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P418",
+      "shelf_id": "C01",
+      "slot_id": "C01-S13",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P419",
+      "shelf_id": "C01",
+      "slot_id": "C01-S14",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P420",
+      "shelf_id": "C01",
+      "slot_id": "C01-S15",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P421",
+      "shelf_id": "C01",
+      "slot_id": "C01-S16",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P422",
+      "shelf_id": "C01",
+      "slot_id": "C01-S17",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 11
+    },
+    {
+      "sku": "P423",
+      "shelf_id": "C01",
+      "slot_id": "C01-S18",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P424",
+      "shelf_id": "C01",
+      "slot_id": "C01-S19",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P425",
+      "shelf_id": "C01",
+      "slot_id": "C01-S20",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P426",
+      "shelf_id": "C01",
+      "slot_id": "C01-S22",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P427",
+      "shelf_id": "C01",
+      "slot_id": "C01-S23",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P428",
+      "shelf_id": "C01",
+      "slot_id": "C01-S24",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P429",
+      "shelf_id": "C01",
+      "slot_id": "C01-S25",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P430",
+      "shelf_id": "C01",
+      "slot_id": "C01-S26",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P431",
+      "shelf_id": "C01",
+      "slot_id": "C01-S27",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P432",
+      "shelf_id": "C01",
+      "slot_id": "C01-S29",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P433",
+      "shelf_id": "C01",
+      "slot_id": "C01-S30",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P434",
+      "shelf_id": "C01",
+      "slot_id": "C01-S31",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 59
+    },
+    {
+      "sku": "P435",
+      "shelf_id": "C01",
+      "slot_id": "C01-S32",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P436",
+      "shelf_id": "C01",
+      "slot_id": "C01-S33",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P437",
+      "shelf_id": "C01",
+      "slot_id": "C01-S34",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P438",
+      "shelf_id": "C01",
+      "slot_id": "C01-S35",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P439",
+      "shelf_id": "C01",
+      "slot_id": "C01-S36",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P440",
+      "shelf_id": "C01",
+      "slot_id": "C01-S37",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 59
+    },
+    {
+      "sku": "P441",
+      "shelf_id": "C01",
+      "slot_id": "C01-S38",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P442",
+      "shelf_id": "C01",
+      "slot_id": "C01-S39",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P443",
+      "shelf_id": "C01",
+      "slot_id": "C01-S40",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P444",
+      "shelf_id": "C01",
+      "slot_id": "C01-S41",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P445",
+      "shelf_id": "C01",
+      "slot_id": "C01-S43",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P446",
+      "shelf_id": "C01",
+      "slot_id": "C01-S44",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P447",
+      "shelf_id": "C01",
+      "slot_id": "C01-S45",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P448",
+      "shelf_id": "C01",
+      "slot_id": "C01-S47",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 62
+    },
+    {
+      "sku": "P449",
+      "shelf_id": "C01",
+      "slot_id": "C01-S48",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P450",
+      "shelf_id": "C01",
+      "slot_id": "C01-S49",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P451",
+      "shelf_id": "C01",
+      "slot_id": "C01-S53",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P452",
+      "shelf_id": "C01",
+      "slot_id": "C01-S55",
+      "facings": 4,
+      "shelf_quantity": 13,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P453",
+      "shelf_id": "C01",
+      "slot_id": "C01-S56",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P454",
+      "shelf_id": "C01",
+      "slot_id": "C01-S58",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P455",
+      "shelf_id": "C01",
+      "slot_id": "C01-S59",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P456",
+      "shelf_id": "C01",
+      "slot_id": "C01-S60",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P457",
+      "shelf_id": "C01",
+      "slot_id": "C01-S62",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 50
+    },
+    {
+      "sku": "P458",
+      "shelf_id": "C01",
+      "slot_id": "C01-S63",
+      "facings": 4,
+      "shelf_quantity": 8,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P459",
+      "shelf_id": "C01",
+      "slot_id": "C01-S64",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P460",
+      "shelf_id": "C01",
+      "slot_id": "C01-S65",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P461",
+      "shelf_id": "C01",
+      "slot_id": "C01-S68",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P462",
+      "shelf_id": "C01",
+      "slot_id": "C01-S69",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P463",
+      "shelf_id": "C01",
+      "slot_id": "C01-S70",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P464",
+      "shelf_id": "C01",
+      "slot_id": "C01-S72",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P465",
+      "shelf_id": "C02",
+      "slot_id": "C02-S01",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P466",
+      "shelf_id": "C02",
+      "slot_id": "C02-S02",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P467",
+      "shelf_id": "C02",
+      "slot_id": "C02-S03",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P468",
+      "shelf_id": "C02",
+      "slot_id": "C02-S05",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P469",
+      "shelf_id": "C02",
+      "slot_id": "C02-S06",
+      "facings": 4,
+      "shelf_quantity": 9,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P470",
+      "shelf_id": "C02",
+      "slot_id": "C02-S07",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P471",
+      "shelf_id": "C02",
+      "slot_id": "C02-S08",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P472",
+      "shelf_id": "C02",
+      "slot_id": "C02-S10",
+      "facings": 4,
+      "shelf_quantity": 12,
+      "backroom_quantity": 44
+    },
+    {
+      "sku": "P473",
+      "shelf_id": "C02",
+      "slot_id": "C02-S11",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P474",
+      "shelf_id": "C02",
+      "slot_id": "C02-S13",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P475",
+      "shelf_id": "C02",
+      "slot_id": "C02-S14",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P476",
+      "shelf_id": "C02",
+      "slot_id": "C02-S15",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P477",
+      "shelf_id": "C02",
+      "slot_id": "C02-S16",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P478",
+      "shelf_id": "C02",
+      "slot_id": "C02-S17",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P479",
+      "shelf_id": "C02",
+      "slot_id": "C02-S18",
+      "facings": 4,
+      "shelf_quantity": 17,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P480",
+      "shelf_id": "C02",
+      "slot_id": "C02-S19",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P481",
+      "shelf_id": "C02",
+      "slot_id": "C02-S20",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P482",
+      "shelf_id": "C02",
+      "slot_id": "C02-S21",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P483",
+      "shelf_id": "C02",
+      "slot_id": "C02-S22",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P484",
+      "shelf_id": "C02",
+      "slot_id": "C02-S23",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P485",
+      "shelf_id": "C02",
+      "slot_id": "C02-S24",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 55
+    },
+    {
+      "sku": "P486",
+      "shelf_id": "C02",
+      "slot_id": "C02-S26",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P487",
+      "shelf_id": "C02",
+      "slot_id": "C02-S27",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P488",
+      "shelf_id": "C02",
+      "slot_id": "C02-S28",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P489",
+      "shelf_id": "C02",
+      "slot_id": "C02-S29",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P490",
+      "shelf_id": "C02",
+      "slot_id": "C02-S30",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P491",
+      "shelf_id": "C02",
+      "slot_id": "C02-S31",
+      "facings": 4,
+      "shelf_quantity": 19,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P492",
+      "shelf_id": "C02",
+      "slot_id": "C02-S32",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P493",
+      "shelf_id": "C02",
+      "slot_id": "C02-S33",
+      "facings": 4,
+      "shelf_quantity": 16,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P494",
+      "shelf_id": "C02",
+      "slot_id": "C02-S35",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P495",
+      "shelf_id": "C02",
+      "slot_id": "C02-S37",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P496",
+      "shelf_id": "C02",
+      "slot_id": "C02-S39",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P497",
+      "shelf_id": "C02",
+      "slot_id": "C02-S40",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P498",
+      "shelf_id": "C02",
+      "slot_id": "C02-S41",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P499",
+      "shelf_id": "C02",
+      "slot_id": "C02-S43",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P500",
+      "shelf_id": "C02",
+      "slot_id": "C02-S44",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P501",
+      "shelf_id": "C02",
+      "slot_id": "C02-S46",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P502",
+      "shelf_id": "C02",
+      "slot_id": "C02-S47",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P503",
+      "shelf_id": "C02",
+      "slot_id": "C02-S48",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 46
+    },
+    {
+      "sku": "P504",
+      "shelf_id": "C02",
+      "slot_id": "C02-S49",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P505",
+      "shelf_id": "C02",
+      "slot_id": "C02-S50",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P506",
+      "shelf_id": "C02",
+      "slot_id": "C02-S51",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P507",
+      "shelf_id": "C02",
+      "slot_id": "C02-S56",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P508",
+      "shelf_id": "C02",
+      "slot_id": "C02-S57",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P509",
+      "shelf_id": "C02",
+      "slot_id": "C02-S58",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P510",
+      "shelf_id": "C02",
+      "slot_id": "C02-S59",
+      "facings": 5,
+      "shelf_quantity": 9,
+      "backroom_quantity": 47
+    },
+    {
+      "sku": "P511",
+      "shelf_id": "C02",
+      "slot_id": "C02-S62",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P512",
+      "shelf_id": "C02",
+      "slot_id": "C02-S63",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P513",
+      "shelf_id": "C02",
+      "slot_id": "C02-S65",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P514",
+      "shelf_id": "C02",
+      "slot_id": "C02-S67",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 31
+    },
+    {
+      "sku": "P515",
+      "shelf_id": "C02",
+      "slot_id": "C02-S68",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P516",
+      "shelf_id": "C02",
+      "slot_id": "C02-S71",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P517",
+      "shelf_id": "C02",
+      "slot_id": "C02-S72",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P518",
+      "shelf_id": "C03",
+      "slot_id": "C03-S01",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P519",
+      "shelf_id": "C03",
+      "slot_id": "C03-S03",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P520",
+      "shelf_id": "C03",
+      "slot_id": "C03-S05",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P521",
+      "shelf_id": "C03",
+      "slot_id": "C03-S06",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P522",
+      "shelf_id": "C03",
+      "slot_id": "C03-S07",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P523",
+      "shelf_id": "C03",
+      "slot_id": "C03-S09",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P524",
+      "shelf_id": "C03",
+      "slot_id": "C03-S10",
+      "facings": 4,
+      "shelf_quantity": 11,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P525",
+      "shelf_id": "C03",
+      "slot_id": "C03-S11",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 57
+    },
+    {
+      "sku": "P526",
+      "shelf_id": "C03",
+      "slot_id": "C03-S13",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P527",
+      "shelf_id": "C03",
+      "slot_id": "C03-S14",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P528",
+      "shelf_id": "C03",
+      "slot_id": "C03-S16",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 53
+    },
+    {
+      "sku": "P529",
+      "shelf_id": "C03",
+      "slot_id": "C03-S17",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P530",
+      "shelf_id": "C03",
+      "slot_id": "C03-S18",
+      "facings": 5,
+      "shelf_quantity": 14,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P531",
+      "shelf_id": "C03",
+      "slot_id": "C03-S20",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P532",
+      "shelf_id": "C03",
+      "slot_id": "C03-S21",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P533",
+      "shelf_id": "C03",
+      "slot_id": "C03-S22",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 30
+    },
+    {
+      "sku": "P534",
+      "shelf_id": "C03",
+      "slot_id": "C03-S23",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P535",
+      "shelf_id": "C03",
+      "slot_id": "C03-S25",
+      "facings": 4,
+      "shelf_quantity": 15,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P536",
+      "shelf_id": "C03",
+      "slot_id": "C03-S26",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P537",
+      "shelf_id": "C03",
+      "slot_id": "C03-S27",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P538",
+      "shelf_id": "C03",
+      "slot_id": "C03-S28",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 47
+    },
+    {
+      "sku": "P539",
+      "shelf_id": "C03",
+      "slot_id": "C03-S29",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P540",
+      "shelf_id": "C03",
+      "slot_id": "C03-S30",
+      "facings": 5,
+      "shelf_quantity": 20,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P541",
+      "shelf_id": "C03",
+      "slot_id": "C03-S32",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P542",
+      "shelf_id": "C03",
+      "slot_id": "C03-S33",
+      "facings": 4,
+      "shelf_quantity": 10,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P543",
+      "shelf_id": "C03",
+      "slot_id": "C03-S34",
+      "facings": 5,
+      "shelf_quantity": 16,
+      "backroom_quantity": 35
+    },
+    {
+      "sku": "P544",
+      "shelf_id": "C03",
+      "slot_id": "C03-S36",
+      "facings": 5,
+      "shelf_quantity": 23,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P545",
+      "shelf_id": "C03",
+      "slot_id": "C03-S37",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P546",
+      "shelf_id": "C03",
+      "slot_id": "C03-S38",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 14
+    },
+    {
+      "sku": "P547",
+      "shelf_id": "C03",
+      "slot_id": "C03-S39",
+      "facings": 4,
+      "shelf_quantity": 14,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P548",
+      "shelf_id": "C03",
+      "slot_id": "C03-S40",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P549",
+      "shelf_id": "C03",
+      "slot_id": "C03-S41",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P550",
+      "shelf_id": "C03",
+      "slot_id": "C03-S42",
+      "facings": 5,
+      "shelf_quantity": 13,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P551",
+      "shelf_id": "C03",
+      "slot_id": "C03-S43",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 37
+    },
+    {
+      "sku": "P552",
+      "shelf_id": "C03",
+      "slot_id": "C03-S45",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P553",
+      "shelf_id": "C03",
+      "slot_id": "C03-S48",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P554",
+      "shelf_id": "C03",
+      "slot_id": "C03-S51",
+      "facings": 5,
+      "shelf_quantity": 22,
+      "backroom_quantity": 61
+    },
+    {
+      "sku": "P555",
+      "shelf_id": "C03",
+      "slot_id": "C03-S52",
+      "facings": 5,
+      "shelf_quantity": 18,
+      "backroom_quantity": 47
+    },
+    {
+      "sku": "P556",
+      "shelf_id": "C03",
+      "slot_id": "C03-S53",
+      "facings": 5,
+      "shelf_quantity": 12,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P557",
+      "shelf_id": "C03",
+      "slot_id": "C03-S54",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P558",
+      "shelf_id": "C03",
+      "slot_id": "C03-S55",
+      "facings": 4,
+      "shelf_quantity": 20,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P559",
+      "shelf_id": "C03",
+      "slot_id": "C03-S56",
+      "facings": 5,
+      "shelf_quantity": 17,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P560",
+      "shelf_id": "C03",
+      "slot_id": "C03-S57",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P561",
+      "shelf_id": "C03",
+      "slot_id": "C03-S58",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P562",
+      "shelf_id": "C03",
+      "slot_id": "C03-S59",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 17
+    },
+    {
+      "sku": "P563",
+      "shelf_id": "C03",
+      "slot_id": "C03-S60",
+      "facings": 4,
+      "shelf_quantity": 18,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P564",
+      "shelf_id": "C03",
+      "slot_id": "C03-S61",
+      "facings": 5,
+      "shelf_quantity": 19,
+      "backroom_quantity": 52
+    },
+    {
+      "sku": "P565",
+      "shelf_id": "C03",
+      "slot_id": "C03-S62",
+      "facings": 5,
+      "shelf_quantity": 15,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P566",
+      "shelf_id": "C03",
+      "slot_id": "C03-S63",
+      "facings": 5,
+      "shelf_quantity": 10,
+      "backroom_quantity": 42
+    },
+    {
+      "sku": "P567",
+      "shelf_id": "C03",
+      "slot_id": "C03-S64",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 55
+    },
+    {
+      "sku": "P568",
+      "shelf_id": "C03",
+      "slot_id": "C03-S65",
+      "facings": 5,
+      "shelf_quantity": 11,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P569",
+      "shelf_id": "C03",
+      "slot_id": "C03-S66",
+      "facings": 5,
+      "shelf_quantity": 24,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P570",
+      "shelf_id": "C03",
+      "slot_id": "C03-S67",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 23
+    },
+    {
+      "sku": "P571",
+      "shelf_id": "C03",
+      "slot_id": "C03-S68",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 60
+    },
+    {
+      "sku": "P572",
+      "shelf_id": "C03",
+      "slot_id": "C03-S69",
+      "facings": 4,
+      "shelf_quantity": 7,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P573",
+      "shelf_id": "C03",
+      "slot_id": "C03-S70",
+      "facings": 5,
+      "shelf_quantity": 25,
+      "backroom_quantity": 62
+    },
+    {
+      "sku": "P574",
+      "shelf_id": "C03",
+      "slot_id": "C03-S72",
+      "facings": 5,
+      "shelf_quantity": 21,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P575",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S04",
+      "facings": 2,
+      "shelf_quantity": 16,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P576",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S06",
+      "facings": 2,
+      "shelf_quantity": 8,
+      "backroom_quantity": 26
+    },
+    {
+      "sku": "P577",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S09",
+      "facings": 1,
+      "shelf_quantity": 5,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P578",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S10",
+      "facings": 2,
+      "shelf_quantity": 16,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P579",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S11",
+      "facings": 1,
+      "shelf_quantity": 2,
+      "backroom_quantity": 6
+    },
+    {
+      "sku": "P580",
+      "shelf_id": "GDC01",
+      "slot_id": "GDC01-S12",
+      "facings": 2,
+      "shelf_quantity": 12,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P581",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S01",
+      "facings": 2,
+      "shelf_quantity": 12,
+      "backroom_quantity": 18
+    },
+    {
+      "sku": "P582",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S02",
+      "facings": 2,
+      "shelf_quantity": 11,
+      "backroom_quantity": 34
+    },
+    {
+      "sku": "P583",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S03",
+      "facings": 2,
+      "shelf_quantity": 15,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P584",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S05",
+      "facings": 1,
+      "shelf_quantity": 5,
+      "backroom_quantity": 12
+    },
+    {
+      "sku": "P585",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S06",
+      "facings": 2,
+      "shelf_quantity": 8,
+      "backroom_quantity": 41
+    },
+    {
+      "sku": "P586",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S07",
+      "facings": 1,
+      "shelf_quantity": 3,
+      "backroom_quantity": 19
+    },
+    {
+      "sku": "P587",
+      "shelf_id": "GDC02",
+      "slot_id": "GDC02-S11",
+      "facings": 2,
+      "shelf_quantity": 10,
+      "backroom_quantity": 10
+    },
+    {
+      "sku": "P588",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S01",
+      "facings": 1,
+      "shelf_quantity": 5,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P589",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S02",
+      "facings": 2,
+      "shelf_quantity": 16,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P590",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S05",
+      "facings": 1,
+      "shelf_quantity": 8,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P591",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S06",
+      "facings": 1,
+      "shelf_quantity": 6,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P592",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S07",
+      "facings": 2,
+      "shelf_quantity": 15,
+      "backroom_quantity": 36
+    },
+    {
+      "sku": "P593",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S08",
+      "facings": 2,
+      "shelf_quantity": 14,
+      "backroom_quantity": 32
+    },
+    {
+      "sku": "P594",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S09",
+      "facings": 1,
+      "shelf_quantity": 4,
+      "backroom_quantity": 8
+    },
+    {
+      "sku": "P595",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S10",
+      "facings": 2,
+      "shelf_quantity": 9,
+      "backroom_quantity": 43
+    },
+    {
+      "sku": "P596",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S11",
+      "facings": 2,
+      "shelf_quantity": 12,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P597",
+      "shelf_id": "GDC03",
+      "slot_id": "GDC03-S12",
+      "facings": 1,
+      "shelf_quantity": 4,
+      "backroom_quantity": 6
+    },
+    {
+      "sku": "P598",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S06",
+      "facings": 3,
+      "shelf_quantity": 27,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P599",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S08",
+      "facings": 2,
+      "shelf_quantity": 9,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P600",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S09",
+      "facings": 2,
+      "shelf_quantity": 8,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P601",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S10",
+      "facings": 3,
+      "shelf_quantity": 21,
+      "backroom_quantity": 51
+    },
+    {
+      "sku": "P602",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S11",
+      "facings": 2,
+      "shelf_quantity": 6,
+      "backroom_quantity": 27
+    },
+    {
+      "sku": "P603",
+      "shelf_id": "OC01",
+      "slot_id": "OC01-S12",
+      "facings": 3,
+      "shelf_quantity": 9,
+      "backroom_quantity": 25
+    },
+    {
+      "sku": "P604",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S01",
+      "facings": 3,
+      "shelf_quantity": 18,
+      "backroom_quantity": 40
+    },
+    {
+      "sku": "P605",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S02",
+      "facings": 2,
+      "shelf_quantity": 10,
+      "backroom_quantity": 28
+    },
+    {
+      "sku": "P606",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S03",
+      "facings": 3,
+      "shelf_quantity": 17,
+      "backroom_quantity": 58
+    },
+    {
+      "sku": "P607",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S04",
+      "facings": 2,
+      "shelf_quantity": 17,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P608",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S05",
+      "facings": 3,
+      "shelf_quantity": 21,
+      "backroom_quantity": 20
+    },
+    {
+      "sku": "P609",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S06",
+      "facings": 3,
+      "shelf_quantity": 10,
+      "backroom_quantity": 33
+    },
+    {
+      "sku": "P610",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S07",
+      "facings": 3,
+      "shelf_quantity": 20,
+      "backroom_quantity": 15
+    },
+    {
+      "sku": "P611",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S11",
+      "facings": 2,
+      "shelf_quantity": 11,
+      "backroom_quantity": 21
+    },
+    {
+      "sku": "P612",
+      "shelf_id": "OC02",
+      "slot_id": "OC02-S12",
+      "facings": 2,
+      "shelf_quantity": 5,
+      "backroom_quantity": 8
+    },
+    {
+      "sku": "P613",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S01",
+      "facings": 3,
+      "shelf_quantity": 11,
+      "backroom_quantity": 13
+    },
+    {
+      "sku": "P614",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S02",
+      "facings": 2,
+      "shelf_quantity": 7,
+      "backroom_quantity": 39
+    },
+    {
+      "sku": "P615",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S03",
+      "facings": 3,
+      "shelf_quantity": 22,
+      "backroom_quantity": 48
+    },
+    {
+      "sku": "P616",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S04",
+      "facings": 3,
+      "shelf_quantity": 15,
+      "backroom_quantity": 24
+    },
+    {
+      "sku": "P617",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S05",
+      "facings": 3,
+      "shelf_quantity": 16,
+      "backroom_quantity": 54
+    },
+    {
+      "sku": "P618",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S07",
+      "facings": 3,
+      "shelf_quantity": 24,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P619",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S09",
+      "facings": 3,
+      "shelf_quantity": 12,
+      "backroom_quantity": 45
+    },
+    {
+      "sku": "P620",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S10",
+      "facings": 3,
+      "shelf_quantity": 24,
+      "backroom_quantity": 16
+    },
+    {
+      "sku": "P621",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S11",
+      "facings": 2,
+      "shelf_quantity": 7,
+      "backroom_quantity": 9
+    },
+    {
+      "sku": "P622",
+      "shelf_id": "OC03",
+      "slot_id": "OC03-S12",
+      "facings": 3,
+      "shelf_quantity": 10,
+      "backroom_quantity": 22
+    },
+    {
+      "sku": "P623",
+      "shelf_id": "PR01",
+      "slot_id": "PR01-S03",
+      "facings": 7,
+      "shelf_quantity": 54,
+      "backroom_quantity": 74
+    },
+    {
+      "sku": "P624",
+      "shelf_id": "PR01",
+      "slot_id": "PR01-S05",
+      "facings": 7,
+      "shelf_quantity": 46,
+      "backroom_quantity": 97
+    },
+    {
+      "sku": "P625",
+      "shelf_id": "PR01",
+      "slot_id": "PR01-S08",
+      "facings": 7,
+      "shelf_quantity": 46,
+      "backroom_quantity": 111
+    },
+    {
+      "sku": "P626",
+      "shelf_id": "PR01",
+      "slot_id": "PR01-S09",
+      "facings": 7,
+      "shelf_quantity": 54,
+      "backroom_quantity": 38
+    },
+    {
+      "sku": "P627",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S03",
+      "facings": 6,
+      "shelf_quantity": 32,
+      "backroom_quantity": 29
+    },
+    {
+      "sku": "P628",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S05",
+      "facings": 7,
+      "shelf_quantity": 36,
+      "backroom_quantity": 90
+    },
+    {
+      "sku": "P629",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S07",
+      "facings": 7,
+      "shelf_quantity": 55,
+      "backroom_quantity": 122
+    },
+    {
+      "sku": "P630",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S08",
+      "facings": 6,
+      "shelf_quantity": 45,
+      "backroom_quantity": 49
+    },
+    {
+      "sku": "P631",
+      "shelf_id": "PR02",
+      "slot_id": "PR02-S09",
+      "facings": 7,
+      "shelf_quantity": 60,
+      "backroom_quantity": 81
+    },
+    {
+      "sku": "P632",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S01",
+      "facings": 7,
+      "shelf_quantity": 54,
+      "backroom_quantity": 137
+    },
+    {
+      "sku": "P633",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S02",
+      "facings": 7,
+      "shelf_quantity": 22,
+      "backroom_quantity": 92
+    },
+    {
+      "sku": "P634",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S05",
+      "facings": 7,
+      "shelf_quantity": 33,
+      "backroom_quantity": 95
+    },
+    {
+      "sku": "P635",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S07",
+      "facings": 7,
+      "shelf_quantity": 46,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P636",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S08",
+      "facings": 7,
+      "shelf_quantity": 30,
+      "backroom_quantity": 56
+    },
+    {
+      "sku": "P637",
+      "shelf_id": "PR03",
+      "slot_id": "PR03-S09",
+      "facings": 7,
+      "shelf_quantity": 41,
+      "backroom_quantity": 34
+    }
+  ]
+}
