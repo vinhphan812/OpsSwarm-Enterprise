@@ -1,6 +1,11 @@
 """FastAPI application for the RetailTwin day-0 boundary."""
 
 import logging
+import sys
+from collections.abc import Callable, Mapping, Sequence
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -9,10 +14,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from retailtwin_api.agent_activity import AgentActivityLog
 from retailtwin_api.agents.executor import build_commit_service
-from retailtwin_api.agents.observer.consumer import MemoryActivationLedger
 from retailtwin_api.agents.orchestrator.autonomy import AutonomousInvestigations
 from retailtwin_api.agents.orchestrator.tool_registry import build_store_registry
 from retailtwin_api.backbone import MemoryPipe, MemoryQuarantine
+from retailtwin_api.agents.observer.consumer import MemoryActivationLedger
 from retailtwin_api.analytics_repository import (
     get_checkout_repository,
     unavailable_analytics_repositories,
@@ -116,6 +121,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(router)
 
+    # Flagship controller — wired against the same canonical services
+    # ``create_app`` already configured (Live Twin, Guard, store_id). The
+    # routes return 503 when the controller is not configured, so a
+    # transient wiring failure (e.g. the production LLM provider could not
+    # be built) leaves the rest of the API intact.
+    _wire_flagship_controller(app, resolved, live_twin, store)
+
     logger.info(
         "app.startup",
         extra={
@@ -125,6 +137,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "fixture_loaded": store.loaded,
             "fixture_path": str(resolved.store_fixture_path),
             "live_twin_backend": resolved.live_twin_backend,
+            "flagship_wired": app.state.flagship_controller.is_configured
+            if getattr(app.state, "flagship_controller", None) is not None
+            else False,
         },
     )
     return app
@@ -136,6 +151,174 @@ def _open_store(settings: Settings) -> StoreReader:
     if settings.live_twin_backend == "firestore":
         return LiveTwinStore(FirestoreLiveTwinRepository(), settings.store_id)
     return open_memory_live_store(settings.store_fixture_path, settings.store_id)
+
+
+def _ensure_simulation_kpi_path() -> None:
+    """Make the canonical KPI evaluator importable as ``kpi.evaluator``.
+
+    The flagship controller is wired against the same deterministic KPI
+    formula the agent chain uses, and that formula lives under
+    ``services/simulation`` (which in turn depends on
+    ``services/forecasting`` for stockout risk). The test harness adds
+    the directories to ``sys.path``; production code does the same here
+    so a single import surface backs tests, dev runs and Cloud Run.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    for relative in ("services/simulation", "services/forecasting"):
+        candidate = repo_root / relative
+        if candidate.is_dir() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
+
+def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
+    """Adapter that turns the canonical KPI module into a ``CandidateEvaluator``.
+
+    The flagship controller receives a ``CandidateEvaluator`` (a
+    snapshot, candidate_id, actions → KPI mapping). The canonical
+    ``evaluate_candidate`` lives in ``services/simulation/kpi/evaluator``
+    and operates on Pydantic models. This adapter bridges the controller's
+    Mapping-based protocol to that canonical scorer.
+    """
+    _ensure_simulation_kpi_path()
+    from kpi.evaluator import (  # type: ignore[import-not-found]
+        ChangeFacings as KpiChangeFacings,
+    )
+    from kpi.evaluator import (  # type: ignore[import-not-found]
+        MoveProduct as KpiMoveProduct,
+    )
+    from kpi.evaluator import (  # type: ignore[import-not-found]
+        ReplenishShelf as KpiReplenishShelf,
+    )
+    from kpi.evaluator import (  # type: ignore[import-not-found]
+        SimulationSnapshot,
+        evaluate_candidate,
+    )
+
+    def _evaluator(
+        snapshot: Mapping[str, Any],
+        candidate_id: str,
+        actions: Sequence[Mapping[str, Any]],
+    ) -> dict[str, Any]:
+        observed_at = snapshot.get("observed_at")
+        if not isinstance(observed_at, str):
+            raise RuntimeError("observed_at must be an ISO string")
+        from datetime import datetime
+
+        built = SimulationSnapshot(
+            simulation_id=snapshot["simulation_id"],
+            store_id=snapshot["store_id"],
+            context_version=snapshot["context_version"],
+            correlation_id=snapshot["correlation_id"],
+            observed_at=datetime.fromisoformat(observed_at),
+            slots=tuple(
+                {
+                    "sku": slot["sku"],
+                    "slot_id": slot["slot_id"],
+                    "shelf_quantity": slot["shelf_quantity"],
+                    "backroom_quantity": slot["backroom_quantity"],
+                    "facings": slot["facings"],
+                    "sales_velocity_units_per_hour": Decimal(
+                        slot.get("sales_velocity_units_per_hour") or "0"
+                    ),
+                    "price": Decimal(slot.get("price") or "0"),
+                }
+                for slot in snapshot["slots"]
+            ),
+        )
+        converted: list[Any] = []
+        for action in actions:
+            kind = action.get("type")
+            if kind == "replenish_shelf":
+                converted.append(
+                    KpiReplenishShelf(sku=action["sku"], quantity=action["quantity"])
+                )
+            elif kind == "change_facings":
+                converted.append(
+                    KpiChangeFacings(sku=action["sku"], facings=action["facings"])
+                )
+            elif kind == "move_product":
+                converted.append(
+                    KpiMoveProduct(
+                        sku=action["sku"],
+                        from_slot=action["from_slot"],
+                        to_slot=action["to_slot"],
+                    )
+                )
+            else:
+                raise RuntimeError(f"unknown action {kind}")
+        return evaluate_candidate(built, candidate_id, tuple(converted)).as_dict()
+
+    return _evaluator
+
+
+def _build_flagship_provider(settings: Settings) -> Any:
+    """Build the LLM provider the flagship controller drives the chain with.
+
+    In production the configured ``vertex_gemini`` adapter is mandatory.
+    In dev/test the shipped ``fake`` provider is used. A misconfigured
+    production build raises here and the flagship routes return 503.
+    """
+    from retailtwin_api.llm.factory import create_provider, install_builtin_providers
+    from retailtwin_api.llm.factory import llm_config_from_settings
+
+    install_builtin_providers()
+    config = llm_config_from_settings(settings)
+    return create_provider(config)
+
+
+def _wire_flagship_controller(
+    app: FastAPI,
+    settings: Settings,
+    live_twin: LiveTwinRepository | None,
+    store: StoreReader,
+) -> None:
+    """Attach the flagship controller and routes to ``app``.
+
+    The controller is wired against the same canonical services
+    ``create_app`` already configured: the Live Twin, the store reader, the
+    tool registry built on top of them, the configured LLM provider, and
+    the deterministic KPI evaluator from ``services/simulation``. On any
+    wiring failure (missing Live Twin, LLM provider cannot be built) the
+    routes still mount and respond with 503.
+    """
+    from retailtwin_api.flagship import register_dependencies, register_routes
+
+    app.state.flagship_controller = None
+    register_routes(app)
+
+    if live_twin is None or not store.loaded:
+        logger.warning(
+            "flagship.unavailable",
+            extra={"reason": "live_twin or store is not loaded"},
+        )
+        return
+
+    try:
+        provider = _build_flagship_provider(settings)
+    except Exception as exc:  # noqa: BLE001 — surface any provider build failure
+        logger.warning(
+            "flagship.provider_unavailable",
+            extra={"reason": f"{type(exc).__name__}: {exc}"},
+        )
+        return
+
+    registry = build_store_registry(store)
+    controller = register_dependencies(
+        provider=provider,
+        twin=live_twin,
+        store_id=settings.store_id,
+        registry=registry,
+        evaluator=_build_flagship_evaluator(),
+    )
+    app.state.flagship_controller = controller
+    logger.info(
+        "flagship.wired",
+        extra={
+            "store_id": settings.store_id,
+            "llm_provider": settings.llm_provider,
+            "is_production": settings.is_production,
+        },
+    )
 
 
 def _origins(value: str) -> list[str]:

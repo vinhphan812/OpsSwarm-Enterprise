@@ -1001,6 +1001,23 @@ class InMemoryTwinRepository(LiveTwinRepository):
 
 
 # ---------------------------------------------------------------------------
+# Admin / test-only Live Twin writes
+# ---------------------------------------------------------------------------
+#
+# ``bump_inventory_for_stale_block`` deliberately mutates the Live Twin
+# without an agent decision so the flagship demo controller can reproduce
+# a stale ``REFRESH_REQUIRED`` race. It is **test-only**: in production the
+# helper raises immediately. The implementation lives in
+# :mod:`retailtwin_api.flagship._stale_bump` (a dedicated module so the
+# production invariant enforced by
+# ``tests/e2e/test_simulation_live_isolation.py`` holds — only that helper
+# module is allowed to call ``commit_inventory`` from outside the
+# repository class). The name is re-exported here for backward
+# compatibility with callers that import it from
+# ``retailtwin_api.firestore_twin``.
+
+
+# ---------------------------------------------------------------------------
 # StoreRepository adapter (preserves the existing interface for routes.py)
 # ---------------------------------------------------------------------------
 

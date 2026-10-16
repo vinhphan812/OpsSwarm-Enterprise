@@ -98,7 +98,21 @@ class TestExecutorIsolation:
     """Executor is the sole live mutation path."""
 
     def test_only_the_guarded_executor_writes_the_live_twin(self) -> None:
-        """No production module other than the guarded Executor calls a Live Twin write."""
+        """No production module other than the guarded Executor calls a Live Twin write.
+
+        The only legitimate production mutation paths are:
+
+        * :mod:`retailtwin_api.agents.executor.executor` — the guarded
+          Executor (ADR 0016).
+        * :mod:`retailtwin_api.store` — the seed boundary that hydrates
+          the in-process twin from the day-0 fixture at startup.
+
+        The test-only stale-race injection lives in its own module
+        (:mod:`retailtwin_api.flagship._stale_bump`) so the production
+        invariant above holds: ``firestore_twin.py`` only exposes the
+        ``commit_inventory`` / ``upsert_inventory`` primitives from inside
+        the repository class itself, never from a free helper.
+        """
         import ast
         import pathlib
         repo_root = pathlib.Path(__file__).parent.parent.parent
@@ -106,8 +120,12 @@ class TestExecutorIsolation:
         writers = {"upsert_inventory", "commit_inventory"}
         allowed = {
             package_root / "agents" / "executor" / "executor.py",
-            package_root / "firestore_twin.py",
             package_root / "store.py",  # seeds the in-process twin from the fixture at startup
+            # The flagship demo controller's test-only stale-race helper
+            # calls ``commit_inventory`` directly so the REFRESH_REQUIRED
+            # race is reproducible; gating lives inside the helper, so
+            # this is allowed only in non-production environments.
+            package_root / "flagship" / "_stale_bump.py",
         }
         offenders = []
         for path in package_root.rglob("*.py"):
@@ -117,6 +135,55 @@ class TestExecutorIsolation:
                 if isinstance(node, ast.Attribute) and node.attr in writers:
                     offenders.append(f"{path.relative_to(package_root)}:{node.lineno}")
         assert not offenders, offenders
+
+    def test_bump_inventory_for_stale_block_is_test_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The stale-race bump refuses to run when ``APP_ENV`` is ``production``.
+
+        The helper exists to provoke a stale ``REFRESH_REQUIRED`` from the
+        Decision Context Guard. Production code must route writes through
+        the guarded Executor (ADR 0016), so calling the helper in
+        production must raise immediately rather than silently bypass the
+        boundary.
+        """
+        from retailtwin_api.firestore_twin import InMemoryTwinRepository
+        from retailtwin_api.flagship._stale_bump import bump_inventory_for_stale_block
+
+        monkeypatch.setenv("APP_ENV", "production")
+        twin = InMemoryTwinRepository()
+        with pytest.raises(RuntimeError, match="test-only"):
+            bump_inventory_for_stale_block(twin, "store-001", "P001")
+
+    def test_bump_inventory_for_stale_block_runs_in_development(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-production ``APP_ENV`` values keep the helper callable.
+
+        The flagship demo only runs in development / staging / test /
+        e2e-smoke; the helper must continue to advance the Live Twin in
+        those environments so the stale-block test remains reproducible.
+        """
+        from retailtwin_api.firestore_twin import InventorySeed, InMemoryTwinRepository
+        from retailtwin_api.flagship._stale_bump import bump_inventory_for_stale_block
+
+        monkeypatch.setenv("APP_ENV", "development")
+        twin = InMemoryTwinRepository()
+        twin.seed(
+            "store-001",
+            "v1",
+            [
+                InventorySeed(
+                    sku="P001",
+                    shelf_id="A01",
+                    slot_id="A01-S01",
+                    facings=1,
+                    shelf_quantity=8,
+                    backroom_quantity=42,
+                ),
+            ],
+        )
+        assert bump_inventory_for_stale_block(twin, "store-001", "P001") is True
 
     def test_guard_readme_mentions_outcomes(self) -> None:
         """DCG README documents ALLOW / DENY / REFRESH_REQUIRED outcomes."""
