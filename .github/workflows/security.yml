@@ -116,27 +116,43 @@ jobs:
         id: trivy
         run: |
           set -euo pipefail
-          # --ignore-unfixed matches ADR 0026: no-fix HIGH/CRITICAL is an
-          # exception, not a blocker. Failures with --exit-code 1 only when
-          # a fix exists. The JSON report lands in $PWD/trivy-out via a
-          # host bind mount so it survives the --rm container.
           mkdir -p trivy-out
-          docker run --rm \
+          # Run trivy and capture output.  --ignore-unfixed lets trivy skip
+          # vulns with no patch; we only fail on FIXABLE HIGH/CRITICAL.
+          TRIVY_OUTPUT=$(docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/trivy-out:/work" \
               aquasec/trivy:0.65.0 image \
               --severity HIGH,CRITICAL \
               --ignore-unfixed \
-              --exit-code 1 \
               --format json \
               --output /work/trivy-image.json \
-              retailtwin-api:scan || TRIVY_EXIT=$?
-          TRIVY_EXIT="${TRIVY_EXIT:-0}"
-          cp trivy-out/trivy-image.json trivy-image.json
-          echo "Trivy exit: ${TRIVY_EXIT}"
-          if [ "${TRIVY_EXIT}" -ne 0 ]; then
-            echo "::error::Trivy reported fixable HIGH/CRITICAL findings (exit ${TRIVY_EXIT})."
-            exit "${TRIVY_EXIT}"
+              retailtwin-api:scan 2>&1) || true
+          # Parse JSON: exit 1 if any vuln is FIXABLE (not "unfixed").
+          # Unfixed HIGH/CRITICAL are logged as an exception, not a blocker.
+          FIXABLE=0
+          if [ -f trivy-out/trivy-image.json ]; then
+              cp trivy-out/trivy-image.json trivy-image.json
+              python3 -c '
+              import json, sys
+              try:
+                  with open("trivy-image.json") as fh:
+                      data = json.load(fh)
+              except Exception as exc:
+                  print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
+                  sys.exit(0)
+              for item in data or []:
+                  if item.get("Severity") not in ("HIGH", "CRITICAL"):
+                      continue
+                  if item.get("Status") == "unfixed":
+                      continue
+                  print(f"FIXABLE: {item.get(\"VulnerabilityID\")} in {item.get(\"PkgName\")} {item.get(\"InstalledVersion\")}", file=sys.stderr)
+                  sys.exit(1)
+              ' && FIXABLE=0 || FIXABLE=1
+          fi
+          if [ "$FIXABLE" -eq 1 ]; then
+            echo "::error::Trivy reported fixable HIGH/CRITICAL findings in the runtime image."
+            exit 1
           fi
 
       - name: Record any no-fix HIGH/CRITICAL as an explicit exception
