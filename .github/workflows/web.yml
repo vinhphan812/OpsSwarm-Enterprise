@@ -158,10 +158,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Authenticate to Google Cloud (WIF/OIDC)
+        id: gcp_auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
+          token_format: access_token
+          access_token_lifetime: 3600s
 
       - name: Download web dist
         uses: actions/download-artifact@v4
@@ -171,17 +174,28 @@ jobs:
 
       - name: Deploy to Firebase Hosting
         id: deploy
+        env:
+          GOOGLE_OAUTH_ACCESS_TOKEN: ${{ steps.gcp_auth.outputs.access_token }}
         run: |
-          # Deploy using firebase-tools CLI with ADC from WIF auth
-          # Capture deployment output for verification
-          DEPLOY_OUTPUT=$(npx firebase-tools@20.0.0 deploy \
+          # Deploy using firebase-tools CLI with an access token derived from WIF.
+          # The site is read from firebase.json (hosting.site), not from a CLI flag.
+          set +e
+          DEPLOY_OUTPUT=$(npx firebase-tools@14.9.0 deploy \
             --only hosting \
             --project retailtwin-ai-511002 \
-            --site ${{ vars.FIREBASE_SITE_ID }} \
+            --token "${GOOGLE_OAUTH_ACCESS_TOKEN}" \
             --json 2>&1)
+          DEPLOY_EC=$?
+          set -e
 
+          echo "Deployment exit code: ${DEPLOY_EC}"
           echo "Deployment output:"
           echo "${DEPLOY_OUTPUT}"
+
+          if [ "${DEPLOY_EC}" -ne 0 ]; then
+            echo "::error::firebase-tools deploy failed with exit code ${DEPLOY_EC}"
+            exit "${DEPLOY_EC}"
+          fi
 
           # Extract deployment URL from JSON output
           FRONTEND_URL=$(echo "${DEPLOY_OUTPUT}" | \
