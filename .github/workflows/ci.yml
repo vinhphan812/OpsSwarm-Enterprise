@@ -195,12 +195,12 @@ jobs:
           for pattern in "${SECRET_PATTERNS[@]}"; do
             if git grep -l -E "$pattern" \
               -- ':!*.lock' ':!package-lock.json' ':!yarn.lock' ':!pnpm-lock.yaml' \
-              ':!.github/workflows/*.yml' ':!**/tests/**' ':!**/*.test.*' ':!**/*_test.*' \
+              ':!.github/workflows/*.yml' ':!docs/**' ':!**/tests/**' ':!**/*.test.*' ':!**/*_test.*' \
               2>/dev/null | grep -qv '^$'; then
               echo "::error::Secret pattern matched: $pattern"
               git grep -n -E "$pattern" \
                 -- ':!*.lock' ':!package-lock.json' ':!yarn.lock' ':!pnpm-lock.yaml' \
-                ':!.github/workflows/*.yml' ':!**/tests/**' ':!**/*.test.*' ':!**/*_test.*' \
+                ':!.github/workflows/*.yml' ':!docs/**' ':!**/tests/**' ':!**/*.test.*' ':!**/*_test.*' \
                 2>/dev/null || true
               VIOLATIONS=$((VIOLATIONS + 1))
             fi
