@@ -140,11 +140,9 @@ Do not infer implementation merely because a component is documented in the targ
 - Later analytical tables such as product performance and simulation results;
 - end-to-end autonomous scenario;
 - Demo data for production build (issue #135, active PR #197);
-<<<<<<< HEAD
 - submission gates G02–G06;
 - `traffic_events` BigQuery table, Investigator binding to the heatmap, and the 3D heatmap rendering (issue #36 follow-ups);
 - advanced optimizer activation (issue #54). The optimizer ships behind the simulator's optional `ranker` parameter; activating it is a one-line injection once G06 (#53) records reproducible flagship evidence.
-
 
 ## Current release-gate status
 
