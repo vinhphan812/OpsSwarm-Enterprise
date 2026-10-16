@@ -209,6 +209,25 @@ export const en = {
     selectProduct: "Show {{sku}} in the store",
     followAgent: "Follow agent",
     followAgentHint: "Fly the camera to what the agent works on, unless you are using it",
+    runs: "Agent runs",
+    loose: "Not part of a run",
+    view: {
+      label: "Timeline view",
+      runs: "Runs",
+      log: "Log",
+    },
+    run: {
+      title: "AI run",
+      titleSku: "AI run · {{sku}}",
+      at: "At {{stage}}",
+      complete: "Reached VERIFY",
+      steps: "Control loop of {{run}}",
+    },
+    stageStatus: {
+      done: ", done",
+      active: ", current step",
+      pending: ", not reached",
+    },
   },
   alerts: {
     section: "Alerts & opportunities",
