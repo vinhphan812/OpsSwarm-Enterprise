@@ -28,6 +28,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  NODE_OPTIONS: --max-old-space-size=4096
   VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
   FIREBASE_SITE_ID: ${{ vars.FIREBASE_SITE_ID }}
   PRODUCTION_API_ORIGIN: ${{ vars.FIREBASE_API_BASE_URL }}
