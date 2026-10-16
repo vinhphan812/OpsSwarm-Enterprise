@@ -28,6 +28,7 @@ Set `VITE_API_BASE_URL` to the API origin. The default is `http://127.0.0.1:8000
 - **Overlays on the 3D view**:
   - `LensSwitcher` (top left): Operations, Revenue, or Promotions. Picking a lens opens the side panel on it. Revenue and Promotions read routes `apps/api` does not serve yet (`TODO(BE)`), so they show their empty report until it does.
   - `ViewModeSwitch` (top left, next to the lenses): **Live** or **Simulation**. Simulation can be picked only while a simulation is open (`twin.store.simulation`), and the view goes back to Live when it closes. A newly opened run raises a toast once ("New proposal: <id>", none if the Simulation view is already on), and a pulsing violet dot stays on Simulation until that run has been looked at. See *Live and Simulation views* below.
+  - `KpiStrip` (top left, under the switches): four business KPI tiles. See *Business KPI strip* below.
   - `SimulationBanner`: in the Simulation view, a violet frame around the 3D view (`--color-simulation`) and a label under the switches: SIMULATION, "Proposed store, not executed", the run id and status, the Live version it started from, and a warning once Live has moved on since.
   - `CameraHelp` (bottom left): lists the camera gestures.
   - `TwinStatusOverlay`: a spinner while the first state loads, then a small banner for problems (load failed, connection lost), with a retry button. The store always stays on screen: with empty shelves until a state arrives, then the last state. Errors also show as a toast.
@@ -194,9 +195,22 @@ For `CHANGE_CUE_MS` (4 s) the hook returns `{ diff, at, before }`, where `before
 | Revenue | `GET /revenue?period=today\|7d\|30d` | `RevenueSummary` (`types/revenue.type.ts`) | `client.revenue(period)` |
 | Promotions | `GET /promotions` | `PromotionsSummary` (`types/promotion.type.ts`) | `client.promotions()` |
 
-`useRevenue` and `usePromotions` read the route the first time a lens (or a period, or a product's details dialog for promotions) opens, never on page load, then cache the result, so switching lenses does not call the API again. The lens shows the empty report (`emptyRevenue`, `emptyPromotions`) until the read lands. A failed read shows one toast and is retried the next time the lens opens.
+`useRevenue` and `usePromotions` read the route the first time a lens (or a period, or a product's details dialog for promotions) opens, never on page load (except today's revenue, which the KPI strip reads quietly, below), then cache the result, so switching lenses does not call the API again. The lens shows the empty report (`emptyRevenue`, `emptyPromotions`) until the read lands. A failed read shows one toast and is retried the next time the lens opens.
 
 `apps/api` does not serve either route yet (`TODO(BE)` on the types), so outside `?twin=demo` the read fails with one toast and the lens keeps its empty report. Under `?twin=demo`, `commerceClient` reads the demo report instead.
+
+### Business KPI strip
+
+`KpiStrip` (`components/layout/KpiStrip.tsx`) sits under the lens and view switches, so it never covers them, the side panel (its `max-width` stops short of `PANEL_WIDTH`) or the panel toggle. The simulation banner moves down below it (`.viewport:has(.kpi-strip)`). The chevron collapses it to a **Business KPIs** pill. Each tile takes its value from one source (`core/twin/kpiStrip.ts`) and animates when it changes (`AnimatedNumber`):
+
+| Tile | Basis | Source | Value |
+| --- | --- | --- | --- |
+| Revenue today | recorded | `GET /revenue?period=today` (`useRevenueToday`) | `revenue` as served, labelled *Recorded sales* |
+| On-shelf availability | live | Live Twin (`GET /store`, `twin.store.live`) | share of served products with `shelf_quantity > 0`; moves when an ACT restocks |
+| Stockout risk | live | anomaly feed (`GET /anomalies`, `anomaly.store`) | products with an open `stockout` anomaly |
+| Projected impact | projected | KPI evaluator (the open simulation's candidates) | `business_score` of the selected candidate (else the top-scored one) minus the baseline's, labelled *Simulation only*, never measured |
+
+Each tile has one basis (`KPI_BASIS`, `data-basis`), so a Simulation number never mixes into a Live one: the Live tiles read `twin.store.live`, never the open simulation's proposed store, and the projected tile's label is in the Simulation colour. A tile whose source has not answered shows "—", "Not served", and a tooltip saying why (`KPI_MISSING`): never a 0. `anomaly.store.served` tells "no stockouts" (0) from "feed never read" (—). `useRevenueToday` reads today's revenue on load and again every `REVENUE_TODAY_REFRESH_MS`. A failed read does not toast (a missing route would toast on every page load) and keeps the last good figure only while it is fresh: once that read is older than `REVENUE_TODAY_STALE_MS`, the tile shows "—" with a *stale* tooltip until the route answers again. A failed revenue read never touches the Live Twin tiles. Under `?twin=demo` all four come from `fixtures/demo`. TODO(#209): once the AI Impact card is on main, the AI impact tile can show the accepted plan's projection after the simulation closes.
 
 ### Alerts and opportunities
 
