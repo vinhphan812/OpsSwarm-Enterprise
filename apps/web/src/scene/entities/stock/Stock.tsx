@@ -59,10 +59,12 @@ import {
   moveCueOf,
   moveProgress,
   STEADY_MARKS,
+  storeBefore,
   tweenMatrix,
   type MarkLevels,
   type MoveCue,
 } from "./moveCue";
+import { arrivalCueOf, arrivalDone, arrivalProgress, gainedSkus, growMatrix, type ArrivalCue } from "./arrivalCue";
 import { surfaceMatrix, surfacesOf } from "./surfaces";
 import { NO_MODELS, fitModel, productModel, type StockLayout, type StockModel, type StockModels } from "./models";
 import type { StockModelId } from "@/enums/stock.enum";
@@ -146,12 +148,13 @@ const UP = new Vector3(0, 1, 0);
 /** Brightness spread between items of one product, so a facing does not read as flat plastic. */
 const SHADE_SPREAD = 0.12;
 
-/** One drawn item. `holderId` is the shelf or equipment it stands on. */
+/** One drawn item. `holderId` is the shelf or equipment it stands on; `rank` is its place among its product's items, from 0. */
 type Placed = {
   matrix: Matrix4;
   color: Color;
   productId: string;
   holderId: string;
+  rank: number;
 };
 /** Items are batched per primitive shape, and per GLB model for products drawn with one. */
 type BatchKey = StockShape | StockModelId;
@@ -260,6 +263,7 @@ export function buildStock(store: StoreFixture, models: StockModels = NO_MODELS)
         color: base.clone().multiplyScalar(shade),
         productId: product.productId,
         holderId: product.shelfId,
+        rank: index - 1,
       });
     };
     layItems(surface, slot, item, shownFacings, emit, layout?.layers);
@@ -303,6 +307,15 @@ export function unitsHeld(store: StoreFixture): Map<string, number> {
   return counts;
 }
 
+/** How many items `batches` draws of each product. */
+export function drawnCounts(batches: Batches): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const items of Object.values(batches)) {
+    for (const item of items ?? []) counts.set(item.productId, (counts.get(item.productId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** The stock item a raycast hit, if it hit one. Fixture hit boxes use it to let their own items take a click. */
 export function stockItemAt(hit: Intersection): Placed | undefined {
   const items = hit.object.userData.stockItems as Placed[] | undefined;
@@ -318,22 +331,38 @@ const atState: MatrixOf = (item) => item.matrix;
 /** Reused by every tween frame; `setMatrixAt` copies it. */
 const tweened = new Matrix4();
 
+/** The cues that draw items away from the state for a moment: moves travel, gained items grow in. */
+type ItemCues = { move: MoveCue | null; arrival: ArrivalCue | null };
+const NO_CUES: ItemCues = { move: null, arrival: null };
+
+/** Where `item` is drawn at `now` under `cues`, written into `tweened`; null when it stands at the state. */
+function cuedMatrix(item: Placed, base: Matrix4, cues: ItemCues, now: number): Matrix4 | null {
+  const offset = cues.move?.offsets.get(item.productId);
+  if (offset) return tweenMatrix(base, offset, moveProgress(cues.move!.at, now), tweened);
+  const arrival = cues.arrival;
+  const from = arrival?.from.get(item.productId);
+  if (!arrival || from === undefined || item.rank < from) return null;
+  const progress = arrivalProgress(arrival.at, now, item.rank - from, arrival.added.get(item.productId) ?? 1);
+  return growMatrix(base, progress, tweened);
+}
+
 /**
- * Carries the moved products' items from their source slot to where the state puts them
- * over `MOVE_TWEEN_MS`, from when the move appeared. The layout effect has already drawn
- * them at the state; each frame of the tween draws them on the way there, and its last
- * frame draws the state again. A tween cut short (a newer state, another view) is put
- * back at the state too, so the scene never stays between two slots.
+ * Draws the items under a cue away from the state, from when the cue appeared: a moved
+ * product's items travel from its source slot over `MOVE_TWEEN_MS`, and the items a product
+ * gains grow in one after another. The layout effect has already drawn them at the state;
+ * each frame of a cue draws them on the way there, and its last frame draws the state again.
+ * A cue cut short (a newer state, another view) is put back at the state too, so the scene
+ * never stays between two states.
  */
-function useMoveTween(
+function useCueTween(
   ref: { current: InstancedMesh | null },
   items: Placed[],
   matrixOf: MatrixOf,
-  tween: MoveCue | null,
+  cues: ItemCues,
 ) {
   const running = useRef(false);
   useLayoutEffect(() => {
-    running.current = tween !== null;
+    running.current = cues.move !== null || cues.arrival !== null;
     return () => {
       const mesh = ref.current;
       if (!running.current || !mesh) return;
@@ -342,31 +371,37 @@ function useMoveTween(
       mesh.instanceMatrix.needsUpdate = true;
     };
     // matrixOf is a module function per caller.
-  }, [ref, items, tween]);
+  }, [ref, items, cues]);
   useFrame(({ gl }) => {
     const mesh = ref.current;
-    if (!running.current || !tween || !mesh) return;
-    const progress = moveProgress(tween.at, Date.now());
-    let moved = false;
+    if (!running.current || !mesh) return;
+    const now = Date.now();
+    let cued = false;
     items.forEach((item, index) => {
-      const offset = tween.offsets.get(item.productId);
-      if (!offset) return;
-      mesh.setMatrixAt(index, tweenMatrix(matrixOf(item), offset, progress, tweened));
-      moved = true;
+      const base = matrixOf(item);
+      const matrix = cuedMatrix(item, base, cues, now);
+      if (!matrix) return;
+      mesh.setMatrixAt(index, matrix);
+      cued = true;
     });
-    if (progress >= 1 || !moved) running.current = false;
-    if (!moved) return;
+    const moving = cues.move !== null && moveProgress(cues.move.at, now) < 1;
+    const growing = cues.arrival !== null && !arrivalDone(cues.arrival.at, now);
+    if (!moving && !growing) running.current = false;
+    if (!cued) {
+      running.current = false;
+      return;
+    }
     mesh.instanceMatrix.needsUpdate = true;
     // Shadows are drawn on demand (`StaticShadows`), so they follow the items by hand.
     gl.shadowMap.needsUpdate = true;
   });
 }
 
-/** Writes each item's matrix and color into the instanced mesh, and tweens the moved ones. */
+/** Writes each item's matrix and color into the instanced mesh, and tweens the cued ones. */
 function useInstances(
   items: Placed[],
   matrixOf: MatrixOf = atState,
-  tween: MoveCue | null = null,
+  cues: ItemCues = NO_CUES,
 ) {
   const ref = useRef<InstancedMesh>(null);
   useLayoutEffect(() => {
@@ -381,7 +416,7 @@ function useInstances(
     mesh.computeBoundingSphere();
     // matrixOf is a module function per caller, so only the items change.
   }, [items]);
-  useMoveTween(ref, items, matrixOf, tween);
+  useCueTween(ref, items, matrixOf, cues);
   return ref;
 }
 
@@ -392,10 +427,10 @@ function lookOf(key: BatchKey, models: StockModels): BatchLook {
   return model ? { key, geometry: model.geometry, model } : { key, geometry: GEOMETRY[key as StockShape] };
 }
 
-type MeshProps = { look: BatchLook; items: Placed[]; tween: MoveCue | null };
+type MeshProps = { look: BatchLook; items: Placed[]; cues: ItemCues };
 
-function StockMesh({ look, items, tween }: MeshProps) {
-  const ref = useInstances(items, atState, tween);
+function StockMesh({ look, items, cues }: MeshProps) {
+  const ref = useInstances(items, atState, cues);
 
   // Products are instances, not objects, so a click is mapped back through the instance id.
   const onClick = (event: ThreeEvent<MouseEvent>) => {
@@ -423,8 +458,8 @@ const glowMatrix = (item: Placed) =>
   new Matrix4().multiplyMatrices(item.matrix, SELECTED_SCALE);
 
 /** The selected product's items again, glowing. Takes no pointer events and casts no shadow. */
-function SelectedMesh({ look, items, tween }: MeshProps) {
-  const ref = useInstances(items, glowMatrix, tween);
+function SelectedMesh({ look, items, cues }: MeshProps) {
+  const ref = useInstances(items, glowMatrix, cues);
   if (items.length === 0) return null;
   return (
     <instancedMesh
@@ -443,9 +478,9 @@ function AnomalyMesh({
   look,
   severity,
   items,
-  tween,
+  cues,
 }: MeshProps & { severity: AnomalySeverity }) {
-  const ref = useInstances(items, haloMatrix, tween);
+  const ref = useInstances(items, haloMatrix, cues);
   if (items.length === 0) return null;
   return (
     <instancedMesh
@@ -576,6 +611,10 @@ function pick(batches: Batches, keep: (productId: string) => boolean) {
  * over from source to destination as the items travel, flashes when they land, and fades
  * out (`markLevels`, `marksShown`). With reduced motion the items stand at the destination
  * from the start, and the outline and lights hold still for as long as the tween would take.
+ *
+ * The items a recent change adds to a product (more facings, a shelf gain) grow in from
+ * their shelf, one after another (`arrivalCueOf`); its slot glows meanwhile (`SlotMarksLayer`).
+ * With reduced motion they are simply there.
  */
 export function Stock({ store, models = NO_MODELS }: { store: StoreFixture; models?: StockModels }) {
   const batches = useMemo(() => buildStock(store, models), [store, models]);
@@ -604,7 +643,12 @@ export function Stock({ store, models = NO_MODELS }: { store: StoreFixture; mode
     () => (move ? ghostOutlines(move, Object.values(buildStock(move.ghost, models)).flat()) : NO_SLOTS),
     [move, models],
   );
-  const tween = motion ? move : null;
+  const arrival = useMemo(() => {
+    const gained = gainedSkus(change);
+    if (!change || gained.size === 0) return null;
+    return arrivalCueOf(change, drawnCounts(buildStock(storeBefore(store, change, gained), models)), drawnCounts(batches));
+  }, [store, change, models, batches]);
+  const cues = useMemo<ItemCues>(() => (motion ? { move, arrival } : NO_CUES), [motion, move, arrival]);
   const marks = useRef<Group>(null);
   useFrame(({ clock }) => {
     if (motion && anomalies.length) pulseHalos(Math.sin(clock.elapsedTime * Math.PI * 2 * ANOMALY_PULSE_HZ));
@@ -617,14 +661,14 @@ export function Stock({ store, models = NO_MODELS }: { store: StoreFixture; mode
   return (
     <group name="stock">
       {keysOf(batches).map((key) => (
-        <StockMesh key={key} look={lookOf(key, models)} items={batches[key] ?? NO_ITEMS} tween={tween} />
+        <StockMesh key={key} look={lookOf(key, models)} items={batches[key] ?? NO_ITEMS} cues={cues} />
       ))}
       {keysOf(selected).map((key) => (
         <SelectedMesh
           key={`selected-${key}`}
           look={lookOf(key, models)}
           items={selected[key] ?? NO_ITEMS}
-          tween={tween}
+          cues={cues}
         />
       ))}
       {anomalous.flatMap(({ severity, batches: items }) =>
@@ -634,7 +678,7 @@ export function Stock({ store, models = NO_MODELS }: { store: StoreFixture; mode
             look={lookOf(key, models)}
             severity={severity}
             items={items[key] ?? NO_ITEMS}
-            tween={tween}
+            cues={cues}
           />
         )),
       )}

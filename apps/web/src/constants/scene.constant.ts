@@ -73,3 +73,5 @@ export const MOVE_ARC_HEIGHT = 0.18;
 export const MOVE_SLOT_HANDOFF = 0.7;
 /** Extra glow on the destination slot the moment the items land, fading with the marks. */
 export const MOVE_ARRIVAL_FLASH = 1.5;
+/** The ease-out-back constant of a new item's growth: 1.7 takes it about 10% past full size before it settles. */
+export const ARRIVAL_OVERSHOOT = 1.7;

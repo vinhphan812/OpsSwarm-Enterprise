@@ -82,10 +82,15 @@ export function moveCueOf(store: StoreFixture, change: RecentChange | null): Mov
     toSlots.push(slotLight(to));
   }
   if (shown.length === 0) return null;
+  const ghost = storeBefore(store, change, new Set(shown.map((move) => move.sku)));
+  return { at: change.at, offsets, ghost, sources, fromSlots, toSlots };
+}
+
+/** `store`'s layout with the products in `skus` as they stood before `change`; any other product is left out. */
+export function storeBefore(store: StoreFixture, change: RecentChange, skus: Set<string>): StoreFixture {
   // Not `toSceneStore`: the layout module imports the stock surfaces, which import this one.
-  const moved = new Set(shown.map((move) => move.sku));
-  const before: ProductFixture[] = change.before.products
-    .filter((product) => moved.has(product.sku))
+  const products: ProductFixture[] = change.before.products
+    .filter((product) => skus.has(product.sku))
     .map((product) => ({
       productId: product.sku,
       shelfId: product.shelf_id,
@@ -95,7 +100,7 @@ export function moveCueOf(store: StoreFixture, change: RecentChange | null): Mov
       backroomQuantity: product.backroom_quantity,
       version: product.version,
     }));
-  return { at: change.at, offsets, ghost: { ...store, products: before }, sources, fromSlots, toSlots };
+  return { ...store, products };
 }
 
 /** How far a move's tween has come at `now`, from 0 to 1. */

@@ -18,3 +18,7 @@ export const MOVE_TWEEN_MS = 900;
 /** How long a move's outline and slot lights take to fade in, and to fade out once the items land. */
 export const MOVE_MARK_IN_MS = 150;
 export const MOVE_MARK_OUT_MS = 500;
+/** How long one item that a facings change or shelf gain adds takes to grow in. */
+export const ARRIVAL_GROW_MS = 350;
+/** The window over which a product's new items start growing, one after another. Together with `ARRIVAL_GROW_MS`, shorter than `CHANGE_CUE_MS`. */
+export const ARRIVAL_SPREAD_MS = 500;
