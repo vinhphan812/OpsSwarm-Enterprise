@@ -17,12 +17,11 @@ on:
       - '.firebaserc'
       - '.github/workflows/web.yml'
 
-# Least-privilege permissions at workflow level.
-# id-token: write is required for google-github-actions/auth to exchange
-# a GitHub OIDC token for short-lived GCP credentials (WIF/OIDC).
+# Least-privilege permissions at workflow level. `id-token: write` is
+# only required by the `deploy:` job and is granted on that job's
+# `permissions:` block (ADR 0026).
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: web-ci-${{ github.ref }}
@@ -147,6 +146,12 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
 
+    # ADR 0026 — only the deploy job needs the OIDC token to exchange for
+    # short-lived GCP credentials via google-github-actions/auth.
+    permissions:
+      contents: read
+      id-token: write
+
     outputs:
       frontend_url: ${{ steps.deploy.outputs.frontend_url }}
       channel: ${{ steps.deploy.outputs.channel }}
@@ -159,7 +164,7 @@ jobs:
 
       - name: Authenticate to Google Cloud (WIF/OIDC)
         id: gcp_auth
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2.1.7  # 6fc4af4b145ae7821d527454aa9bd537d1f2dc5f
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}

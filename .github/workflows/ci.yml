@@ -17,6 +17,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+# ADR 0026 — least-privilege default. This workflow only reads source
+# and uploads artifacts, so `contents: read` is enough.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

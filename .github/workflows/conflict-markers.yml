@@ -7,6 +7,10 @@ on:
     branches: [main]
   pull_request:
 
+# ADR 0026 — least-privilege default. This workflow only reads source.
+permissions:
+  contents: read
+
 concurrency:
   group: conflict-markers-${{ github.ref }}
   cancel-in-progress: true

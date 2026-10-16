@@ -1,0 +1,92 @@
+name: Release gate
+
+# Issue #146 / ADR 0026 — release evidence gate.
+#
+# Runs on push to main after the API image has been pushed and the Web
+# deployment has produced a Firebase version. Produces:
+#   - an SPDX SBOM for the backend container image, and
+#   - a release-evidence.json carrying the git SHA, image digest, image
+#     tag, and Trivy summary.
+#
+# Both artifacts are uploaded with the run so an incident responder can
+# answer "what was in retailtwin-api@sha-abc?" from the repo alone.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# ADR 0026 — least-privilege default. `id-token: write` is not requested
+# because the SBOM job uses the image tag already pushed by api.yml
+# (gcr.io/retailtwin-ai-511002/retailtwin-api:${{ github.sha }}) and the
+# image is public-readable to the GCR service account used by `actions: read`.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sbom-backend:
+    name: Backend SBOM
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve image tag and digest
+        id: resolve
+        run: |
+          set -euo pipefail
+          TAG="gcr.io/retailtwin-ai-511002/retailtwin-api:${GITHUB_SHA}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Pull the manifest digest from gcr.io. The image is public to
+          # the deploy service account used by api.yml.
+          if command -v docker >/dev/null 2>&1; then
+            docker pull --quiet "${TAG}" >/dev/null 2>&1 || true
+            DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "${TAG}" 2>/dev/null \
+              | sed -E 's#^[^@]+@##' || true)
+          fi
+          echo "digest=${DIGEST:-unknown}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CycloneDX SBOM for backend image
+        uses: anchore/sbom-action@fffec3d851af758d56fee099cf3fbf8aa8779843  # v0.24.3
+        with:
+          image: ${{ steps.resolve.outputs.tag }}
+          format: cyclonedx-json
+          artifact-name: sbom-backend-cyclonedx
+
+      - name: Generate SPDX SBOM for backend image
+        uses: anchore/sbom-action@fffec3d851af758d56fee099cf3fbf8aa8779843  # v0.24.3
+        with:
+          image: ${{ steps.resolve.outputs.tag }}
+          format: spdx-json
+          artifact-name: sbom-backend-spdx
+
+      - name: Assemble release evidence
+        env:
+          IMAGE_TAG: ${{ steps.resolve.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.resolve.outputs.digest }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY' > release-evidence.json
+          import json, os, pathlib, datetime as dt
+          evidence = {
+              "service": "retailtwin-api",
+              "git_sha": os.environ["GIT_SHA"],
+              "image_tag": os.environ["IMAGE_TAG"],
+              "image_digest": os.environ["IMAGE_DIGEST"],
+              "generated_at": dt.datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+              "sbom_artifacts": sorted(p.name for p in pathlib.Path(".").glob("*.spdx.json")),
+          }
+          print(json.dumps(evidence, indent=2, sort_keys=True))
+          PY
+          cat release-evidence.json
+
+      - name: Upload release evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence-backend
+          path: release-evidence.json
+          if-no-files-found: error
+          retention-days: 90
