@@ -35,7 +35,7 @@ jobs:
 
   build-test:
     name: Build & Test
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
 
     defaults:
       run:
@@ -114,7 +114,7 @@ jobs:
 
   e2e-smoke:
     name: E2E Smoke
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     needs: build-test
 
     steps:
@@ -145,7 +145,7 @@ jobs:
   #   - Roles: Cloud Run Admin, Container Registry Writer, Secret Manager Secret Accessor
   deploy-cloudrun:
     name: Deploy to Cloud Run (production)
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     needs: [build-test, e2e-smoke, security]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Separate environment enforces protection: no direct push-to-main without CI green.

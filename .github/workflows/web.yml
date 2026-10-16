@@ -38,7 +38,7 @@ jobs:
 
   build-test:
     name: Build & Test
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
 
     outputs:
       api_origin: ${{ env.VITE_API_BASE_URL }}
@@ -142,7 +142,7 @@ jobs:
   deploy:
     name: Deploy to Firebase Hosting
     needs: [build-test, security]
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
 
@@ -242,7 +242,7 @@ jobs:
   verify:
     name: Smoke Verification
     needs: deploy
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 10
 
     env:
