@@ -246,17 +246,87 @@ def _checked_evaluation(
     return evaluation, score
 
 
+def _ranked_decisions(
+    decisions: Sequence[Decision],
+    live: LiveView,
+    *,
+    evaluate: CandidateEvaluator,
+    ranker: Any,
+    intent: str | None,
+    simulation_id: str,
+    correlation_id: str,
+) -> list[Decision]:
+    """Use ``ranker`` to expand + rank the Planner's decisions.
+
+    Imports the optimizer lazily to keep the simulator package's import
+    graph minimal when the optimizer is not in use.
+    """
+
+    from retailtwin_api.agents.optimizer import (
+        InvalidRankerConfig,
+        OptimizerError,
+        rank_candidates,
+        ranked_to_decision,
+    )
+
+    try:
+        ranked = rank_candidates(
+            decisions,
+            live,
+            kpi_evaluator=evaluate,
+            ranker=ranker,
+            intent=intent,
+            simulation_id=simulation_id,
+        )
+    except (OptimizerError, InvalidRankerConfig) as exc:
+        # ``rank_candidates`` only catches evaluator-side data errors; an
+        # unexpected exception (a buggy evaluator, a missing kpi.evaluator
+        # module on the calling side, etc.) must surface as a deterministic
+        # ``EVALUATION_FAILED`` to match the existing simulator contract.
+        log.info(
+            "simulation rejected correlation_id=%s reason=%s detail=%s",
+            correlation_id,
+            EVALUATION_FAILED,
+            type(exc).__name__,
+        )
+        raise SimulationError(correlation_id, EVALUATION_FAILED) from None
+    except Exception as exc:  # pragma: no cover - evaluator contract violation
+        log.info(
+            "simulation rejected correlation_id=%s reason=%s detail=%s",
+            correlation_id,
+            EVALUATION_FAILED,
+            type(exc).__name__,
+        )
+        raise SimulationError(correlation_id, EVALUATION_FAILED) from None
+    if not ranked:
+        return []
+    base = decisions[0]
+    rebuilt: list[Decision] = []
+    for entry in ranked:
+        rebuilt.append(ranked_to_decision(entry, base=base))
+    return rebuilt
+
+
 def simulate(
     decisions: Sequence[Decision],
     live: LiveView,
     *,
     evaluate: CandidateEvaluator,
+    ranker: Any | None = None,
+    ranker_intent: str | None = None,
 ) -> SimulationResult:
     """Score each decision on a clone of ``live``.
 
     The returned decisions carry ``simulation_id`` and the evaluator's
     business score. ``live`` is not changed. A failed candidate returns no
     partial result.
+
+    When ``ranker`` is provided (the advanced optimizer, issue #54), the
+    Planner's two-to-three candidates are replaced with the optimizer's
+    ranked output before scoring. The optimizer uses the same evaluator
+    to compute the ranker's score; the simulator still scores each ranked
+    candidate independently so the returned result is unchanged. The
+    ranker is gated by G06 (#53); a ``None`` keeps the existing behaviour.
     """
 
     correlation_id = _checked_live(live)
@@ -273,6 +343,18 @@ def simulate(
             [_action(action) for action in decision.proposed_actions]
         except TypeError:
             raise _reject(correlation_id, INVALID_REQUEST) from None
+    if ranker is not None:
+        decisions = _ranked_decisions(
+            decisions,
+            live,
+            evaluate=evaluate,
+            ranker=ranker,
+            intent=ranker_intent,
+            simulation_id=f"sim-{correlation_id}",
+            correlation_id=correlation_id,
+        )
+        if not decisions:
+            raise _reject(correlation_id, EVALUATION_FAILED)
     simulation_id = f"sim-{correlation_id}"
     payload = _snapshot(live, simulation_id)
     scored: list[ScoredCandidate] = []

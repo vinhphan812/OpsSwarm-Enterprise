@@ -48,6 +48,7 @@ Implemented on `main`:
 - provider-neutral LLM runtime for issue #85 (ADR 0008) in `apps/api/retailtwin_api/llm/`. Registered providers (`fake`, `openai_compatible`, `vertex_gemini`), adapter pattern, production requires `vertex_gemini` with ADC;
 - deterministic KPI evaluator for issue #33 (PR #112) in `services/simulation`. Score candidates with stockout risk, service level, movement cost, and business score;
 - simulation clone scoring for issue #15 (PR #173). Apply candidate actions to a clone, score the result;
+- advanced constrained retail optimizer for issue #54 (ADR 0040, gated by G06). Deterministic candidate expansion and ranking with two algorithms (`heuristic_v1`, `lp_v1`); the simulator accepts an optional `CandidateRanker` and falls back to the Planner's two-to-three candidates when no ranker is configured;
 - Day-0 FastAPI Cloud Run deployment for issue #9 (PR #111). Linux/amd64 image, gcr.io/retailtwin-ai-511002/retailtwin-api, public invoker, minimum instances 1;
 - production Cloud Run hardening for issue #34 (PR #113). WIF/OIDC authentication, secret management, health/degraded status;
 - simulation review routes for issues #83 (PR #127). `POST /simulations/{id}/approve` and `/simulations/{id}/reject` with HMAC-signed authorization;
@@ -137,7 +138,8 @@ Do not infer implementation merely because a component is documented in the targ
 - Later analytical tables such as product performance and simulation results;
 - end-to-end autonomous scenario;
 - Demo data for production build (issue #135, active PR #197);
-- submission gates G02–G06.
+- submission gates G02–G06;
+- advanced optimizer activation (issue #54). The optimizer ships behind the simulator's optional `ranker` parameter; activating it is a one-line injection once G06 (#53) records reproducible flagship evidence.
 
 ## Current release-gate status
 
