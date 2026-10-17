@@ -38,6 +38,10 @@ function fakeClient(
     reviewSimulation: vi.fn(),
     anomalies: vi.fn(),
     checkout: vi.fn(),
+    flagshipStatus: vi.fn(),
+    flagshipReset: vi.fn(),
+    flagshipStart: vi.fn(),
+    agentEvents: vi.fn(),
   };
 }
 

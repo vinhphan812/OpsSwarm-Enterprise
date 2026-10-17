@@ -19,6 +19,9 @@ export const REVENUE_TODAY_REFRESH_MS = 60_000;
 /** How old the last good read of today's revenue may get before the KPI strip stops showing it, in ms. */
 export const REVENUE_TODAY_STALE_MS = 5 * 60_000;
 
+/** How often the flagship demo runner polls for status and events, in ms. */
+export const DEMO_RUN_POLL_MS = 250;
+
 /** How long the AI Impact toast stays over the 3D view, in ms. */
 export const IMPACT_TOAST_MS = 8000;
 
