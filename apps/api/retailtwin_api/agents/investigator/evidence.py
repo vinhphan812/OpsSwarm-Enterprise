@@ -3,6 +3,28 @@
 The provider chooses which read tools to call. Their results are the only
 evidence. Model prose is ignored. A mandatory source without a versioned
 result is recorded as insufficient_evidence and is not guessed.
+
+Each mandatory source's ``bind_read_port`` reader returns a Mapping with a
+``version`` key. For the BigQuery-backed ``get_sales_history`` reader the
+``version`` is a deterministic digest of ``query_window``,
+``source_watermark``, ``data_lineage``, and ``content_digest`` (a sha256
+over the returned rows), so two distinct BigQuery jobs that return the
+same rows reproduce the same ``version``. The BigQuery ``query_job_id``
+is kept on the payload for debugging. The ``ProductInventory.version``
+key for ``get_inventory`` is the inventory canonical version. The
+EvidenceBundle's ``entity_versions`` map carries the canonical
+``inventory`` version keyed by SKU; ``sales_history`` and ``forecast``
+attach their ``version`` to the matching item payload so downstream
+consumers — Planner, Simulator, KPI evaluator — can thread the
+demand-evidence version end-to-end.
+
+When a mandatory source's reader returns ``None`` (e.g. the BigQuery
+``retailtwin.sales_events`` query returns no rows in the canonical window)
+or raises, the wrapping ``bind_read_port`` handler converts the failure
+to ``source_unavailable`` and the investigator records it as
+``insufficient_evidence`` with the typed reason
+``sales_history_unavailable`` for the BigQuery-backed sales_history port.
+The investigator never invents a number.
 """
 
 from __future__ import annotations
@@ -55,6 +77,19 @@ _SOURCE_OF_TOOL = {tool: source for source, tool in MANDATORY_SOURCES}
 NOT_REQUESTED = "not_requested"
 MISSING_VERSION = "missing_version"
 ENTITY_MISMATCH = "entity_mismatch"
+# Reason code for when the BigQuery-backed ``get_sales_history`` reader returns
+# ``None`` (empty result) or raises. The reader converts both cases to ``None``,
+# and the wrapping ``bind_read_port`` handler converts ``None`` to
+# ``source_unavailable``; this code keeps the investigator's typed vocabulary
+# aligned with issue #215 / ADR 0024.
+SALES_HISTORY_UNAVAILABLE = "sales_history_unavailable"
+# Sources whose ``version`` is surfaced on the bundle.
+# ``inventory`` keys ``entity_versions`` by SKU; the BigQuery-backed
+# ``sales_history`` and the deterministic ``forecast`` key
+# ``source_versions`` by source name. The demand-evidence source
+# (``sales_history``) is what the KPI evaluator reads to populate
+# ``evaluator_version`` on a scored candidate.
+DEMAND_EVIDENCE_SOURCE = "sales_history"
 
 
 class InvestigatorError(Exception):
@@ -216,25 +251,51 @@ def _bundle(
 ) -> EvidenceBundle:
     items: list[EvidenceItem] = []
     versions: dict[str, str] = {}
+    source_versions: dict[str, str] = {}
     missing: list[str] = []
     for source, _name in MANDATORY_SOURCES:
         hit = states[source]
         if hit.success is None:
             missing.append(source)
+            reason = hit.failure_reason or NOT_REQUESTED
+            if reason == SOURCE_UNAVAILABLE and source == "sales_history":
+                # Typed vocabulary for the BigQuery-backed sales_history port
+                # (issue #215 / ADR 0024): when the reader returns ``None`` or
+                # raises, ``bind_read_port`` raises ``SOURCE_UNAVAILABLE``;
+                # the bundle surfaces it as ``sales_history_unavailable`` so
+                # downstream code can branch on the typed code.
+                reason = SALES_HISTORY_UNAVAILABLE
             items.append(
                 EvidenceItem(
                     event_type="insufficient_evidence",
                     payload={
                         "source": source,
                         "entity_id": hit.entity_id or _default_entity(source, event),
-                        "reason": hit.failure_reason or NOT_REQUESTED,
+                        "reason": reason,
                     },
                 )
             )
             continue
         items.append(EvidenceItem(event_type=source, payload=hit.success))
         if source == "inventory":
+            # ``inventory`` is the only source keyed by SKU; the rest of the
+            # chain (Planner, DCG, Executor) reads ``entity_versions[sku]``
+            # to verify the proposal context against the live snapshot.
             versions[event.sku] = str(hit.success["version"])
+        elif source in {"sales_history", "forecast"}:
+            # ``sales_history`` is the BigQuery-backed demand evidence
+            # (issue #215 / ADR 0024); its ``version`` is a deterministic
+            # sha256[16] digest of ``query_window``, ``source_watermark``,
+            # ``data_lineage``, and the row-level ``content_digest`` —
+            # so two distinct BigQuery jobs returning the same rows
+            # produce the same ``version``. The ``query_job_id`` is
+            # kept alongside for debugging. ``forecast`` is the
+            # deterministic demand forecast (issue #30) keyed by the
+            # formula id. Both are surfaced under ``source_versions`` so
+            # downstream code — KPI evaluator, audit trail — can read
+            # the demand-evidence version without parsing the ``items``
+            # list.
+            source_versions[source] = str(hit.success["version"])
     sufficient = not missing
     log.info(
         "evidence collected correlation_id=%s sku=%s is_sufficient=%s missing=%s",
@@ -248,6 +309,7 @@ def _bundle(
         provenance="tool-registry",
         source="investigator",
         entity_versions=versions,
+        source_versions=source_versions,
         collected_at=collected_at,
         freshness=collected_at,
         store_id=event.store_id,

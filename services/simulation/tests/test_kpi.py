@@ -3,11 +3,13 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import jsonschema
 import pytest
 
 from kpi.evaluator import (
     ASSUMPTIONS,
     FORMULA_ID,
+    NO_DEMAND_EVIDENCE_VERSION,
     ChangeFacings,
     KpiError,
     KpiLedger,
@@ -602,3 +604,80 @@ def test_rate_rejects_infinity() -> None:
     from kpi.evaluator import _rate
     with pytest.raises(KpiError, match="price"):
         _rate("price", Decimal("inf"))
+
+
+# ─── issue #215 — demand-evidence evaluator_version ───────────────────────────
+
+
+class TestEvaluatorVersionProvenance:
+    """Issue #215: the canonical KPI evaluator threads the demand-evidence version.
+
+    ``KpiResult.evaluator_version`` records the deterministic
+    sha256[16] digest the BigQuery ``get_sales_history`` reader
+    produced for ``query_window`` + ``source_watermark`` +
+    ``data_lineage`` + ``content_digest`` (or
+    ``NO_DEMAND_EVIDENCE_VERSION`` sentinel when no demand evidence
+    was threaded). The agent-level ``SimulationKPIResult`` and
+    ``SimulationCandidateResponse`` round-trip the same field so the
+    audit trail can prove which evidence snapshot produced the score.
+    """
+
+    def test_evaluator_version_round_trips_on_kpi_result(self) -> None:
+        result = evaluate_candidate(
+            p017(), "baseline", (), evaluator_version="bq-job-abc123"
+        )
+        assert result.evaluator_version == "bq-job-abc123"
+        encoded = result.as_dict()
+        assert encoded["evaluator_version"] == "bq-job-abc123"
+
+    def test_default_evaluator_version_is_none_sentinel(self) -> None:
+        result = evaluate_candidate(p017(), "baseline", ())
+        assert result.evaluator_version == NO_DEMAND_EVIDENCE_VERSION
+
+    def test_evaluator_version_round_trips_through_ledger(self) -> None:
+        ledger = KpiLedger()
+        first = ledger.evaluate(
+            p017(), "A", (ReplenishShelf(sku="P017", quantity=12),),
+            evaluator_version="bq-job-run-1",
+        )
+        # A second ``evaluate`` with the same candidate id and same
+        # version returns the stored row (deterministic).
+        again = ledger.evaluate(
+            p017(), "A", (ReplenishShelf(sku="P017", quantity=12),),
+            evaluator_version="bq-job-run-1",
+        )
+        assert first.evaluator_version == "bq-job-run-1"
+        assert again.evaluator_version == "bq-job-run-1"
+        assert again is first
+
+    def test_evaluator_version_mismatch_raises_for_same_candidate(self) -> None:
+        """A different demand-evidence version for the same candidate must not silently overwrite."""
+        ledger = KpiLedger()
+        ledger.evaluate(
+            p017(), "A", (ReplenishShelf(sku="P017", quantity=12),),
+            evaluator_version="bq-job-v1",
+        )
+        with pytest.raises(KpiError, match="different result"):
+            ledger.evaluate(
+                p017(), "A", (ReplenishShelf(sku="P017", quantity=12),),
+                evaluator_version="bq-job-v2",
+            )
+
+    def test_empty_evaluator_version_is_rejected(self) -> None:
+        with pytest.raises(KpiError, match="evaluator_version"):
+            evaluate_candidate(p017(), "A", (), evaluator_version="")
+        with pytest.raises(KpiError, match="evaluator_version"):
+            evaluate_candidate(p017(), "A", (), evaluator_version="   ")
+
+    def test_non_string_evaluator_version_is_rejected(self) -> None:
+        with pytest.raises(KpiError, match="evaluator_version"):
+            evaluate_candidate(p017(), "A", (), evaluator_version=42)  # type: ignore[arg-type]
+
+    def test_evaluator_version_satisfies_kpi_json_schema(self) -> None:
+        """The new field must round-trip through the canonical JSON schema."""
+        result = evaluate_candidate(
+            p017(), "A", (ReplenishShelf(sku="P017", quantity=12),),
+            evaluator_version="bq-job-p017-sat",
+        )
+        encoded = json.loads(json.dumps(result.as_dict(), sort_keys=True))
+        jsonschema.validate(encoded, json.loads(SCHEMA.read_text(encoding="utf-8")))

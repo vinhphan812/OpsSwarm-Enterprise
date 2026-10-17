@@ -509,3 +509,37 @@ class TestReviewUnavailableSimulationRepo:
         )
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "simulations_unavailable"
+
+
+# ─── issue #215 — SimulationKPIResult.evaluator_version round-trips ───────────
+
+
+class TestSimulationKPIEvaluatorVersion:
+    """The agent-level ``SimulationKPIResult.evaluator_version`` field
+    is the canonical demand-evidence provenance the canonical KPI
+    evaluator returns (issue #215). The ``SimulationCandidateResponse``
+    DTO surfaces the same value so the audit trail can prove which
+    BigQuery ``sales_events`` job id produced the score.
+    """
+
+    def test_simulation_kpi_result_default_evaluator_version(self) -> None:
+        from retailtwin_api.contracts import SimulationKPIResult
+
+        result = SimulationKPIResult(
+            simulation_id="sim-test",
+            kpi_score=0.5,
+            duration_ms=12,
+        )
+        assert result.evaluator_version == "none"
+
+    def test_simulation_kpi_result_round_trips_evaluator_version(self) -> None:
+        from retailtwin_api.contracts import SimulationKPIResult
+
+        result = SimulationKPIResult(
+            simulation_id="sim-test",
+            kpi_score=0.5,
+            duration_ms=12,
+            evaluator_version="bq-job-p017-sat",
+        )
+        assert result.evaluator_version == "bq-job-p017-sat"
+        assert result.model_dump()["evaluator_version"] == "bq-job-p017-sat"

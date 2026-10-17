@@ -28,6 +28,13 @@ from retailtwin_api.contracts import (
 log = logging.getLogger(__name__)
 
 FORMULA_ID = "simulation-kpi-v1"
+# Default ``evaluator_version`` for the agent-level ``SimulationKPIResult``
+# when the underlying canonical evaluator (``services/simulation/kpi/evaluator``)
+# did not surface a demand-evidence version. Issue #215 / ADR 0024 threads
+# the BigQuery ``retailtwin.sales_events`` job id through the Investigator
+# → Planner → Simulator chain; when the chain has none, the simulator
+# still produces a deterministic result with this sentinel.
+NO_DEMAND_EVIDENCE_VERSION = "none"
 
 INVALID_SNAPSHOT = "invalid_snapshot"
 INVALID_REQUEST = "invalid_request"
@@ -222,6 +229,50 @@ def _score(value: object) -> float:
     return float(number)
 
 
+def _demand_evidence_version(decision: Decision) -> str | None:
+    """Pull the demand-evidence ``source_versions`` entry off ``decision.evidence``.
+
+    Issue #215 / ADR 0024: the canonical demand evidence lives in the
+    EvidenceBundle the Investigator produced for ``decision``. The
+    bundle's ``source_versions["sales_history"]`` is the deterministic
+    sha256[16] digest of ``query_window``, ``source_watermark``,
+    ``data_lineage``, and the row-level ``content_digest`` — so two
+    distinct BigQuery jobs returning the same rows reproduce the same
+    version. The simulator threads this version into the resulting
+    ``SimulationKPIResult`` so consumers can see the exact BigQuery
+    snapshot the candidate was scored against. Returns ``None`` when
+    the decision carries no evidence or the bundle does not include a
+    ``sales_history`` version.
+    """
+    for bundle in decision.evidence:
+        version = bundle.source_versions.get("sales_history")
+        if isinstance(version, str):
+            stripped = version.strip()
+            if stripped:
+                return stripped
+    return None
+
+
+def _read_evaluator_version(evaluation: Mapping[str, Any]) -> str:
+    """Pull the demand-evidence version off the canonical KPI evaluation.
+
+    The canonical scorer in ``services/simulation/kpi/evaluator`` records
+    ``evaluator_version`` on the ``KpiResult``. ``SimulationKPIResult``
+    round-trips that field so consumers (routes, audit, replan) can see the
+    exact BigQuery ``get_sales_history`` job id the candidate was scored
+    against (issue #215 / ADR 0024). When the canonical evaluator returns
+    an evaluation that omits the field (legacy callers / tests), the agent
+    layer falls back to the sentinel ``NO_DEMAND_EVIDENCE_VERSION``.
+    """
+    raw = evaluation.get("evaluator_version")
+    if isinstance(raw, bool):
+        return NO_DEMAND_EVIDENCE_VERSION
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        return stripped or NO_DEMAND_EVIDENCE_VERSION
+    return NO_DEMAND_EVIDENCE_VERSION
+
+
 def _checked_evaluation(
     raw: object,
     *,
@@ -386,6 +437,14 @@ def simulate(
                 ),
             }
         )
+        # Thread the demand-evidence version (issue #215 / ADR 0024) end
+        # to end. The canonical evaluator returns ``"none"`` when no
+        # demand evidence was threaded at evaluation time; the
+        # ``_demand_evidence_version`` helper reads the BigQuery job id
+        # off the decision's evidence so the SimulationKPIResult carries
+        # the exact snapshot the candidate was scored against.
+        demand_version = _demand_evidence_version(decision)
+        canonical_version = _read_evaluator_version(evaluation)
         scored.append(
             ScoredCandidate(
                 decision=updated,
@@ -393,6 +452,11 @@ def simulate(
                     simulation_id=simulation_id,
                     kpi_score=score,
                     duration_ms=duration_ms,
+                    evaluator_version=(
+                        demand_version
+                        if demand_version is not None
+                        else canonical_version
+                    ),
                 ),
                 evaluation=evaluation,
             )

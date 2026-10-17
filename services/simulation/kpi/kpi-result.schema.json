@@ -20,6 +20,7 @@
     "margin_benefit",
     "business_score",
     "movement_units",
+    "evaluator_version",
     "assumptions"
   ],
   "properties": {
@@ -37,6 +38,7 @@
     "margin_benefit": {"const": "0"},
     "business_score": {"type": "string", "pattern": "^-?\\d+(\\.\\d+)?$"},
     "movement_units": {"type": "string", "pattern": "^\\d+$"},
+    "evaluator_version": {"type": "string", "minLength": 1},
     "assumptions": {
       "type": "array",
       "minItems": 1,
