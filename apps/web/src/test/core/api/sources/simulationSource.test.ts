@@ -36,6 +36,8 @@ function fakeClient(
     simulation,
     candidates,
     reviewSimulation: vi.fn(),
+    anomalies: vi.fn(),
+    checkout: vi.fn(),
   };
 }
 

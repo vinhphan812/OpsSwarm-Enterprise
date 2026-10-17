@@ -51,6 +51,8 @@ function client(overrides: Partial<RetailTwinClient> = {}): RetailTwinClient {
     simulation: vi.fn(),
     candidates: vi.fn(),
     reviewSimulation: vi.fn(),
+    anomalies: vi.fn(),
+    checkout: vi.fn(),
     ...overrides,
   };
 }

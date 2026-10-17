@@ -9,6 +9,7 @@ import type { Promotion, PromotionsSummary } from "@/types/promotion.type";
 import type { RevenueSummary, RevenueTotals, SkuRevenue } from "@/types/revenue.type";
 import { DEMO_PRICES, demoCheckout, demoTransactions } from "./checkouts";
 import { demoStoreState } from "./store";
+import { demoAnomalies } from "./anomalies";
 
 /**
  * Demo data for `?twin=demo` (development builds only), never Live Twin truth.
@@ -258,4 +259,28 @@ export const demoClient: RetailTwinClient = {
   ...defaultClient,
   revenue: (period) => Promise.resolve(demoRevenue(period)),
   promotions: () => Promise.resolve(demoPromotions()),
+  anomalies: () => Promise.resolve(demoAnomalies()),
+  checkout: (checkoutId) => {
+    const summary = demoCheckout(checkoutId);
+    if (!summary) {
+      // Return empty response for unknown checkout IDs
+      return Promise.resolve({
+        summary: {
+          checkout_id: checkoutId,
+          store_id: STORE_ID,
+          status: "closed" as const,
+          cashier: null,
+          shift_started_at: null,
+          business_date: "",
+          revenue_today: 0,
+          transactions_today: 0,
+          items_scanned_today: 0,
+          queue_length: 0,
+          last_transaction_at: null,
+        },
+        transactions: [],
+      });
+    }
+    return Promise.resolve({ summary, transactions: demoTransactions(checkoutId) });
+  },
 };
