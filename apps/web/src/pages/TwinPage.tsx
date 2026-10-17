@@ -6,6 +6,8 @@ import { BuildBadge } from "@/components/layout/BuildBadge";
 import { CameraHelp } from "@/components/layout/CameraHelp";
 import { KpiStrip } from "@/components/layout/KpiStrip";
 import { AgentFocusCaption } from "@/components/twin/AgentFocusCaption";
+import { AiImpactDialog } from "@/components/twin/AiImpactDialog";
+import { AiImpactToast } from "@/components/twin/AiImpactToast";
 import { LensSwitcher } from "@/components/layout/LensSwitcher";
 import { ViewModeSwitch } from "@/components/layout/ViewModeSwitch";
 import { OverlayLegend } from "@/components/layout/OverlayLegend";
@@ -59,11 +61,13 @@ export function TwinPage() {
           </div>
         </div>
         <AgentFocusCaption />
+        <AiImpactToast />
         <AgentActivityOpenButton />
         <EntityInspector />
         <ProductDetailsDialog />
         <TwinIssuesNotice />
         <BuildBadge />
+        <AiImpactDialog />
       </main>
       <AgentActivityPanel />
     </>

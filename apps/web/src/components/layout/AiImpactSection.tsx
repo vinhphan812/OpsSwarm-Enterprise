@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { AiImpactCard } from "@/components/twin/AiImpactCard";
 import { useVerifiedImpact } from "@/hooks/aiImpact.hook";
 
-/** The projected impact in the Operations lens, once the agent's run has reached VERIFY. Nothing before. */
+/** The projected impact in the Operations lens's log view, once the agent's run has reached VERIFY. Nothing before. */
 export function AiImpactSection() {
   const { t } = useTranslation();
   const verified = useVerifiedImpact();

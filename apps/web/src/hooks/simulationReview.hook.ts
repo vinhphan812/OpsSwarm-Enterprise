@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { notify } from "@/core/notify";
+import { aiChanges } from "@/core/twin/aiChanges";
 import { impactOf } from "@/core/twin/aiImpact";
 import type { SimulationReviewer } from "@/core/twin/simulationReview";
 import {
@@ -27,7 +28,9 @@ const reviewKey = (simulation: Simulation) => `${simulation.simulation_id}@${sim
  * the run to close. A review is of one proposal (`state.context_version`), so a proposal
  * replaced under the same run id can be reviewed again. The guard's answer to an approval
  * is kept in `useGuardStore` for the guard card. An executed approval records its AI
- * Impact: the accepted candidate's KPIs against the baseline's, or none without a candidate.
+ * Impact: the accepted candidate's KPIs against the baseline's, or none without a candidate;
+ * and its AI CHANGES: Live as it was against the committed proposal. The guard allows a
+ * commit only when Live has not moved since the simulation, so that is Live before → after.
  */
 export function useSimulationReview(reviewer: SimulationReviewer | null, simulation: Simulation | null) {
   const { t } = useTranslation();
@@ -81,6 +84,7 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
     const twin = useTwinStore.getState();
     const candidateId = selectedCandidate(twin)?.candidate_id ?? null;
     const candidates = twin.candidates;
+    const liveBefore = twin.live;
     try {
       const result = await reviewer(simulation, decision);
       announce(result, simulation.base_context_version);
@@ -89,6 +93,9 @@ export function useSimulationReview(reviewer: SimulationReviewer | null, simulat
       }
       if (result.verdict === GUARD_VERDICT.Allow && result.status === SIMULATION_STATUS.Committed) {
         useImpactStore.getState().record(impactOf(candidates, simulation.simulation_id, candidateId));
+        useImpactStore.getState().recordExecuted(
+          liveBefore ? { simulation_id: simulation.simulation_id, changes: aiChanges(liveBefore, simulation.state) } : null,
+        );
       }
       // The rejected proposal leaves the screen; its changes go back to Live in 3D.
       if (result.status === SIMULATION_STATUS.Rejected && useUiStore.getState().viewMode === VIEW_MODE.Simulation) {
