@@ -169,6 +169,8 @@ jobs:
                   print("trivy-image.json: Results entry must be a JSON object", file=sys.stderr)
                   sys.exit(1)
               vulnerabilities = result.get("Vulnerabilities")
+              if vulnerabilities is None:
+                  continue
               if not isinstance(vulnerabilities, list):
                   print("trivy-image.json: Vulnerabilities must be a list", file=sys.stderr)
                   sys.exit(1)
@@ -229,6 +231,8 @@ jobs:
                   print("trivy-image.json: Results entry must be a JSON object", file=sys.stderr)
                   sys.exit(1)
               vulnerabilities = result.get("Vulnerabilities")
+              if vulnerabilities is None:
+                  continue
               if not isinstance(vulnerabilities, list):
                   print("trivy-image.json: Vulnerabilities must be a list", file=sys.stderr)
                   sys.exit(1)
