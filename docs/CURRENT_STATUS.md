@@ -131,7 +131,8 @@ The following have been implemented since the 2026-10-08 baseline:
 - Agent-driven camera focus (issue #28, PR #126);
 - Merge-conflict markers CI (issue #133, PR #147);
 - Security CI with container scans (issues #146, #188);
-- Cloud Run deployment verification (issue #187).
+- Cloud Run deployment verification (issue #187);
+- Day-0 Foundation Gate script and freeze contract (issue #10, ADR 0028) in `scripts/verify-day0-gate.sh`, `scripts/day0_evidence.py`, and `docs/DAY0_GATE_RUNBOOK.md`. Contract tests in `apps/api/tests/test_day0_smoke.py` pin the script's check list and evidence schema. Tag `day0-foundation` is applied to `main` only after the script exits `0` against `retailtwin-ai-511002` in `us-central1`.
 
 ## Not implemented yet
 
@@ -148,7 +149,7 @@ Do not infer implementation merely because a component is documented in the targ
 
 | Gate | Status | Evidence required |
 | --- | --- | --- |
-| Day-0 / Foundation #10 | NOT PASSED | integrated web + API + Firestore + Pub/Sub + Gemini tool + Cloud Run smoke test |
+| Day-0 / Foundation #10 | NOT PASSED | integrated web + API + Firestore + Pub/Sub + Gemini tool + Cloud Run smoke test; runbook `docs/DAY0_GATE_RUNBOOK.md`; orchestrator `scripts/verify-day0-gate.sh`; evidence `artifacts/day0-foundation/<run-id>.json` |
 | G02 Twin Control #49 | NOT PASSED | agent tool changes Simulation Twin + 3D while Live remains unchanged |
 | G03 Autonomous #50 | NOT PASSED (API evidence harness: `tests/e2e/gates/g03_autonomous_gate.py`) | store event starts agent without prompt; Pub/Sub trigger and production read ports for non-inventory sources still open |
 | G04 Guard #51 | NOT PASSED (API evidence harness: `tests/e2e/gates/g04_guard_gate.py`) | stale decision is rejected and cannot mutate Live Twin; UI view of the rejection is #40 |
@@ -161,7 +162,7 @@ Gate status changes only when the corresponding issue contains reproducible evid
 
 1. Issue #58 is closed. The web build and test workflow is on `main`. Issue #60 adds the coverage baseline and threshold to that gate.
 2. The Firestore Live Twin boundary is on `main` (issue #6, PR #106). The scene reads `GET /store` from `apps/api` and places products on the layout (ADR 0007). The scene polls `GET /store` every 5 s. When reads fail, it backs off up to 60 s. It keeps the last state, or empty shelves, on screen when the API is down.
-3. Cloud Run production wiring for Vertex AI with ADC (Foundation #10) is pending runtime evidence. The `vertex_gemini` provider name cannot be replaced or removed (ADR 0020). The cloud-config config/runtime-matrix (issue #134, merged via PR #185) owns the canonical production cloud runtime matrix, WIF/CI deployment configuration, and Secret Manager contract; it does not implement the runtime wiring itself.
+3. Cloud Run production wiring for Vertex AI with ADC (Foundation #10) is pending runtime evidence. The `vertex_gemini` provider name cannot be replaced or removed (ADR 0020). The cloud-config config/runtime-matrix (issue #134, merged via PR #185) owns the canonical production cloud runtime matrix, WIF/CI deployment configuration, and Secret Manager contract; it does not implement the runtime wiring itself. The Day-0 Gate orchestrator (`scripts/verify-day0-gate.sh`) and runbook (`docs/DAY0_GATE_RUNBOOK.md`) define the smoke test the gate must pass.
 4. The allow-listed tool registry (#11, ADR 0009), the observer (#12, ADR 0010), the investigator (#13, ADR 0011), the planner (#14, ADR 0012), the Decision Context Guard with No-Stale-Commit (#16, ADR 0014 and #17, ADR 0015), the guarded Executor (#18, ADR 0016), the post-action Verifier (#19, ADR 0017), and automatic re-plan (#20, ADR 0018) are in the API. Simulation clone scoring (#15) evaluates candidates. Provider selection is a registry (ADR 0020): production construction requires Vertex ADC, uses the shipped Vertex builder, and rejects a fake provider, a loopback endpoint, and an API key. The `vertex_gemini` name cannot be replaced or removed. The one Gemini read is `read_inventory` (ADR 0021). The agent-action audit (#35, ADR 0019) records the correlated trace. Gates G02–G06 and foundation gate #10 stay unpassed.
 5. Bind state changes to the 3D Live/Simulation views. The 3D move, facings, and replenishment cues are implemented. The 3D binding to Live/Simulation Twin state is wired through the state diff (#91).
 6. Pass G02 → G03 → G04 → G05 → G06 in order.

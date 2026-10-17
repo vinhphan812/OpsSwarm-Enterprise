@@ -45,3 +45,6 @@ htmlcov/
 # 3D generated/cache
 assets/3d/generated/
 *.blend1
+
+# Day-0 Foundation Gate evidence (build output)
+artifacts/
