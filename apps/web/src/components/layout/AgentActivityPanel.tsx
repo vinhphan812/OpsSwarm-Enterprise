@@ -65,7 +65,8 @@ export function AgentActivityOpenButton() {
  * Operations lens: the open alerts and opportunities, the guard's last answer, the agent's
  * timeline, and the inventory check last, as it is reference rather than the work in hand.
  * The timeline shows one card per run (`correlation_id`), newest first, with entries of no run
- * listed below; or the raw log. A SKU in it selects that product; picking an alert narrows it
+ * listed below; or the raw log, with the projected impact above it as the log has no run card
+ * to hold it. A SKU in it selects that product; picking an alert narrows it
  * to its run. Follow agent lets the agent's own steps move the camera (`useAgentFocus`).
  */
 function OperationsView() {
@@ -87,7 +88,7 @@ function OperationsView() {
     <>
       <AlertsSection />
       <GuardSection />
-      <AiImpactSection />
+      {activityView === ACTIVITY_VIEW.Log ? <AiImpactSection /> : null}
 
       <section className="activity-section">
         <div className="activity-section-head">

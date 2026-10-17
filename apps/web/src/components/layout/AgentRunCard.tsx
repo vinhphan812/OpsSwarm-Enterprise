@@ -1,18 +1,25 @@
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { AiChangesList } from "@/components/twin/AiChangesList";
+import { AiImpactCard } from "@/components/twin/AiImpactCard";
 import type { AgentRun } from "@/core/agent/agentRuns";
 import { STAGE_STATUS } from "@/enums/agent.enum";
+import { useRunChanges, useRunImpact } from "@/hooks/aiImpact.hook";
 import { clock, SkuChip } from "./ActivityLog";
 
 /**
  * One agent run as a card: the eight stages of the control loop as a vertical stepper,
- * each with its own summaries. A stage the run has no entry for stays pending.
+ * each with its own summaries. A stage the run has no entry for stays pending. The run of an
+ * executed approval also lists its AI CHANGES under ACT, and its projected impact under
+ * VERIFY once it gets there.
  */
 export function AgentRunCard({ run }: { run: AgentRun }) {
   const { t } = useTranslation();
   const first = run.entries[0];
   const active = run.stages.find((stage) => stage.status === STAGE_STATUS.Active);
   const label = run.sku ? t("activity.run.titleSku", { sku: run.sku }) : t("activity.run.title");
+  const changes = useRunChanges(run);
+  const impact = useRunImpact(run);
 
   return (
     <motion.li
@@ -57,6 +64,8 @@ export function AgentRunCard({ run }: { run: AgentRun }) {
                   </div>
                 </div>
               ))}
+              {stage === "ACT" ? <AiChangesList changes={changes} /> : null}
+              {stage === "VERIFY" && impact ? <AiImpactCard impact={impact.impact} verify={impact.verify} /> : null}
             </div>
           </li>
         ))}
