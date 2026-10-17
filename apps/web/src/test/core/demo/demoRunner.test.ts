@@ -277,6 +277,11 @@ describe("createApiDemoRunner start identification timeout", () => {
     vi.mocked(client.flagshipStart).mockReturnValue(new Promise(() => {})); // Never resolves
 
     const runPromise = shortTimeoutRunner(client).start();
+    // Attach a no-op catch BEFORE advancing timers so the timeout-driven
+    // rejection is captured the instant it fires. Without this, vitest flags
+    // the synchronous rejection as unhandled even though the assertion below
+    // also catches it.
+    runPromise.catch(() => undefined);
     // Wait for the timeout to fire
     await vi.advanceTimersByTimeAsync(300);
     await expect(runPromise).rejects.toThrow("Start identification timed out after 200ms");
