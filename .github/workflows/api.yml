@@ -194,7 +194,7 @@ jobs:
 
       - name: Deploy to Cloud Run
         id: deploy
-        uses: google-github-actions/deploy-cloudrun@v2.7.6  # 251330ba9a8a34bfbc1622895f42e1d53fd14522
+        uses: google-github-actions/deploy-cloudrun@v3.0.1  # 251330ba9a8a34bfbc1622895f42e1d53fd14522
         with:
           service: retailtwin-api
           region: us-central1
