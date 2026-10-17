@@ -26,4 +26,5 @@ export type ActivityEntry = {
   /** The shelf or piece of equipment the entry is about; focused when there is no SKU. */
   shelf_id?: string;
   slot_id?: string;
+  simulation_id?: string;
 };
