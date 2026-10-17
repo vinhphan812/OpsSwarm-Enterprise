@@ -21,7 +21,7 @@ import {
 } from "three";
 import { selectedProductId, useUiStore } from "@/state/ui.store";
 import { MOVE_MARK_HOLD_SIMULATION_MS } from "@/constants/twin.constant";
-import { VIEW_MODE } from "@/enums/ui.enum";
+import { OVERLAY, VIEW_MODE } from "@/enums/ui.enum";
 import { worstSeverities } from "@/state/anomaly.store";
 import { useShownAnomalies } from "@/hooks/activeTwin.hook";
 import { useRecentChanges } from "@/hooks/recentChanges.hook";
@@ -680,11 +680,13 @@ export function Stock({ store, models = NO_MODELS }: { store: StoreFixture; mode
   const cues = useMemo<ItemCues>(() => (motion ? { move, arrival } : NO_CUES), [motion, move, arrival]);
   // The proposal is there to be looked at: in the Simulation view the marks stay a while.
   const hold = useUiStore((state) => state.viewMode) === VIEW_MODE.Simulation ? MOVE_MARK_HOLD_SIMULATION_MS : 0;
+  // The ghost, line and slot lights of a move are an AI changes overlay: off, they are hidden.
+  const aiChanges = useUiStore((state) => state.overlays[OVERLAY.AiChanges]);
   const marks = useRef<Group>(null);
   useFrame(({ clock }) => {
     if (motion && anomalies.length) pulseHalos(Math.sin(clock.elapsedTime * Math.PI * 2 * ANOMALY_PULSE_HZ));
     const now = Date.now();
-    const shown = move !== null && marksShown(move.at, now, motion, hold);
+    const shown = move !== null && aiChanges && marksShown(move.at, now, motion, hold);
     if (marks.current) marks.current.visible = shown;
     if (shown) showMarks(motion ? markLevels(move.at, now, hold) : STEADY_MARKS);
   });

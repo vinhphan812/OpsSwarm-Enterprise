@@ -1,8 +1,9 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import {
   BoxGeometry,
   EdgesGeometry,
+  InstancedMesh,
   LineBasicMaterial,
   Matrix4,
   MeshBasicMaterial,
@@ -12,12 +13,16 @@ import {
 import { CHANGE_CUE_MS } from "@/constants/twin.constant";
 import { ANOMALY_SEVERITY } from "@/enums/anomaly.enum";
 import { ENTITY_TYPE, type FixtureKind } from "@/enums/scene.enum";
+import { OVERLAY, RISK_BANDS, type RiskBand } from "@/enums/ui.enum";
 import { useRecentChanges } from "@/hooks/recentChanges.hook";
 import { prefersReducedMotion } from "@/core/utils/motion";
-import { anomalyColor, changeColor, selectionColor } from "@/core/utils/theme";
+import { anomalyColor, changeColor, riskBandColor, selectionColor } from "@/core/utils/theme";
 import { entityMatrix } from "@/scene/utils/transform";
 import { changedSkus, type StateDiff } from "@/core/twin/stateDiff";
 import { useProposalChanges } from "@/hooks/activeTwin.hook";
+import { useStockoutRisk } from "@/hooks/stockoutRisk.hook";
+import { riskBandsBySku } from "@/core/twin/stockoutRisk";
+import { useUiStore } from "@/state/ui.store";
 import type { RecentChange } from "@/state/twin.store";
 import type { SlotFixture, StockSurface, StoreFixture } from "@/types/scene.type";
 import { slotCapacity } from "./capacity";
@@ -117,6 +122,18 @@ export function slotMarksOf(store: StoreFixture, change: RecentChange | null, pr
   return marks;
 }
 
+/** The slots of `store` whose product has a stockout-risk band, by band; a product without one is left out. */
+export function riskSlotsOf(store: StoreFixture, bands: ReadonlyMap<string, RiskBand>): Record<RiskBand, SlotBox[]> {
+  const slots = Object.fromEntries(RISK_BANDS.map((band) => [band, [] as SlotBox[]])) as Record<RiskBand, SlotBox[]>;
+  const holders = holdersOf(store);
+  for (const product of store.products) {
+    const band = bands.get(product.productId);
+    const placed = band ? placedSlot(holders, product.shelfId, product.slotId) : null;
+    if (band && placed) slots[band].push(slotBox(placed, product.productId));
+  }
+  return slots;
+}
+
 const UNIT_BOX = new BoxGeometry(1, 1, 1);
 const UNIT_EDGES = new EdgesGeometry(UNIT_BOX);
 /** Strongest opacity of the change glow, at the moment of the change. */
@@ -150,11 +167,15 @@ const NO_RAYCAST = () => null;
  * change or shelf gain (`useRecentChanges`) glows on its slot and fades over `CHANGE_CUE_MS`;
  * with reduced motion it holds still until the cue ends. In the Simulation view every slot
  * the proposal changes (`useProposalChanges`) is outlined for as long as the proposal is on
- * screen, the source slot of a move included.
+ * screen, the source slot of a move included. Turning the AI changes overlay off hides both.
  */
 export function SlotMarksLayer({ store }: { store: StoreFixture }) {
-  const change = useRecentChanges();
-  const proposal = useProposalChanges();
+  const aiChanges = useUiStore((state) => state.overlays[OVERLAY.AiChanges]);
+  const recent = useRecentChanges();
+  const shownProposal = useProposalChanges();
+  // With the AI changes overlay off, a change neither glows nor is outlined; overflow still shows.
+  const change = aiChanges ? recent : null;
+  const proposal = aiChanges ? shownProposal : null;
   const marks = useMemo(() => slotMarksOf(store, change, proposal), [store, change, proposal]);
   const motion = useMemo(() => !prefersReducedMotion(), []);
   const { edge, fill, glow, proposed } = markMaterials();
@@ -196,6 +217,64 @@ export function SlotMarksLayer({ store }: { store: StoreFixture }) {
           renderOrder={1}
         />
       ))}
+    </group>
+  );
+}
+
+/** Fill opacity by band: the low band is faint, so the riskier slots stand out of a mostly green store. */
+const RISK_FILL_OPACITY: Record<RiskBand, number> = { low: 0.12, elevated: 0.3, high: 0.4, severe: 0.5 };
+
+/** Made on first use, once the theme stylesheet has loaded. */
+let riskMaterials: Record<RiskBand, MeshBasicMaterial> | null = null;
+function riskMaterialOf(band: RiskBand) {
+  riskMaterials ??= Object.fromEntries(
+    RISK_BANDS.map((item) => [
+      item,
+      new MeshBasicMaterial({ color: riskBandColor(item), transparent: true, opacity: RISK_FILL_OPACITY[item], depthWrite: false }),
+    ]),
+  ) as Record<RiskBand, MeshBasicMaterial>;
+  return riskMaterials[band];
+}
+
+/** One band's slots as instances of a unit box, named `stockout-risk-<band>`, with their slot ids in `userData`. */
+function RiskBandMesh({ band, slots }: { band: RiskBand; slots: SlotBox[] }) {
+  const ref = useRef<InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    slots.forEach(({ matrix }, index) => mesh.setMatrixAt(index, matrix));
+    mesh.count = slots.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [slots]);
+  return (
+    <instancedMesh
+      // A new mesh when the count grows past what it was made for.
+      key={slots.length}
+      ref={ref}
+      name={`stockout-risk-${band}`}
+      args={[UNIT_BOX, riskMaterialOf(band), slots.length]}
+      userData={{ slotIds: slots.map((slot) => slot.slotId) }}
+      raycast={NO_RAYCAST}
+      renderOrder={1}
+    />
+  );
+}
+
+/**
+ * The stockout-risk overlay (#213): while it is on, each slot whose product has a served
+ * stockout risk (`useStockoutRisk`) is tinted by its band, green, yellow, orange, or red
+ * (`stockoutRiskBand`). A product without one stays as it is. Nothing is drawn while the
+ * overlay is off or no risk is served (Live, until apps/api serves it).
+ */
+export function StockoutRiskLayer({ store }: { store: StoreFixture }) {
+  const on = useUiStore((state) => state.overlays[OVERLAY.StockoutRisk]);
+  const risks = useStockoutRisk();
+  const slots = useMemo(() => (on && risks ? riskSlotsOf(store, riskBandsBySku(risks)) : null), [on, risks, store]);
+  if (!slots) return null;
+  return (
+    <group name="stockout-risk">
+      {RISK_BANDS.map((band) => (slots[band].length ? <RiskBandMesh key={band} band={band} slots={slots[band]} /> : null))}
     </group>
   );
 }

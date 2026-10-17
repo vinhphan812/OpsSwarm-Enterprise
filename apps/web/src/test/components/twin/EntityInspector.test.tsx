@@ -183,6 +183,7 @@ test("opens today's payments of a checkout, filtered by method or a search", asy
   const first = sale.lines[0].sku;
   fireEvent.click(within(receipt).getByRole("button", { name: `Show ${first} in the store` }));
   expect(selectedProductId(useUiStore.getState())).toBe(first);
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  // The modal leaves the DOM after its exit animation, which a slow CI runner stretches past 1 s.
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
 });
 

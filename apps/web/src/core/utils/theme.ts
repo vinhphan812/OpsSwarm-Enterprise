@@ -1,4 +1,5 @@
 import { ANOMALY_SEVERITY, type AnomalySeverity } from "@/enums/anomaly.enum";
+import { RISK_BAND, type RiskBand } from "@/enums/ui.enum";
 
 /**
  * A color of the App.css `@theme` palette, for code that cannot use CSS, such as
@@ -43,3 +44,13 @@ const ANOMALY_FALLBACK: Record<AnomalySeverity, string> = {
 /** Halo color of an anomaly of `severity`, from the `--color-anomaly-<severity>` theme tokens. */
 export const anomalyColor = (severity: AnomalySeverity) =>
   themeColor(`--color-anomaly-${severity}`, ANOMALY_FALLBACK[severity]);
+
+const RISK_FALLBACK: Record<RiskBand, string> = {
+  [RISK_BAND.Low]: "#0ca30c",
+  [RISK_BAND.Elevated]: "#fab219",
+  [RISK_BAND.High]: "#ff8a1f",
+  [RISK_BAND.Severe]: "#ff3b30",
+};
+
+/** Slot tint of a stockout-risk band, from the `--color-risk-<band>` theme tokens. */
+export const riskBandColor = (band: RiskBand) => themeColor(`--color-risk-${band}`, RISK_FALLBACK[band]);

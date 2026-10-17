@@ -30,7 +30,7 @@ import { Roof } from "./entities/Roof";
 import { Floor } from "./entities/Floor";
 import { Sky } from "./entities/Sky";
 import { Shelf } from "./entities/Shelf";
-import { SlotMarksLayer } from "./entities/stock/SlotMarks";
+import { SlotMarksLayer, StockoutRiskLayer } from "./entities/stock/SlotMarks";
 import { Stock } from "./entities/stock/Stock";
 import { Walls } from "./entities/Walls";
 import { SKY_COLOR } from "@/constants/scene.constant";
@@ -91,6 +91,7 @@ export function StoreContents({
       ))}
       <Stock store={store} models={models} />
       <SlotMarksLayer store={store} />
+      <StockoutRiskLayer store={store} />
       {store.equipment.map((item) => (
         <Equipment
           key={item.equipmentId}

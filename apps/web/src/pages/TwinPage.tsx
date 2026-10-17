@@ -8,6 +8,8 @@ import { KpiStrip } from "@/components/layout/KpiStrip";
 import { AgentFocusCaption } from "@/components/twin/AgentFocusCaption";
 import { LensSwitcher } from "@/components/layout/LensSwitcher";
 import { ViewModeSwitch } from "@/components/layout/ViewModeSwitch";
+import { OverlayLegend } from "@/components/layout/OverlayLegend";
+import { OverlayToggles } from "@/components/layout/OverlayToggles";
 import { EntityInspector } from "@/components/twin/EntityInspector";
 import { ProductDetailsDialog } from "@/components/twin/ProductDetailsDialog";
 import { SimulationBanner } from "@/components/twin/SimulationBanner";
@@ -48,8 +50,13 @@ export function TwinPage() {
           <ViewModeSwitch />
         </div>
         <KpiStrip />
-        <div className="absolute bottom-4 left-4 z-10">
-          <CameraHelp />
+        {/* Bottom left: the overlay legend over the camera help and the Overlays toggles. */}
+        <div className="absolute bottom-4 left-4 z-10 flex flex-col items-start gap-2">
+          <OverlayLegend />
+          <div className="flex items-center gap-2">
+            <CameraHelp />
+            <OverlayToggles />
+          </div>
         </div>
         <AgentFocusCaption />
         <AgentActivityOpenButton />
