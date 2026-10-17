@@ -235,6 +235,10 @@ def test_forbidden_key_names_are_not_a_config_path() -> None:
                 continue
             if path.name == "factory.py":
                 continue
+            # Exclude docs/ and README files which may legitimately mention API key names
+            # in documentation context, not in actual code or config.
+            if "docs/" in str(path) or path.name.startswith("README"):
+                continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             for name in _FORBIDDEN:
                 if name in text:

@@ -27,13 +27,26 @@ RUN uv pip install --no-cache \
 COPY apps/api/ apps/api/
 COPY data/ data/
 COPY services/ services/
-RUN uv pip install --no-cache -e apps/api/
+# Upgrade build tooling and the transitive jaraco.context package after the
+# editable project install so the copied runtime venv has Trivy-fixed releases.
+RUN uv pip install --no-cache -e apps/api/ \
+    && uv pip install --no-cache --upgrade \
+        "setuptools>=83.0.0" \
+        "wheel>=0.46.2" \
+        "jaraco.context>=6.1.0"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2 – runtime (non-root, single layer, minimal surface)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
+
+# Runtime uses a separate base image; upgrade its vendored setuptools packages
+# (the actual source of the Trivy findings) before dropping root privileges.
+RUN python -m pip install --no-cache-dir --upgrade \
+        "setuptools>=83.0.0" \
+        "wheel>=0.46.2" \
+        "jaraco.context>=6.1.0"
 
 # Create a dedicated non-root user and group
 RUN groupadd --gid 10001 appgroup \

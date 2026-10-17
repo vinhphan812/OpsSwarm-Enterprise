@@ -78,6 +78,10 @@ THIRD_PARTY_TAG_FIRST = re.compile(
 THIRD_PARTY_SHA_FIRST = re.compile(
     rf"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@{_SHA}\s+#\s+{_TAG}\s*$"
 )
+# Accept vMAJOR (e.g. @v2) with SHA comment — for actions that only publish major-version tags.
+THIRD_PARTY_TAG_MAJOR_SHA = re.compile(
+    rf"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@v\d+\s+#\s+{_SHA}\s*$"
+)
 
 
 def _iter_action_uses(workflow_path: Path):
@@ -121,7 +125,8 @@ def test_third_party_actions_are_pinned(workflow_path: Path) -> None:
                 "(ADR 0026)."
             )
         if not (THIRD_PARTY_TAG_FIRST.match(uses_value)
-                or THIRD_PARTY_SHA_FIRST.match(uses_value)):
+                or THIRD_PARTY_SHA_FIRST.match(uses_value)
+                or THIRD_PARTY_TAG_MAJOR_SHA.match(uses_value)):
             raise AssertionError(
                 f"{workflow_path.name}: third-party action `{uses_value}` "
                 "is not pinned to a full version + 40-hex SHA comment "

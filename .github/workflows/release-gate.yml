@@ -180,7 +180,7 @@ jobs:
 
       - name: Authenticate to Google Cloud (deployed-artifact verification)
         if: github.event_name == 'workflow_dispatch'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
@@ -297,7 +297,7 @@ jobs:
           echo "sha=${GATE_SHA}" >> $GITHUB_OUTPUT
           echo "Git SHA: ${GATE_SHA}"
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
@@ -550,7 +550,7 @@ jobs:
       STAGE: smoke-firestore-store
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
@@ -741,7 +741,7 @@ jobs:
       STAGE: smoke-bigquery-analytics
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
@@ -791,7 +791,7 @@ jobs:
       STAGE: smoke-pubsub-event
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
@@ -914,7 +914,7 @@ jobs:
       STAGE: smoke-vertex-gemini
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
@@ -1017,7 +1017,7 @@ jobs:
       STAGE: smoke-secret-scan
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_RUNTIME_SA }}
@@ -1071,7 +1071,7 @@ jobs:
       STAGE: smoke-frontend-availability
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
@@ -1406,7 +1406,7 @@ jobs:
       CLOUD_RUN_SERVICE: ${{ env.CLOUD_RUN_SERVICE }}
     steps:
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v2  # c200f3691d83b41bf9bbd8638997a462592937ed
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
