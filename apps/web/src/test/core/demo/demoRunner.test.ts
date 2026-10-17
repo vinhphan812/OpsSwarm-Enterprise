@@ -75,6 +75,7 @@ beforeEach(() => {
   useRunStore.getState().reset();
 });
 afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("createApiDemoRunner", () => {
   it("resets, starts, and reads only this run's entries into the timeline until COMPLETE", async () => {
