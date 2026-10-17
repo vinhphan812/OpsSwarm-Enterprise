@@ -116,89 +116,149 @@ jobs:
         id: trivy
         run: |
           set -euo pipefail
+          rm -f trivy-out/trivy-image.json trivy-image.json
           mkdir -p trivy-out
-          # Run trivy.  Exit code tells us whether the scan itself succeeded.
-          # --ignore-unfixed: skip vulns with no available patch.
-          docker run --rm \
+          # Do not use --ignore-unfixed: the following step records no-fix
+          # HIGH/CRITICAL vulnerabilities as ADR-0026 exceptions.
+          if docker run --rm \
               -v /var/run/docker.sock:/var/run/docker.sock \
               -v "$PWD/trivy-out:/work" \
               aquasec/trivy:0.65.0 image \
               --severity HIGH,CRITICAL \
-              --ignore-unfixed \
               --format json \
               --output /work/trivy-image.json \
-              retailtwin-api:scan; _TRIVY_RC=$?
-          # Fail-closed: scan error, no report, or parse error all block the gate.
-          if [ "$_TRIVY_RC" -ne 0 ] && [ "$_TRIVY_RC" -ne 1 ]; then
-            echo "::error::Trivy scan failed with exit code $_TRIVY_RC."
+              retailtwin-api:scan; then
+            TRIVY_EXIT=0
+          else
+            TRIVY_EXIT=$?
+          fi
+          # Without --exit-code, any non-zero Trivy exit is an execution failure.
+          if [ "${TRIVY_EXIT}" -ne 0 ]; then
+            echo "::error::Trivy scan failed with exit code ${TRIVY_EXIT}." >&2
             exit 1
           fi
           if [ ! -s trivy-out/trivy-image.json ]; then
-            echo "::error::No trivy report produced — scan may have crashed."
+            echo "::error::No Trivy report produced — scan may have crashed." >&2
             exit 1
           fi
           cp trivy-out/trivy-image.json trivy-image.json
-          # Parse JSON.  Trivy image format: [{Results:[{Vulnerabilities:[...]}]}].
-          # Status values: unfixed (no patch), wont-fix, unknown, fixed.
-          # We fail-closed: any parse error blocks the gate.
-          python3 -c '
-          import json, sys
+          # Trivy image JSON: {"Results": [{"Vulnerabilities": [...]}]}.
+          # Fail closed on malformed JSON or any unexpected required structure.
+          python3 - <<'PY'
+          import json
+          import sys
+
           try:
-              with open("trivy-image.json") as fh:
-                  data = json.load(fh)
-          except Exception as exc:
+              with open("trivy-image.json", encoding="utf-8") as report:
+                  data = json.load(report)
+          except (OSError, json.JSONDecodeError) as exc:
               print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
               sys.exit(1)
+
+          if not isinstance(data, dict):
+              print("trivy-image.json: expected a JSON object at the root", file=sys.stderr)
+              sys.exit(1)
+          results = data.get("Results")
+          if not isinstance(results, list):
+              print("trivy-image.json: Results must be a list", file=sys.stderr)
+              sys.exit(1)
+
           has_fixable = False
-          for result in (data or []):
-              for vuln in (result.get("Vulnerabilities") or []):
-                  if vuln.get("Severity") not in ("HIGH", "CRITICAL"):
+          for result in results:
+              if not isinstance(result, dict):
+                  print("trivy-image.json: Results entry must be a JSON object", file=sys.stderr)
+                  sys.exit(1)
+              vulnerabilities = result.get("Vulnerabilities")
+              if not isinstance(vulnerabilities, list):
+                  print("trivy-image.json: Vulnerabilities must be a list", file=sys.stderr)
+                  sys.exit(1)
+              for vulnerability in vulnerabilities:
+                  if not isinstance(vulnerability, dict):
+                      print("trivy-image.json: vulnerability entry must be a JSON object", file=sys.stderr)
+                      sys.exit(1)
+                  if vulnerability.get("Severity") not in ("HIGH", "CRITICAL"):
                       continue
-                  if vuln.get("Status") == "unfixed":
-                      continue  # no patch available — ADR 0026 exception
-                  if vuln.get("Status") == "wont-fix":
-                      continue  # explicitly wont-fix
-                  # Any other status (fixed, affected, unknown) with a FixAvailable means a fix exists
-                  fixable = vuln.get("FixedVersion", "")
-                  if fixable:
+                  fixed_version = vulnerability.get("FixedVersion")
+                  if fixed_version:
                       has_fixable = True
-                      print(f"FIXABLE: {vuln.get(\"VulnerabilityID\", \"?\")} in {vuln.get(\"PkgName\", \"?\")} {vuln.get(\"InstalledVersion\", \"?\")} (fix: {fixable})", file=sys.stderr)
+                      print(
+                          "FIXABLE: {id} in {package} {version} (fix: {fix})".format(
+                              id=vulnerability.get("VulnerabilityID", "?"),
+                              package=vulnerability.get("PkgName", "?"),
+                              version=vulnerability.get("InstalledVersion", "?"),
+                              fix=fixed_version,
+                          ),
+                          file=sys.stderr,
+                      )
+
           if has_fixable:
               sys.exit(1)
-          '
-          if [ $? -eq 0 ]; then
-            echo "Container image: no fixable HIGH/CRITICAL vulnerabilities found."
-          fi
+          print("Container image: no fixable HIGH/CRITICAL vulnerabilities found.")
+          PY
 
       - name: Record any no-fix HIGH/CRITICAL as an explicit exception
         if: always()
         run: |
           set -euo pipefail
-          if [ -f trivy-image.json ]; then
-            UNFIXED=$(python3 -c '
-            import json, sys
-            try:
-                with open("trivy-image.json") as fh:
-                    data = json.load(fh)
-            except Exception as exc:
-                print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
-                sys.exit(0)
-            rows = []
-            for item in data or []:
-                if item.get("Severity") not in ("HIGH", "CRITICAL"):
-                    continue
-                if item.get("Status") != "unfixed":
-                    continue
-                rows.append(f"- {item.get(\"Severity\")} {item.get(\"VulnerabilityID\")} in {item.get(\"PkgName\")} {item.get(\"InstalledVersion\")} ({item.get(\"Title\", \"\")})")
-            if rows:
-                print("\n".join(rows))
-            ')
-            echo "## No-fix HIGH/CRITICAL (exception — does not block gate)" >> "$GITHUB_STEP_SUMMARY"
-            if [ -n "${UNFIXED}" ]; then
-              echo "${UNFIXED}" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "None." >> "$GITHUB_STEP_SUMMARY"
-            fi
+          if [ ! -f trivy-image.json ]; then
+            echo "No Trivy image report is available for the exception summary." >&2
+            exit 0
+          fi
+          UNFIXED=$(python3 - <<'PY'
+          import json
+          import sys
+
+          try:
+              with open("trivy-image.json", encoding="utf-8") as report:
+                  data = json.load(report)
+          except (OSError, json.JSONDecodeError) as exc:
+              print(f"Could not parse trivy-image.json: {exc}", file=sys.stderr)
+              sys.exit(1)
+
+          if not isinstance(data, dict):
+              print("trivy-image.json: expected a JSON object at the root", file=sys.stderr)
+              sys.exit(1)
+          results = data.get("Results")
+          if not isinstance(results, list):
+              print("trivy-image.json: Results must be a list", file=sys.stderr)
+              sys.exit(1)
+
+          rows = []
+          for result in results:
+              if not isinstance(result, dict):
+                  print("trivy-image.json: Results entry must be a JSON object", file=sys.stderr)
+                  sys.exit(1)
+              vulnerabilities = result.get("Vulnerabilities")
+              if not isinstance(vulnerabilities, list):
+                  print("trivy-image.json: Vulnerabilities must be a list", file=sys.stderr)
+                  sys.exit(1)
+              for vulnerability in vulnerabilities:
+                  if not isinstance(vulnerability, dict):
+                      print("trivy-image.json: vulnerability entry must be a JSON object", file=sys.stderr)
+                      sys.exit(1)
+                  if vulnerability.get("Severity") not in ("HIGH", "CRITICAL"):
+                      continue
+                  if vulnerability.get("FixedVersion"):
+                      continue
+                  if vulnerability.get("Status") not in ("unfixed", "wont-fix"):
+                      continue
+                  rows.append(
+                      "- {severity} {id} in {package} {version} ({title})".format(
+                          severity=vulnerability.get("Severity", "?"),
+                          id=vulnerability.get("VulnerabilityID", "?"),
+                          package=vulnerability.get("PkgName", "?"),
+                          version=vulnerability.get("InstalledVersion", "?"),
+                          title=vulnerability.get("Title", ""),
+                      )
+                  )
+          print("\n".join(rows))
+          PY
+          )
+          echo "## No-fix HIGH/CRITICAL (exception — does not block gate)" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${UNFIXED}" ]; then
+            echo "${UNFIXED}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "None." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Upload trivy image report
