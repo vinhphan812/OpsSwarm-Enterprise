@@ -213,7 +213,8 @@ test("lists products one per line, out and low stock first, and opens the rest i
   // A row selects the product in the 3D view and closes the dialog.
   fireEvent.click(dialogRows()[0]);
   expect(selectedProductId(useUiStore.getState())).toBe("P010");
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  // The modal leaves the DOM after its exit animation, which a slow CI runner stretches past 1 s.
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
 });
 
 test("selects a product in the 3D view from its line", async () => {

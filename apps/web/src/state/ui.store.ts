@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { ACTIVITY_VIEW, type ActivityView } from "@/enums/agent.enum";
 import { ENTITY_TYPE, type EntityType } from "@/enums/scene.enum";
-import { FOCUS_SOURCE, LENS, VIEW_MODE, type FocusSource, type Lens, type ViewMode } from "@/enums/ui.enum";
+import { FOCUS_SOURCE, LENS, OVERLAY, VIEW_MODE, type FocusSource, type Lens, type Overlay, type ViewMode } from "@/enums/ui.enum";
 
 type UiStore = {
   selectedEntityId: string | null;
@@ -32,6 +32,8 @@ type UiStore = {
   focusedCorrelationId: string | null;
   /** Whether the timeline shows run cards or the raw log. Run cards by default. */
   activityView: ActivityView;
+  /** Which overlays are laid over the 3D view: AI changes on, stockout risk off, by default. */
+  overlays: Record<Overlay, boolean>;
   /** Selects an entity, a product unless told otherwise; `null` clears the selection. */
   select: (entityId: string | null, entityType?: EntityType) => void;
   /** The agent selects an entity and flies the camera to it, captioned with `reason`. */
@@ -53,6 +55,8 @@ type UiStore = {
   /** Shows every run in the timeline again; the selection stays. */
   showAllActivity: () => void;
   setActivityView: (activityView: ActivityView) => void;
+  /** Turns one overlay on or off; the others stay as they are. */
+  toggleOverlay: (overlay: Overlay) => void;
 };
 
 export const useUiStore = create<UiStore>()((set) => ({
@@ -71,6 +75,7 @@ export const useUiStore = create<UiStore>()((set) => ({
   focusedPromotionId: null,
   focusedCorrelationId: null,
   activityView: ACTIVITY_VIEW.Runs,
+  overlays: { [OVERLAY.StockoutRisk]: false, [OVERLAY.AiChanges]: true },
   select: (selectedEntityId, entityType = ENTITY_TYPE.Product) =>
     set({
       focusedCorrelationId: null,
@@ -108,6 +113,7 @@ export const useUiStore = create<UiStore>()((set) => ({
     })),
   showAllActivity: () => set({ focusedCorrelationId: null }),
   setActivityView: (activityView) => set({ activityView }),
+  toggleOverlay: (overlay) => set((ui) => ({ overlays: { ...ui.overlays, [overlay]: !ui.overlays[overlay] } })),
 }));
 
 /** True while `entityId` is the selected entity of `entityType`. */

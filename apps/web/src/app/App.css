@@ -41,6 +41,11 @@
   --color-anomaly-high: #ff4d3d;
   --color-anomaly-medium: #ff9f1a;
   --color-anomaly-low: #f2d34b;
+  /* Stockout-risk overlay bands, also the legend's swatches. */
+  --color-risk-low: #0ca30c;
+  --color-risk-elevated: #fab219;
+  --color-risk-high: #ff8a1f;
+  --color-risk-severe: #ff3b30;
 }
 
 html,

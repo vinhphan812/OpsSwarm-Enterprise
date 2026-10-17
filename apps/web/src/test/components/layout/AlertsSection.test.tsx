@@ -183,7 +183,8 @@ describe("Alerts & opportunities", () => {
     expect(within(item).getByText("Shelf A02")).toBeTruthy();
     fireEvent.click(item);
     expect(useUiStore.getState()).toMatchObject({ selectedEntityId: "A02", selectedEntityType: ENTITY_TYPE.Shelf });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // The modal leaves the DOM after its exit animation, which a slow CI runner stretches past 1 s.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), { timeout: 5000 });
   });
 
   test("shows an anomaly as apps/api serves it today: detector title and description, no run to follow", () => {

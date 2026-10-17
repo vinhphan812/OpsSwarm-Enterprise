@@ -212,6 +212,15 @@ For `CHANGE_CUE_MS` (4 s) the hook returns `{ diff, at, before }`, where `before
 
 Each tile has one basis (`KPI_BASIS`, `data-basis`), so a Simulation number never mixes into a Live one: the Live tiles read `twin.store.live`, never the open simulation's proposed store, and the projected tile's label is in the Simulation colour. A tile whose source has not answered shows "—", "Not served", and a tooltip saying why (`KPI_MISSING`): never a 0. `anomaly.store.served` tells "no stockouts" (0) from "feed never read" (—). `useRevenueToday` reads today's revenue on load and again every `REVENUE_TODAY_REFRESH_MS`. A failed read does not toast (a missing route would toast on every page load) and keeps the last good figure only while it is fresh: once that read is older than `REVENUE_TODAY_STALE_MS`, the tile shows "—" with a *stale* tooltip until the route answers again. A failed revenue read never touches the Live Twin tiles. Under `?twin=demo` all four come from `fixtures/demo`. TODO(#209): once the AI Impact card is on main, the AI impact tile can show the accepted plan's projection after the simulation closes.
 
+### Overlays (#213)
+
+**Overlays** (`OverlayToggles`, bottom left next to the camera help) lays information over the 3D view. Each toggle is on or off on its own (`ui.store.overlays`):
+
+- **AI changes** (on by default) shows the cues of a change or proposal: a move's ghost, line and slot lights (`Stock`), and the facings/shelf-gain glow and proposal outlines (`SlotMarksLayer`). Off, they are hidden. Overflow outlines stay, since they flag a wrong state, not a change. The banner's AI CHANGES list stays too.
+- **Stockout risk** (off by default) tints each product's slot by the band of its served stockout risk (`StockoutRiskLayer`, `stockoutRiskBand` in `core/twin/stockoutRisk.ts`): green under 5%, yellow 5–15%, orange 15–30% (30% included), red over 30%. The colours are the `--color-risk-<band>` tokens. The low band is drawn faint, so the riskier slots stand out. A product without a risk, or with a value that is not a probability, keeps its colour. While it is on, `OverlayLegend` (above the toggles) shows the bands and the forecast horizon.
+
+The UI never works out a risk itself, neither from quantities nor from alerts. It only bands what `useStockoutRisk` serves. **TODO(BE):** apps/api serves no stockout risk yet; the agents' `get_stockout_risk` tool is not exposed over HTTP. The proposed shape is `StockoutRisk` (`types/stockoutRisk.type.ts`: `sku`, `risk` 0–1, `horizon_hours`, `context_version`), e.g. `GET /stockout-risk`. Until it is served, the overlay colours nothing on Live and the legend says so. Under `?twin=demo` it reads `fixtures/demo/stockoutRisk.ts`, where the open stockouts P003 and P010 are red. Customer traffic and demand heatmaps wait for #36.
+
 ### Alerts and opportunities
 
 `AlertsSection` (Operations lens, above the timeline) lists the open anomalies of `anomaly.store`, worst severity first, then newest (`sortAlerts`). An anomaly shows as soon as the store has it, with no prompt, and leaves the list when it is resolved.
