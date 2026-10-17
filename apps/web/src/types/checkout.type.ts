@@ -57,3 +57,9 @@ export type CheckoutLine = {
   /** quantity × unit_price. */
   line_total: number;
 };
+
+/** `GET /checkouts/{checkout_id}` response from the API. */
+export type CheckoutResponse = {
+  summary: CheckoutSummary;
+  transactions: CheckoutTransaction[];
+};
