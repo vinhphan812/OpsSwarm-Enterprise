@@ -2,6 +2,18 @@
 
 It clones a snapshot, applies candidate actions, and scores the clone.
 It does not read or change the Live Twin.
+
+Issue #215 ([P0][DATA-AI]) commits each scored candidate to carry the
+``evaluator_version`` of the demand evidence it was scored against. The
+demand evidence is the canonical BigQuery ``retailtwin.sales_events``
+view threaded through the Investigator's ``get_sales_history`` port
+(ADR 0024 / ADR 0005); its ``version`` field is a deterministic
+sha256[16] digest of ``query_window`` + ``source_watermark`` +
+``data_lineage`` + ``content_digest`` (sha256 over the returned rows),
+so two distinct BigQuery jobs returning the same rows reproduce the
+same ``version``. When the demand evidence is unavailable the
+``evaluator_version`` is ``"none"`` so the result still round-trips
+deterministically.
 """
 
 from collections.abc import Mapping, Sequence
@@ -20,6 +32,11 @@ DELTA = Decimal("1")
 EPSILON = Decimal("1")
 _CENT = Decimal("0.01")
 
+# Version string when no demand evidence was threaded through (tests
+# that pre-date issue #215 / unit tests that don't care about the
+# BigQuery reader still pass this string).
+NO_DEMAND_EVIDENCE_VERSION = "none"
+
 ASSUMPTIONS: tuple[str, ...] = (
     "Actions are applied to a clone of the simulation snapshot. The Live Twin is not read or changed.",
     "Stockout risk comes from stockout-risk-v1 on the clone. An empty shelf with demand scores 1.",
@@ -28,6 +45,7 @@ ASSUMPTIONS: tuple[str, ...] = (
     "Movement cost is replenished units, plus each facing changed, plus 1 for a slot move, divided by horizon demand.",
     "business_score uses the displayed hundredths: 1*revenue_benefit + 0*margin_benefit + 1*service_level - 1*stockout_risk - 1*movement_cost.",
     "A repeated candidate id for one simulation_id must reproduce the stored result.",
+    "evaluator_version is the version of the demand evidence the candidate was scored against (a deterministic sha256[16] digest of query_window + source_watermark + data_lineage + content_digest for ``retailtwin.sales_events``, ``none`` when no demand evidence is threaded).",
 )
 
 
@@ -96,6 +114,11 @@ class KpiResult:
     business_score: str
     movement_units: str
     assumptions: tuple[str, ...]
+    # Version of the demand evidence the candidate was scored against
+    # (issue #215). Set by ``evaluate_candidate(..., evaluator_version=...)``
+    # so a BigQuery-backed ``get_sales_history`` job id round-trips on
+    # every result. ``NO_DEMAND_EVIDENCE_VERSION`` when none is threaded.
+    evaluator_version: str = NO_DEMAND_EVIDENCE_VERSION
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -113,6 +136,7 @@ class KpiResult:
             "margin_benefit": self.margin_benefit,
             "business_score": self.business_score,
             "movement_units": self.movement_units,
+            "evaluator_version": self.evaluator_version,
             "assumptions": list(self.assumptions),
         }
 
@@ -128,8 +152,15 @@ class KpiLedger:
         snapshot: SimulationSnapshot,
         candidate_id: str,
         actions: Sequence[Action],
+        *,
+        evaluator_version: str = NO_DEMAND_EVIDENCE_VERSION,
     ) -> KpiResult:
-        result = evaluate_candidate(snapshot, candidate_id, actions)
+        result = evaluate_candidate(
+            snapshot,
+            candidate_id,
+            actions,
+            evaluator_version=evaluator_version,
+        )
         key = (result.simulation_id, result.candidate_id)
         stored = self._rows.get(key)
         if stored is None:
@@ -150,13 +181,23 @@ def evaluate_candidate(
     snapshot: SimulationSnapshot,
     candidate_id: str,
     actions: Sequence[Action],
+    *,
+    evaluator_version: str = NO_DEMAND_EVIDENCE_VERSION,
 ) -> KpiResult:
-    """Score one candidate. The same snapshot and actions always return the same result."""
+    """Score one candidate. The same snapshot and actions always return the same result.
+
+    ``evaluator_version`` is the demand-evidence version (issue #215 /
+    ADR 0024) the candidate was scored against — typically the BigQuery
+    job id surfaced by ``read_sales_history``. The default
+    ``NO_DEMAND_EVIDENCE_VERSION`` keeps the historic test surface
+    unchanged for callers that pre-date the BigQuery wiring.
+    """
 
     checked = _snapshot(snapshot)
     name = _text_id("candidate_id", candidate_id)
     if isinstance(actions, (str, bytes)) or not isinstance(actions, Sequence):
         raise KpiError("actions must be a sequence.")
+    demand_evidence_version = _request_evaluator_version(evaluator_version)
     before = {slot.sku: slot for slot in checked.slots}
     slots, movement_units = _apply(before, tuple(actions))
     ordered = sorted(slots.values(), key=lambda item: item.sku)
@@ -208,6 +249,7 @@ def evaluate_candidate(
         margin_benefit="0",
         business_score=_text(score),
         movement_units=str(movement_units),
+        evaluator_version=demand_evidence_version,
         assumptions=ASSUMPTIONS,
     )
 
@@ -386,6 +428,22 @@ def _text_id(name: str, value: object) -> str:
     if not isinstance(value, str) or not value.strip():
         raise KpiError(f"{name} is required.")
     return value.strip()
+
+
+def _request_evaluator_version(value: object) -> str:
+    """Validate the demand-evidence ``evaluator_version`` argument.
+
+    The default value is ``NO_DEMAND_EVIDENCE_VERSION`` so callers that
+    pre-date issue #215 still work; any other non-empty string is
+    passed through verbatim so the BigQuery job id (or a deterministic
+    digest, see ``bigquery_sales_history._safe_job_id``) round-trips.
+    """
+    if isinstance(value, bool) or not isinstance(value, str):
+        raise KpiError("evaluator_version must be a string.")
+    stripped = value.strip()
+    if not stripped:
+        raise KpiError("evaluator_version is required.")
+    return stripped
 
 
 def _timestamp(value: datetime) -> str:

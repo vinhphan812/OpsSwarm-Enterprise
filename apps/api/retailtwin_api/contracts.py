@@ -46,6 +46,14 @@ class EvidenceBundle(BaseModel):
     provenance: str
     source: str
     entity_versions: Dict[str, str]
+    # Demand-evidence versions keyed by source name (issue #215 /
+    # ADR 0024). ``sales_history`` carries the BigQuery job id;
+    # ``forecast`` carries the deterministic forecast formula id. The
+    # KPI evaluator reads ``sales_history`` (or whichever source the
+    # chain maps to demand evidence) and threads it into
+    # ``evaluator_version`` on every scored candidate. Empty when no
+    # demand evidence source succeeded.
+    source_versions: Dict[str, str] = {}
     collected_at: datetime
     freshness: datetime
     store_id: str
@@ -82,6 +90,12 @@ class SimulationKPIResult(BaseModel):
     simulation_id: str
     kpi_score: float
     duration_ms: int
+    # Version of the demand evidence the candidate was scored against
+    # (issue #215 / ADR 0024). Threaded from the BigQuery-backed
+    # ``get_sales_history`` reader via the canonical KPI evaluator
+    # (``services/simulation/kpi/evaluator.py``). ``"none"`` when no
+    # demand evidence was threaded (historic callers).
+    evaluator_version: str = "none"
 
 # 7. DCG
 class DCGVerdict(str, Enum):

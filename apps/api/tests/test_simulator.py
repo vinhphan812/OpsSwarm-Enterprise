@@ -727,3 +727,108 @@ def test_simulator_source_does_not_score_or_call_a_model() -> None:
     assert "0.09" not in source
     assert "0.07" not in source
     assert "b02-s01" not in source
+
+
+# ─── issue #215 — demand-evidence evaluator_version ───────────────────────────
+
+
+class TestSimulatorEvaluatorVersion:
+    """Issue #215: ``SimulationKPIResult.evaluator_version`` carries the
+    demand-evidence version (the BigQuery ``sales_events`` job id) the
+    candidate was scored against.
+
+    The simulator reads the version from ``decision.evidence[0].
+    source_versions["sales_history"]`` so the chain does not need to
+    re-thread the BigQuery job id through the evaluator closure. A
+    canonical ``KpiResult`` carries ``evaluator_version`` too — when
+    the closure sets it, that value is used as a fallback.
+    """
+
+    def test_demand_evidence_version_round_trips_on_kpi_result(self) -> None:
+        live = _live()
+        bundle = _bundle(
+            source_versions={"sales_history": "bq-job-p017-sat"},
+        )
+        decisions = _plan(bundle, _provider(_canonical()))
+
+        def evaluate(
+            snapshot: Mapping[str, Any],
+            candidate_id: str,
+            actions: Sequence[Mapping[str, Any]],
+        ) -> Mapping[str, Any]:
+            return _kpi(snapshot, candidate_id, actions)
+
+        result = simulate(decisions, live, evaluate=evaluate)
+        first = result.candidates[0]
+        assert first.kpi.evaluator_version == "bq-job-p017-sat"
+
+    def test_no_demand_evidence_falls_back_to_no_demand_evidence_sentinel(self) -> None:
+        live = _live()
+        # No ``source_versions`` for ``sales_history``: the simulator
+        # must default to the sentinel rather than fabricate a value.
+        bundle = _bundle()
+        decisions = _plan(bundle, _provider(_canonical()))
+
+        def evaluate(
+            snapshot: Mapping[str, Any],
+            candidate_id: str,
+            actions: Sequence[Mapping[str, Any]],
+        ) -> Mapping[str, Any]:
+            return _kpi(snapshot, candidate_id, actions)
+
+        result = simulate(decisions, live, evaluate=evaluate)
+        first = result.candidates[0]
+        assert first.kpi.evaluator_version == "none"
+
+    def test_demand_evidence_version_overrides_canonical_evaluator_default(self) -> None:
+        """When the canonical ``KpiResult`` returns ``"none"`` (no
+        demand evidence threaded at evaluation time) but the decision's
+        evidence carries a ``sales_history`` version, the simulator
+        must surface the evidence version. The canonical score is the
+        source of truth for ``business_score``; the evidence version is
+        the source of truth for ``evaluator_version``."""
+
+        live = _live()
+        bundle = _bundle(
+            source_versions={"sales_history": "bq-job-p017-sat-run-9"},
+        )
+        decisions = _plan(bundle, _provider(_canonical()))
+
+        def evaluate(
+            snapshot: Mapping[str, Any],
+            candidate_id: str,
+            actions: Sequence[Mapping[str, Any]],
+        ) -> Mapping[str, Any]:
+            result = _kpi(snapshot, candidate_id, actions)
+            # The canonical evaluator returns ``"none"`` by default;
+            # the simulator must still surface the demand-evidence
+            # version from the decision's evidence bundle.
+            assert result["evaluator_version"] == "none"
+            return result
+
+        result = simulate(decisions, live, evaluate=evaluate)
+        assert result.candidates[0].kpi.evaluator_version == "bq-job-p017-sat-run-9"
+
+    def test_sales_evidence_digest_threads_through_evaluator_version(self) -> None:
+        """Issue #215 / PR #253 review: the ``source_versions[sales_history]``
+        the simulator reads is the deterministic provenance digest the
+        BigQuery reader produces (``sales-evidence-<hex>``); the digest
+        round-trips unchanged into ``SimulationKPIResult.evaluator_version``
+        so consumers (routes, audit, replan) see the exact snapshot the
+        candidate was scored against."""
+
+        live = _live()
+        bundle = _bundle(
+            source_versions={"sales_history": "sales-evidence-039c303078494"},
+        )
+        decisions = _plan(bundle, _provider(_canonical()))
+
+        def evaluate(
+            snapshot: Mapping[str, Any],
+            candidate_id: str,
+            actions: Sequence[Mapping[str, Any]],
+        ) -> Mapping[str, Any]:
+            return _kpi(snapshot, candidate_id, actions)
+
+        result = simulate(decisions, live, evaluate=evaluate)
+        assert result.candidates[0].kpi.evaluator_version == "sales-evidence-039c303078494"

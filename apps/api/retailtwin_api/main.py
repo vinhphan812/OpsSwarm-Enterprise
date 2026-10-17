@@ -21,7 +21,7 @@ from retailtwin_api.agents.observer.consumer import (
     consume_available,
 )
 from retailtwin_api.agents.orchestrator.autonomy import AutonomousInvestigations
-from retailtwin_api.agents.orchestrator.tool_registry import build_store_registry
+from retailtwin_api.agents.orchestrator.tool_registry import ToolRegistry, build_store_registry
 from retailtwin_api.backbone import EventPipe, MemoryPipe, MemoryQuarantine
 from retailtwin_api.analytics_repository import (
     get_checkout_repository,
@@ -170,9 +170,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if provider is not None:
         decisions = InMemoryDecisionSource()
         app.state.decisions = decisions
+        autonomy_registry = build_store_registry(store)
+        # Issue #215 / ADR 0024: wire the BigQuery-backed
+        # ``get_sales_history`` reader so the autonomy path sees real
+        # demand evidence in production. In non-cloud environments the
+        # reader is wired to return ``None`` so the investigator
+        # surfaces ``sales_history_unavailable`` rather than a fabricated
+        # number.
+        _wire_sales_history_port(autonomy_registry, settings=resolved)
         app.state.autonomy = AutonomousInvestigations(
             provider=provider,
-            registry=build_store_registry(store),
+            registry=autonomy_registry,
             store_view=store.view,
             proposals=app.state.simulations,
             decisions=decisions,
@@ -241,6 +249,66 @@ def _open_store(settings: Settings) -> StoreReader:
     return open_memory_live_store(settings.store_fixture_path, settings.store_id)
 
 
+def _build_bigquery_client() -> Any:
+    """Construct the BigQuery client used by the sales-history reader.
+
+    Production wires ``google.cloud.bigquery.Client`` (ADC); non-cloud
+    environments (``APP_ENV`` not in ``{production, staging, e2e-smoke}``)
+    return ``None`` so the investigator's ``get_sales_history`` port
+    surfaces ``sales_history_unavailable`` instead of fabricating a
+    number. The import is deferred so a developer machine without
+    ``google-cloud-bigquery`` installed still boots.
+    """
+    try:
+        from google.cloud import bigquery  # type: ignore[import-not-found]
+    except Exception:  # noqa: BLE001 — google-cloud-bigquery is optional in dev.
+        return None
+    try:
+        return bigquery.Client()
+    except Exception as exc:  # noqa: BLE001 — surface any ADC failure
+        logger.warning(
+            "bigquery_sales_history.client_unavailable",
+            extra={"reason": f"{type(exc).__name__}: {exc}"},
+        )
+        return None
+
+
+def _wire_sales_history_port(registry: ToolRegistry, *, settings: Settings) -> None:
+    """Bind the BigQuery-backed ``get_sales_history`` reader (issue #215).
+
+    The reader is the canonical demand-evidence source for the agent
+    chain. When the BigQuery client cannot be constructed (dev / test /
+    missing ADC credentials), the port is bound to a reader that
+    returns ``None`` — the wrapping ``bind_read_port`` handler converts
+    that to ``SOURCE_UNAVAILABLE`` and the investigator surfaces it as
+    ``insufficient_evidence`` with reason ``sales_history_unavailable``
+    so the chain never invents a number.
+    """
+    from retailtwin_api.agents.investigator.evidence import bind_read_port
+    from retailtwin_api.bigquery_sales_history import read_sales_history
+
+    client = _build_bigquery_client() if settings.is_production else None
+
+    def _sales_history(args: Any) -> Mapping[str, Any] | None:
+        if client is None:
+            # The reader was wired for empty/unavailable BigQuery; the
+            # wrapping ``bind_read_port`` handler converts ``None`` to
+            # ``SOURCE_UNAVAILABLE``.
+            return None
+        return read_sales_history(
+            args,
+            client=client,
+            job_config=None,
+            store_id=settings.store_id,
+        )
+
+    bind_read_port(registry, "get_sales_history", _sales_history)
+    logger.info(
+        "bigquery_sales_history.wired",
+        extra={"client": "google.cloud.bigquery.Client" if client is not None else "unavailable"},
+    )
+
+
 def _ensure_simulation_kpi_path() -> None:
     """Make the canonical KPI evaluator importable as ``kpi.evaluator``.
 
@@ -286,6 +354,8 @@ def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
         snapshot: Mapping[str, Any],
         candidate_id: str,
         actions: Sequence[Mapping[str, Any]],
+        *,
+        evaluator_version: str | None = None,
     ) -> dict[str, Any]:
         observed_at = snapshot.get("observed_at")
         if not isinstance(observed_at, str):
@@ -334,7 +404,12 @@ def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
                 )
             else:
                 raise RuntimeError(f"unknown action {kind}")
-        return evaluate_candidate(built, candidate_id, tuple(converted)).as_dict()
+        return evaluate_candidate(
+            built,
+            candidate_id,
+            tuple(converted),
+            evaluator_version=evaluator_version,
+        ).as_dict()
 
     return _evaluator
 
@@ -391,6 +466,12 @@ def _wire_flagship_controller(
         return
 
     registry = build_store_registry(store)
+    # Issue #215 / ADR 0024: wire the BigQuery-backed
+    # ``get_sales_history`` reader so the flagship chain sees real
+    # demand evidence in production. In non-cloud environments the
+    # reader is wired to return ``None`` so the investigator surfaces
+    # ``sales_history_unavailable`` rather than a fabricated number.
+    _wire_sales_history_port(registry, settings=settings)
     controller = register_dependencies(
         provider=provider,
         twin=live_twin,

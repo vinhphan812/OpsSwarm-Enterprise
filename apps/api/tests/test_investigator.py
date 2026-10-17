@@ -25,6 +25,7 @@ from retailtwin_api.agents.investigator.evidence import (
     MANDATORY_SOURCES,
     MISSING_VERSION,
     NOT_REQUESTED,
+    SALES_HISTORY_UNAVAILABLE,
     InvestigatorError,
     bind_read_port,
     investigate,
@@ -208,9 +209,14 @@ def _registry(
     *,
     promotions: bool = True,
     planogram: Any = _read_planogram,
+    sales_history: Any | None = _read_sales,
 ) -> ToolRegistry:
     registry = build_store_registry(store)
-    bind_read_port(registry, "get_sales_history", _read_sales)
+    if sales_history is not None:
+        if sales_history is _read_sales:
+            bind_read_port(registry, "get_sales_history", sales_history)
+        else:
+            registry.bind_catalog_tool("get_sales_history", sales_history)
     bind_read_port(registry, "forecast_demand", _read_forecast)
     if promotions:
         bind_read_port(registry, "get_promotions", _read_promotions)
@@ -324,6 +330,10 @@ def test_p017_bundle_uses_store_sales_and_forecast_service(caplog: pytest.LogCap
     assert bundle.freshness == COLLECTED_AT
     assert bundle.is_sufficient is True
     assert bundle.entity_versions == {"P017": "1"}
+    assert bundle.source_versions == {
+        "sales_history": "evt-p017-surge-0008",
+        "forecast": "forecast-demand-v1",
+    }
     assert _sources(bundle) == [source for source, _tool in MANDATORY_SOURCES]
     assert not hasattr(_start(), "prompt")
     assert "prompt" not in bundle.model_dump()
@@ -515,6 +525,10 @@ def test_other_sku_quantities_are_not_p017_evidence() -> None:
     shelf = _source(bundle, "shelf")
     assert bundle.is_sufficient is False
     assert bundle.entity_versions == {}
+    assert bundle.source_versions == {
+        "sales_history": "evt-p017-surge-0008",
+        "forecast": "forecast-demand-v1",
+    }
     assert inventory.payload == {
         "source": "inventory",
         "entity_id": "P017",
@@ -672,3 +686,207 @@ def test_investigator_source_does_not_import_a_model_sdk_or_forecast_package() -
     assert "services.forecasting" not in lowered
     assert TRIGGER.sku == "P017"
     assert all(event.correlation_id == CORRELATION_ID for event in SERIES)
+
+
+# ─── issue #215 — BigQuery sales_history wiring ──────────────────────────────
+
+
+class TestInvestigatorBigQuerySalesHistory:
+    """Issue #215: BigQuery-backed ``get_sales_history`` is a real READ port.
+
+    The canonical investigator must accept a Pydantic-typed mapping
+    from the BigQuery reader, surface ``sales_history_unavailable``
+    when the reader returns ``None`` or raises, and never invent a
+    number when BigQuery is empty.
+    """
+
+    def test_fake_bigquery_with_p017_rows_round_trips_into_evidence_bundle(self) -> None:
+        from retailtwin_api.bigquery_sales_history import read_sales_history
+        from retailtwin_api.contracts import EvidenceBundle
+        from tests.test_bigquery_sales_history import FakeBigQueryClient
+
+        store = MemoryStore([_p017()])
+        registry = _registry(store, sales_history=None)
+        clear_sales = registry.invoke(
+            "get_sales_history",
+            {"sku": "P017", "window_hours": 4},
+            granted={ToolCapability.READ},
+        )
+        assert clear_sales.ok is False
+
+        saturday_landed = datetime(2026, 10, 10, 11, 55, 0, tzinfo=timezone.utc)
+        rows = [
+            _FakeRowSimpleNamespace(
+                event_id=f"evt-sat-{i}",
+                correlation_id=CORRELATION_ID,
+                store_id="store-001",
+                sku="P017",
+                quantity=4,
+                occurred_at=COLLECTED_AT,
+                landed_at=saturday_landed,
+            )
+            for i in range(20)
+        ]
+        client = FakeBigQueryClient(row_factory=lambda q: rows)
+
+        def sales_history_port(args: Any) -> dict[str, Any] | None:
+            payload = read_sales_history(
+                args,
+                client=client,
+                job_config=None,
+                store_id="store-001",
+                now=COLLECTED_AT,
+            )
+            return payload
+
+        bind_read_port(registry, "get_sales_history", sales_history_port)
+        bundle, _, _, _ = _run(registry, _calls(), store=store)
+        assert isinstance(bundle, EvidenceBundle)
+        assert bundle.is_sufficient is True
+        # Issue #215 / PR #253 fix: ``version`` is now a deterministic
+        # provenance digest (window + watermark + lineage), so the
+        # bundle's ``source_versions[sales_history]`` is the digest
+        # — the BigQuery job id (kept for debugging) lives in
+        # ``value.query_job_id``.
+        sales = _source(bundle, "sales_history")
+        assert sales.event_type == "sales_history"
+        version = bundle.source_versions["sales_history"]
+        assert version.startswith("sales-evidence-")
+        assert sales.payload["version"] == version
+        assert sales.payload["value"]["query_job_id"] == "bq-job-test"
+        # The new provenance tuple is round-tripped into the payload
+        # so downstream consumers (Planner, Simulator, audit) can
+        # see the exact snapshot the candidate was scored against.
+        assert sales.payload["value"]["query_window"] == [
+            (COLLECTED_AT - timedelta(hours=4)).astimezone(timezone.utc).isoformat(),
+            COLLECTED_AT.astimezone(timezone.utc).isoformat(),
+        ]
+        assert sales.payload["value"]["source_watermark"] == saturday_landed.astimezone(timezone.utc).isoformat()
+        assert sales.payload["value"]["data_lineage"] == [
+            "retailtwin-ai-511002",
+            "retailtwin",
+            "sales_events",
+        ]
+        # ``content_digest`` is a deterministic sha256 over the row
+        # contents (issue #215 / PR #253 review 2).
+        assert isinstance(sales.payload["value"]["content_digest"], str)
+        assert len(sales.payload["value"]["content_digest"]) == 64
+        # The BigQuery reader payload is copied under ``value``; the
+        # canonical fields ``sku`` / ``window_hours`` / ``total_quantity``
+        # are visible there.
+        assert sales.payload["value"]["sku"] == "P017"
+        assert sales.payload["value"]["window_hours"] == 4
+        # 20 rows × 4 units = 80 units sold in the canonical 4h window.
+        assert sales.payload["value"]["row_count"] == 20
+        assert sales.payload["value"]["total_quantity"] == 80
+        # Inventory version still keys ``entity_versions`` by SKU.
+        assert bundle.entity_versions == {"P017": "1"}
+
+    def test_empty_bigquery_surfaces_sales_history_unavailable(self) -> None:
+        from retailtwin_api.bigquery_sales_history import read_sales_history
+        from tests.test_bigquery_sales_history import FakeBigQueryClient
+
+        store = MemoryStore([_p017()])
+        registry = _registry(store, sales_history=None)
+        client = FakeBigQueryClient(row_factory=lambda q: [])
+
+        def empty_bq_sales_history(args: Any) -> dict[str, Any] | None:
+            return read_sales_history(
+                args,
+                client=client,
+                job_config=None,
+                store_id="store-001",
+                now=COLLECTED_AT,
+            )
+
+        bind_read_port(registry, "get_sales_history", empty_bq_sales_history)
+        bundle, _, _, _ = _run(registry, _calls(), store=store)
+        # No fabricated number: the BigQuery reader returned ``None`` and
+        # ``bind_read_port`` raised ``source_unavailable``; the bundle
+        # surfaces that as ``sales_history_unavailable``.
+        sales = _source(bundle, "sales_history")
+        assert sales.event_type == "insufficient_evidence"
+        assert sales.payload == {
+            "source": "sales_history",
+            "entity_id": "P017",
+            "reason": SALES_HISTORY_UNAVAILABLE,
+        }
+        assert "value" not in sales.payload
+        assert bundle.is_sufficient == False
+        # The investigator never invents a quantity on the sales_history
+        # item: the canonical 80-unit Saturday surge and the 4h-window
+        # total must not appear in the sales_history payload (the
+        # ``forecast`` payload legitimately carries its own value).
+        sales_payload = json.dumps(sales.payload)
+        assert "80" not in sales_payload
+        assert "total_quantity" not in sales_payload
+
+    def test_bigquery_error_surfaces_sales_history_unavailable(self) -> None:
+        from retailtwin_api.bigquery_sales_history import read_sales_history
+        from tests.test_bigquery_sales_history import FakeBigQueryClient
+
+        store = MemoryStore([_p017()])
+        registry = _registry(store, sales_history=None)
+        client = FakeBigQueryClient(raise_on_query=RuntimeError("secret-bq"))
+
+        def broken_bq_sales_history(args: Any) -> dict[str, Any] | None:
+            return read_sales_history(
+                args,
+                client=client,
+                job_config=None,
+                store_id="store-001",
+                now=COLLECTED_AT,
+            )
+
+        bind_read_port(registry, "get_sales_history", broken_bq_sales_history)
+        bundle, _, _, _ = _run(registry, _calls(), store=store)
+        sales = _source(bundle, "sales_history")
+        assert sales.event_type == "insufficient_evidence"
+        assert sales.payload["reason"] == SALES_HISTORY_UNAVAILABLE
+        assert "secret-bq" not in json.dumps(bundle.model_dump(mode="json"))
+
+    def test_run_id_is_deterministic_across_investigations(self) -> None:
+        from retailtwin_api.bigquery_sales_history import read_sales_history
+        from tests.test_bigquery_sales_history import FakeBigQueryClient
+
+        store = MemoryStore([_p017()])
+        registry = _registry(store, sales_history=None)
+        rows = [
+            _FakeRowSimpleNamespace(
+                event_id=f"evt-sat-{i}",
+                correlation_id=CORRELATION_ID,
+                store_id="store-001",
+                sku="P017",
+                quantity=4,
+                occurred_at=COLLECTED_AT,
+            )
+            for i in range(20)
+        ]
+        client = FakeBigQueryClient(row_factory=lambda q: rows)
+
+        def stable_bq_sales_history(args: Any) -> dict[str, Any] | None:
+            return read_sales_history(
+                args,
+                client=client,
+                job_config=None,
+                store_id="store-001",
+                now=COLLECTED_AT,
+            )
+
+        bind_read_port(registry, "get_sales_history", stable_bq_sales_history)
+        first, _, _, _ = _run(registry, _calls(), store=store)
+        second, _, _, _ = _run(registry, _calls(), store=store)
+        assert first.bundle_id == second.bundle_id
+        assert first.model_dump(mode="json") == second.model_dump(mode="json")
+        assert first.source_versions == second.source_versions
+        # Two calls, two queries against the fake client (the reader is
+        # stateless). The bundle is identical so no duplication leaks
+        # into the investigator's evidence state.
+        assert len(client.calls) == 2
+
+
+class _FakeRowSimpleNamespace:
+    """A BigQuery row that mimics ``google.cloud.bigquery.Row`` attribute access."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.__dict__.update(kwargs)

@@ -3,6 +3,7 @@
 from kpi.evaluator import (
     ASSUMPTIONS,
     FORMULA_ID,
+    NO_DEMAND_EVIDENCE_VERSION,
     ChangeFacings,
     KpiError,
     KpiLedger,
@@ -17,6 +18,7 @@ from kpi.evaluator import (
 __all__ = [
     "ASSUMPTIONS",
     "FORMULA_ID",
+    "NO_DEMAND_EVIDENCE_VERSION",
     "ChangeFacings",
     "KpiError",
     "KpiLedger",
