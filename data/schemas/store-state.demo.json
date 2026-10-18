@@ -131,6 +131,14 @@
       "backroom_quantity": 18
     },
     {
+      "sku": "P017",
+      "shelf_id": "A02",
+      "slot_id": "A02-S03",
+      "facings": 2,
+      "shelf_quantity": 8,
+      "backroom_quantity": 35
+    },
+    {
       "sku": "P018",
       "shelf_id": "OC01",
       "slot_id": "OC01-S05",
@@ -4442,5 +4450,6 @@
       "shelf_quantity": 41,
       "backroom_quantity": 34
     }
-  ]
+  ],
+  "updated_at": "2026-10-18T11:09:55.858796+00:00"
 }
