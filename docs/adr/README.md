@@ -59,3 +59,4 @@ Skip a new record when an accepted ADR already covers the choice, or when the ch
 | [0025](0025-canonical-application-versioning.md) | Canonicalize application versioning across API and Web | Accepted |
 | [0026](0026-supply-chain-security-gates.md) | Add lightweight supply-chain and security gates for release artifacts | Accepted |
 | [0027](0027-release-evidence-and-rollback-gate.md) | Release evidence and rollback gate | Accepted |
+| [0042](0042-adk-multi-agent-adapter-boundary.md) | ADK multi-agent adapter boundary (preparatory stub) | Proposed |
