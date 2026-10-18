@@ -32,7 +32,9 @@ from retailtwin_api.schemas import StoreEvent
 
 log = logging.getLogger(__name__)
 
-OutcomeName = Literal["started", "duplicate", "conflict", "ignored", "rejected"]
+OutcomeName = Literal[
+    "started", "duplicate", "conflict", "in_flight", "ignored", "rejected"
+]
 
 
 class ObservationError(Exception):
@@ -84,7 +86,7 @@ class Activation:
 
 @dataclass(frozen=True)
 class _Reservation:
-    kind: Literal["owner", "duplicate", "conflict"]
+    kind: Literal["owner", "duplicate", "conflict", "in_flight"]
     investigation_id: str
     event: StoreEvent
 

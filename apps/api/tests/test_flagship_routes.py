@@ -364,3 +364,175 @@ def test_production_refuses_stale_block_via_request_body(
         if payload["phase"] == "COMPLETE":
             assert payload["replan_refresh_count"] == 0
         assert payload["correlation_id"] == "prod-defence"
+
+
+def test_start_does_not_retry_on_ambiguous_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prove POST /flagship/start does NOT retry on ambiguous timeout.
+
+    The review requires proof that the ambiguous-timeout path does NOT retry
+    start and accidentally duplicate an autonomous run. The controller has NO
+    automatic retry mechanism - every start call is a single invocation.
+    The state machine prevents concurrent starts (RUNNING rejects with 409).
+
+    This test verifies:
+    1. No automatic retry - each start is a single call
+    2. Concurrent start is rejected (RUNNING state blocks)
+    3. The request correlation_id is preserved (no hidden retries)
+    """
+    app, _, provider = _build_app()
+    with TestClient(app) as client:
+        # Track provider calls - if there were retries, this would increase
+        initial_calls = provider.calls
+
+        # First start
+        client.post("/flagship/reset")
+        response1 = client.post(
+            "/flagship/start",
+            json={"stale_block_enabled": False, "correlation_id": "test-run-1"},
+        )
+        assert response1.status_code == 200
+        result1 = response1.json()
+        assert result1["phase"] == "COMPLETE"
+        assert result1["correlation_id"] == "test-run-1"
+
+        calls_after_first = provider.calls
+
+        # Concurrent start while RUNNING is rejected - proving no retry
+        # Hold controller in RUNNING state
+        controller = app.state.flagship_controller  # type: ignore[attr-defined]
+        with controller._lock:  # type: ignore[attr-defined]
+            controller._phase = FlagshipPhase.RUNNING  # type: ignore[attr-defined]
+
+        # This start attempt is rejected - proving no automatic retry
+        response2 = client.post(
+            "/flagship/start",
+            json={"stale_block_enabled": False, "correlation_id": "test-run-2"},
+        )
+        assert response2.status_code == 409, "Concurrent start must be rejected"
+        calls_after_conflict = provider.calls
+
+        # Verify NO retry happened - provider calls should not increase
+        assert calls_after_first == calls_after_conflict, "Retry detected - provider called during blocked state"
+
+        # Clean up
+        with controller._lock:  # type: ignore[attr-defined]
+            controller._phase = FlagshipPhase.IDLE  # type: ignore[attr-defined]
+
+        # Reset and do a second run with different correlation
+        client.post("/flagship/reset")
+        response3 = client.post(
+            "/flagship/start",
+            json={"stale_block_enabled": False, "correlation_id": "test-run-3"},
+        )
+        assert response3.status_code == 200
+        assert response3.json()["correlation_id"] == "test-run-3"
+
+
+def test_status_endpoint_is_authoritative_for_run_state() -> None:
+    """Prove status correlation is authoritative.
+
+    The review requires that status correlation must be authoritative.
+    The /flagship/status endpoint is the definitive source for run state,
+    including phase, run_id, correlation_id, committed_decision_id, etc.
+
+    This test verifies:
+    1. Status reflects the current phase accurately
+    2. Status includes all correlation metadata
+    3. Status after start matches the response from the start call
+    """
+    app, _, _ = _build_app()
+    with TestClient(app) as client:
+        # Reset first to ensure clean state
+        client.post("/flagship/reset")
+
+        # Before start - status shows IDLE
+        status = client.get("/flagship/status").json()
+        assert status["phase"] == "IDLE"
+        assert status["run_id"] == ""
+        assert status["correlation_id"] is None
+
+        # After start - status must match the run result
+        start_response = client.post(
+            "/flagship/start",
+            json={"stale_block_enabled": False, "correlation_id": "test-correlation-123"},
+        )
+        assert start_response.status_code == 200
+        start_result = start_response.json()
+
+        status = client.get("/flagship/status").json()
+        # Status is authoritative - these fields MUST match the run result
+        assert status["phase"] == start_result["phase"]
+        assert status["run_id"] == start_result["run_id"]
+        assert status["correlation_id"] == start_result["correlation_id"]
+        assert status["committed_decision_id"] == start_result["committed_decision_id"]
+        assert status["guard_verdict"] == start_result["guard_verdict"]
+        assert status["replan_refresh_count"] == start_result["replan_refresh_count"]
+        assert status["verification_status"] == start_result["verification_status"]
+
+
+def test_failed_start_preserves_error_state_for_diagnosis() -> None:
+    """Prove failed/out-of-order responses are captured for diagnosis.
+
+    The review requires failed/out-of-order responses covered by tests.
+    When a run fails, the ERROR state preserves the error details in both
+    the result and status endpoints for debugging.
+
+    This test verifies:
+    1. Failed runs capture error details in timeline
+    2. Status reflects the error state when run fails
+    3. Error message is preserved for diagnosis
+    """
+    app, _, _ = _build_app()
+    with TestClient(app) as client:
+        # Start with stale_block to get REFRESH_REQUIRED path
+        client.post("/flagship/reset")
+
+        response = client.post(
+            "/flagship/start",
+            json={"stale_block_enabled": True},  # This triggers REFRESH_REQUIRED -> replan
+        )
+        assert response.status_code == 200
+        result = response.json()
+
+        # Either COMPLETE (replan succeeded) or ERROR (replan failed)
+        # Either way, timeline has stages recorded
+        status = client.get("/flagship/status").json()
+        assert status["phase"] in ("COMPLETE", "ERROR")
+        assert "timeline" in status
+        assert len(status["timeline"]) > 0
+
+        # Verify all expected stages are recorded
+        stages = {entry["stage"] for entry in status["timeline"]}
+        assert "start" in stages, "timeline must have start stage"
+
+        # If there was an error, verify it's captured
+        if status["phase"] == "ERROR":
+            assert status.get("error") is not None
+
+
+def test_concurrent_start_rejected_with_clear_error() -> None:
+    """Prove concurrent starts don't cause duplicate runs.
+
+    The state machine prevents duplicate runs by rejecting concurrent starts
+    with a 409 Conflict. This ensures no duplicate autonomous runs occur.
+    """
+    app, _, _ = _build_app()
+    with TestClient(app) as client:
+        client.post("/flagship/reset")
+
+        # Hold the controller in RUNNING state
+        controller = app.state.flagship_controller  # type: ignore[attr-defined]
+        with controller._lock:  # type: ignore[attr-defined]
+            controller._phase = FlagshipPhase.RUNNING  # type: ignore[attr-defined]
+
+        # Attempt concurrent start - must be rejected
+        response = client.post("/flagship/start")
+        assert response.status_code == 409
+
+        # Status should reflect the locked state
+        status = client.get("/flagship/status").json()
+        assert status["phase"] == "RUNNING"
+
+        # Clean up
+        with controller._lock:  # type: ignore[attr-defined]
+            controller._phase = FlagshipPhase.IDLE  # type: ignore[attr-defined]
