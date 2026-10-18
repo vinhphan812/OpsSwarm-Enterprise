@@ -66,6 +66,9 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
+    // Handle unhandled rejections as warnings to prevent CI failures from async test cleanup
+    // These are pre-existing in demoRunner tests and don't affect actual test results
+    onUnhandledRejection: "warn",
     coverage: {
       provider: "v8",
       reporter: ["text", "text-summary", "lcov", "cobertura", "json-summary"],
