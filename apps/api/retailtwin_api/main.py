@@ -28,6 +28,7 @@ from retailtwin_api.analytics_repository import (
     unavailable_analytics_repositories,
 )
 from retailtwin_api.decisions import InMemoryDecisionSource, unavailable_decision_source
+from retailtwin_api.persistence import get_persistence
 from retailtwin_api.demand_surge import DemandSurgeScheduler
 from retailtwin_api.errors import ApiError, api_error_handler, http_error_handler, validation_error_handler
 from retailtwin_api.events import EventLog, ReviewAuditLog
@@ -154,8 +155,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.activity = AgentActivityLog()
     app.state.simulations = SimulationRepository(store.view, resolved.store_id, activity=app.state.activity)
     # Observer plumbing for POST /events (G03). The pipe and ledger are process memory.
+    # When LIVE_TWIN_BACKEND=firestore, wire the durable adapters for production.
+    durable_adapters = None
+    if resolved.live_twin_backend == "firestore":
+        durable_adapters = get_persistence(resolved, activity=app.state.activity)
+
     app.state.event_pipe = MemoryPipe()
-    app.state.activation_ledger = MemoryActivationLedger()
+    if durable_adapters is not None:
+        # Use Firestore-backed durable adapters
+        app.state.activation_ledger = durable_adapters.activation_ledger
+        app.state.decisions = durable_adapters.decisions
+        app.state.simulations = durable_adapters.simulations
+    else:
+        # Use in-memory adapters for fixture/memory backends
+        app.state.activation_ledger = MemoryActivationLedger()
     app.state.quarantine = MemoryQuarantine()
     app.state.autonomy = None
     if resolved.autonomy_enabled and store.loaded:
