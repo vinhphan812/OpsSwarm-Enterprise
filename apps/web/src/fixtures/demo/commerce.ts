@@ -261,12 +261,13 @@ export const demoClient: RetailTwinClient = {
   promotions: () => Promise.resolve(demoPromotions()),
   anomalies: () => Promise.resolve(demoAnomalies()),
   checkouts: (checkoutId) => {
-    const summary = demoCheckout(checkoutId);
+    const id = checkoutId ?? "checkout-1";
+    const summary = demoCheckout(id);
     if (!summary) {
       // Return empty response for unknown checkout IDs
       return Promise.resolve({
         summary: {
-          checkout_id: checkoutId,
+          checkout_id: id,
           store_id: STORE_ID,
           status: "closed" as const,
           cashier: null,
@@ -281,6 +282,6 @@ export const demoClient: RetailTwinClient = {
         transactions: [],
       });
     }
-    return Promise.resolve({ summary, transactions: demoTransactions(checkoutId) });
+    return Promise.resolve({ summary, transactions: demoTransactions(id) });
   },
 };
