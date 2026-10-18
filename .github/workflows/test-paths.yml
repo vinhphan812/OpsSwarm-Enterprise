@@ -1,0 +1,7 @@
+name: Test Paths
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
