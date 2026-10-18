@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # ── LLM (ADR 0008, ADR 0020) ─────────────────────────────────────────────
     # The day-0 API does not construct a provider. Production construction is
     # checked in retailtwin_api.llm.factory, not at process start.
+    # Defaults are environment-aware: production uses Vertex, dev/test uses fake.
     llm_provider: str = Field(default="fake")
     llm_model: str = Field(default="fake-test")
     llm_base_url: str | None = None
@@ -127,6 +128,24 @@ class Settings(BaseSettings):
                 f"LOG_LEVEL must be one of {allowed}; got {v!r}."
             )
         return normalized
+
+    @model_validator(mode="before")
+    @classmethod
+    def _apply_production_defaults(cls, values: dict) -> dict:
+        """Production uses Vertex and Firestore; dev/test uses memory/fake."""
+        app_env = (values.get("app_env") or "development").strip().lower()
+        is_prod = app_env == "production"
+
+        # Production defaults: firestore backend + vertex provider
+        if is_prod:
+            if values.get("live_twin_backend") is None:
+                values["live_twin_backend"] = "firestore"
+            if values.get("llm_provider") in (None, "", "fake"):
+                values["llm_provider"] = "vertex_gemini"
+            if values.get("llm_model") in (None, "", "fake-test"):
+                values["llm_model"] = "gemini-2.0-flash-001"
+
+        return values
 
     @property
     def is_production(self) -> bool:
