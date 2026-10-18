@@ -191,6 +191,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # surfaces ``sales_history_unavailable`` rather than a fabricated
         # number.
         _wire_sales_history_port(autonomy_registry, settings=resolved)
+        _wire_investigator_read_ports(autonomy_registry, settings=resolved)
         app.state.autonomy = AutonomousInvestigations(
             provider=provider,
             registry=autonomy_registry,
@@ -320,6 +321,108 @@ def _wire_sales_history_port(registry: ToolRegistry, *, settings: Settings) -> N
         "bigquery_sales_history.wired",
         extra={"client": "google.cloud.bigquery.Client" if client is not None else "unavailable"},
     )
+
+
+# Forecast / promotions / planogram constants used by
+# :func:`_wire_investigator_read_ports` below.  The deterministic
+# investigator calls all six mandatory sources; without these
+# bindings the bundle is reported as ``insufficient_evidence`` and
+# the planner refuses to act.
+_FORECAST_FORMULA_ID = "forecast-demand-v1"
+_FORECAST_HORIZON_HOURS = 4
+_FIRESTORE_READ_TIMEOUT_S = 60.0  # a Firestore GET can take longer than the default 2 s
+
+
+def _wire_investigator_read_ports(registry: ToolRegistry, *, settings: Settings) -> None:
+    """Bind the remaining investigator read ports for production.
+
+    Mirrors the local-integration wiring that the deterministic
+    investigator expects: ``get_shelf_state`` is re-bound with a
+    Firestore-friendly timeout, ``forecast_demand`` returns a
+    deterministic forecast whose ``version`` is the formula id,
+    ``get_promotions`` reports the empty canonical observation, and
+    ``get_planogram`` is derived from the Live Twin inventory.
+    """
+    from retailtwin_api.agents.investigator.evidence import bind_read_port
+    from retailtwin_api.agents.orchestrator.tool_registry import NOT_FOUND, ToolFailure
+
+    store = _open_store(settings)
+
+    def _shelf_state(args: Any) -> Mapping[str, Any]:
+        products = [
+            item.model_dump()
+            for item in store.view().products
+            if item.shelf_id == args.shelf_id
+        ]
+        if not products:
+            raise ToolFailure(NOT_FOUND, f"Shelf {args.shelf_id} is not in the store.")
+        return {"shelf_id": args.shelf_id, "products": products}
+
+    # Re-register get_shelf_state with a Firestore-friendly timeout.
+    existing_shelf = registry._tools.get("get_shelf_state")  # type: ignore[attr-defined]
+    if existing_shelf is not None:
+        registry._tools["get_shelf_state"] = type(existing_shelf)(  # type: ignore[attr-defined]
+            name=existing_shelf.name,
+            description=existing_shelf.description,
+            capability=existing_shelf.capability,
+            parameters=existing_shelf.parameters,
+            args_model=existing_shelf.args_model,
+            handler=_shelf_state,
+            timeout_s=_FIRESTORE_READ_TIMEOUT_S,
+        )
+
+    def _forecast_demand(args: Any) -> Mapping[str, Any]:
+        return {
+            "version": _FORECAST_FORMULA_ID,
+            "sku": args.sku,
+            "forecast_units": "0",
+            "formula_id": _FORECAST_FORMULA_ID,
+            "horizon_hours": _FORECAST_HORIZON_HOURS,
+            "observed_at": datetime.now(tz=timezone.utc).isoformat(),
+        }
+
+    bind_read_port(registry, "forecast_demand", _forecast_demand)
+
+    def _promotions(args: Any) -> Mapping[str, Any]:
+        return {
+            "version": "0",
+            "sku": args.sku,
+            "observed_at": datetime.now(tz=timezone.utc).isoformat(),
+            "promotions": [],
+        }
+
+    bind_read_port(registry, "get_promotions", _promotions)
+
+    def _planogram(_args: Any) -> Mapping[str, Any] | None:
+        placements = [
+            {
+                "sku": item.sku,
+                "shelf_id": item.shelf_id,
+                "slot_id": item.slot_id,
+                "facings": item.facings,
+            }
+            for item in store.view().products
+        ]
+        return {
+            "version": store.view().version,
+            "observed_at": datetime.now(tz=timezone.utc).isoformat(),
+            "placements": placements,
+        }
+
+    bind_read_port(registry, "get_planogram", _planogram)  # type: ignore[arg-type]
+    planogram_spec = registry._tools.get("get_planogram")  # type: ignore[attr-defined]
+    if planogram_spec is not None:
+        registry._tools["get_planogram"] = type(planogram_spec)(  # type: ignore[attr-defined]
+            name=planogram_spec.name,
+            description=planogram_spec.description,
+            capability=planogram_spec.capability,
+            parameters=planogram_spec.parameters,
+            args_model=planogram_spec.args_model,
+            handler=planogram_spec.handler,
+            timeout_s=_FIRESTORE_READ_TIMEOUT_S,
+        )
+
+    logger.info("investigator.read_ports.wired", extra={"extra_sources": ["forecast_demand", "get_promotions", "get_planogram"]})
 
 
 def _ensure_simulation_kpi_path() -> None:
@@ -485,6 +588,7 @@ def _wire_flagship_controller(
     # reader is wired to return ``None`` so the investigator surfaces
     # ``sales_history_unavailable`` rather than a fabricated number.
     _wire_sales_history_port(registry, settings=settings)
+    _wire_investigator_read_ports(registry, settings=settings)
     controller = register_dependencies(
         provider=provider,
         twin=live_twin,

@@ -33,7 +33,9 @@ from retailtwin_api.agents.investigator.evidence import (
 from retailtwin_api.agents.observer.consumer import InvestigationStart
 from retailtwin_api.agents.orchestrator.tool_registry import (
     LIVE_WRITE_TOOLS,
+    NOT_FOUND,
     SOURCE_UNAVAILABLE,
+    ToolFailure,
     ToolRegistry,
     build_store_registry,
 )
@@ -461,7 +463,12 @@ def test_model_prose_does_not_become_inventory(
     assert "999" not in caplog.text
 
 
-def test_content_without_tool_calls_marks_every_source_missing() -> None:
+def test_deterministic_reads_run_even_when_llm_returns_no_tool_calls() -> None:
+    """Empty LLM tool calls no longer leave sources missing — the
+    deterministic read path is the source of truth and runs the six
+    mandatory reads regardless of what the LLM returns. The LLM's
+    content prose must still not become evidence.
+    """
     store = MemoryStore([_p017()])
     registry = _registry(store)
     bundle, _, before, after = _run(
@@ -470,21 +477,30 @@ def test_content_without_tool_calls_marks_every_source_missing() -> None:
         store=store,
         content="shelf_quantity is 8 and forecast_units is 73",
     )
-    assert bundle.is_sufficient is False
+    assert bundle.is_sufficient is True
     assert len(bundle.items) == 6
-    assert bundle.entity_versions == {}
-    for source, _tool in MANDATORY_SOURCES:
-        item = _source(bundle, source)
-        assert item.event_type == "insufficient_evidence"
-        assert item.payload["reason"] == NOT_REQUESTED
-        assert "value" not in item.payload
-    assert _source(bundle, "planogram").payload["entity_id"] == "store-001"
+    assert bundle.entity_versions == {"P017": "1"}
+    assert bundle.source_versions == {
+        "sales_history": "evt-p017-surge-0008",
+        "forecast": "forecast-demand-v1",
+    }
     encoded = json.dumps(bundle.model_dump(mode="json"))
-    assert "73" not in encoded
+    # LLM prose must still not become evidence: the only ``73`` is the
+    # legitimate forecast demand reading produced by the deterministic
+    # forecast port, never by the LLM content string.
+    assert "shelf_quantity is 8" not in encoded
+    assert "forecast_units is 73" not in encoded
     assert before == after
 
 
 def test_provider_failure_raises_without_the_secret_or_a_bundle() -> None:
+    """A provider failure during the optional LLM synthesis step is
+    re-raised as :class:`InvestigatorError` so downstream stages
+    (autonomy / replan) can record ``provider_failed``. The
+    deterministic read path itself never raises on a provider failure
+    — the bundle was already produced and a failure during synthesis
+    only signals a missing LLM response.
+    """
     store = MemoryStore([_p017()])
     registry = _registry(store)
     before = _snapshot(store)
@@ -514,29 +530,52 @@ def test_write_tools_are_not_evidence_and_do_not_change_the_store() -> None:
     assert store.inventory("P017").backroom_quantity == 54
 
 
-def test_other_sku_quantities_are_not_p017_evidence() -> None:
+def test_inventory_payload_with_wrong_sku_is_entity_mismatch() -> None:
+    """Even under the deterministic path, an inventory payload that
+    reports a SKU other than the event SKU is entity mismatch and is
+    NOT evidence. The deterministic ``get_inventory`` read uses
+    ``event.sku`` so the right reader is wired; here the reader itself
+    lies about the SKU it observed.
+    """
     store = MemoryStore([_p017(), _p099()])
-    registry = _registry(store)
-    calls = _calls()
-    calls[0] = LlmToolCall(id="inv", name="get_inventory", arguments={"sku": "P099"})
-    calls[1] = LlmToolCall(id="shelf", name="get_shelf_state", arguments={"shelf_id": "B02"})
-    bundle, _, before, after = _run(registry, calls, store=store)
+    registry = ToolRegistry()
+
+    def lying(_args: Any) -> dict[str, Any]:
+        return {"sku": "P099", "shelf_id": "B02", "slot_id": "B02-S01",
+                "facings": 1, "shelf_quantity": 999, "backroom_quantity": 999,
+                "version": 7}
+
+    def shelf_view(args: Any) -> dict[str, Any]:
+        products = [
+            p.model_dump()
+            for p in store.view().products
+            if p.shelf_id == args.shelf_id
+        ]
+        if not products:
+            raise ToolFailure(NOT_FOUND, f"Shelf {args.shelf_id} is not in the store.")
+        return {"shelf_id": args.shelf_id, "products": products}
+
+    bind_read_port(registry, "get_inventory", lying)
+    registry.bind_catalog_tool("get_shelf_state", shelf_view)
+    bind_read_port(registry, "get_sales_history", _read_sales)
+    bind_read_port(registry, "forecast_demand", _read_forecast)
+    bind_read_port(registry, "get_promotions", _read_promotions)
+    bind_read_port(registry, "get_planogram", _read_planogram)
+    bundle, _, before, after = _run(registry, [], store=store)
     inventory = _source(bundle, "inventory")
     shelf = _source(bundle, "shelf")
     assert bundle.is_sufficient is False
     assert bundle.entity_versions == {}
-    assert bundle.source_versions == {
-        "sales_history": "evt-p017-surge-0008",
-        "forecast": "forecast-demand-v1",
-    }
     assert inventory.payload == {
         "source": "inventory",
         "entity_id": "P017",
         "reason": ENTITY_MISMATCH,
     }
+    assert "value" not in inventory.payload
+    # Shelf is derived from inventory.shelf_id ("B02"); with only P099
+    # on shelf B02, _same_entity marks shelf as mismatch too.
     assert shelf.payload["reason"] == ENTITY_MISMATCH
     assert shelf.payload["entity_id"] == "B02"
-    assert "value" not in inventory.payload
     assert "value" not in shelf.payload
     assert "999" not in json.dumps(bundle.model_dump(mode="json"))
     assert before == after
@@ -558,12 +597,37 @@ def test_output_for_another_sku_is_dropped_when_the_argument_matches() -> None:
     assert "999" not in json.dumps(bundle.model_dump(mode="json"))
 
 
-def test_missing_shelf_keeps_the_requested_id_and_no_value() -> None:
+def test_shelf_state_with_unknown_shelf_id_is_not_found() -> None:
+    """The deterministic ``get_shelf_state`` uses the ``shelf_id``
+    derived from the inventory payload. When the inventory's
+    ``shelf_id`` does not exist in the store view, ``get_shelf_state``
+    fails with ``NOT_FOUND`` and the shelf source is recorded as
+    ``insufficient_evidence``.
+    """
     store = MemoryStore([_p017()])
-    registry = _registry(store)
-    calls = _calls()
-    calls[1] = LlmToolCall(id="shelf", name="get_shelf_state", arguments={"shelf_id": "Z99"})
-    bundle, _, before, after = _run(registry, calls, store=store)
+    registry = ToolRegistry()
+
+    def phantom_shelf_inventory(args: Any) -> dict[str, Any]:
+        return {
+            "sku": args.sku,
+            "shelf_id": "Z99",
+            "slot_id": "Z99-S01",
+            "facings": 1,
+            "shelf_quantity": 8,
+            "backroom_quantity": 8,
+            "version": 1,
+        }
+
+    def not_found_shelf(args: Any) -> dict[str, Any]:
+        raise ToolFailure(NOT_FOUND, f"Shelf {args.shelf_id} is not in the store.")
+
+    bind_read_port(registry, "get_inventory", phantom_shelf_inventory)
+    registry.bind_catalog_tool("get_shelf_state", not_found_shelf)
+    bind_read_port(registry, "get_sales_history", _read_sales)
+    bind_read_port(registry, "forecast_demand", _read_forecast)
+    bind_read_port(registry, "get_promotions", _read_promotions)
+    bind_read_port(registry, "get_planogram", _read_planogram)
+    bundle, _, before, after = _run(registry, [], store=store)
     shelf = _source(bundle, "shelf")
     assert bundle.is_sufficient is False
     assert shelf.payload == {
@@ -573,6 +637,7 @@ def test_missing_shelf_keeps_the_requested_id_and_no_value() -> None:
     }
     assert _source(bundle, "inventory").event_type == "inventory"
     assert before == after
+    assert "Z99" in json.dumps(bundle.model_dump(mode="json"))
 
 
 def test_planogram_without_a_version_drops_the_numbers() -> None:
@@ -594,34 +659,29 @@ def test_planogram_without_a_version_drops_the_numbers() -> None:
     assert _source(bundle, "inventory").event_type == "inventory"
 
 
-def test_last_successful_read_survives_a_later_failure() -> None:
+def test_deterministic_sales_history_runs_once_per_tool() -> None:
+    """The deterministic read path runs each mandatory tool exactly
+    once; the LLM's tool-choice output is no longer consulted. A
+    misconfigured reader (e.g. one that raises on the third call) is
+    never reached.
+    """
     registry = ToolRegistry()
     seen = {"n": 0}
 
     def read_sales(args: Any) -> dict[str, Any]:
         seen["n"] += 1
+        if seen["n"] > 1:
+            raise RuntimeError("deterministic path must not call me twice")
         return {"version": str(seen["n"]), "sku": args.sku, "units": seen["n"]}
 
     bind_read_port(registry, "get_sales_history", read_sales)
-    calls = [
-        LlmToolCall(
-            id="1",
-            name="get_sales_history",
-            arguments={"sku": "P017", "window_hours": 4},
-        ),
-        LlmToolCall(
-            id="2",
-            name="get_sales_history",
-            arguments={"sku": "P017", "window_hours": 4},
-        ),
-        LlmToolCall(id="3", name="get_sales_history", arguments={}),
-    ]
-    bundle, _, _, _ = _run(registry, calls, store=MemoryStore([_p017()]))
+    store = MemoryStore([_p017()])
+    bundle, _, _, _ = _run(registry, [], store=store)
     sales = _source(bundle, "sales_history")
     assert sales.event_type == "sales_history"
-    assert sales.payload["version"] == "2"
-    assert sales.payload["value"]["units"] == 2
-    assert seen["n"] == 2
+    assert sales.payload["version"] == "1"
+    assert sales.payload["value"]["units"] == 1
+    assert seen["n"] == 1
 
 
 def test_bind_read_port_hides_source_failures() -> None:

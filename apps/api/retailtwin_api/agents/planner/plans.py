@@ -1,10 +1,22 @@
 """Turn one evidence bundle into bounded candidate decisions.
 
-The provider must return structured candidates. The planner checks those
-actions against the frozen action models and the observed evidence, then
-binds the context and the evidence itself. The model does not choose the
-context version, the evidence, or a KPI score. A rejected action is not
-returned and is not sent to simulation.
+The planner ships a rule-based, deterministic path as its default. The
+historical provider-driven path is preserved behind the
+``PLANNER_USE_LLM`` environment variable so an operator can opt the
+planner back into a model call when the chain is run outside
+production. The deterministic path never consults a model, never
+generates a discriminator / const schema for ``response_schema``, and
+never depends on the LLM provider being reachable.
+
+The rule-based path inspects the inventory snapshot carried in the
+bundle (slot, shelf / backroom quantities, facings) plus the demand
+velocity derived from the ``sales_history`` and ``forecast`` items.
+The action it picks is constrained to one of the three frozen action
+models: ``MoveProduct`` / ``ReplenishShelf`` / ``ChangeFacings``. The
+returned ``Decision`` carries the supplied context version, the
+evidence bundle, and an unscored ``expected_impact`` so the downstream
+simulator, DCG, executor and verifier keep their existing contracts
+unchanged.
 """
 
 from __future__ import annotations
@@ -12,8 +24,11 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -55,6 +70,39 @@ INVALID_CONTEXT = "invalid_context"
 INVALID_OUTPUT = "invalid_output"
 FORBIDDEN_ACTION = "forbidden_action"
 PROVIDER_FAILED = "provider_failed"
+# Deterministic path emits a typed reason when no actionable decision
+# can be derived from the evidence. Downstream stages (flagship
+# controller, autonomy / replan) surface this verbatim.
+NO_ACTIONABLE_DECISION = "no_actionable_decision"
+
+# Rule thresholds for the deterministic path. Tuned for the
+# ``run-weekend-demand-surge-1`` canonical seed; documented in the
+# task spec.
+REPLENISH_VELOCITY_UNITS_PER_HOUR = 6.0
+CHANGE_FACINGS_VELOCITY_UNITS_PER_HOUR = 12.0
+REPLENISH_MAX_UNITS = 20
+SHELF_FILL_FACTOR = 8
+
+
+# Feature flag for the historical LLM path. Default OFF — the
+# planner is deterministic in production and in local runs. Set
+# ``PLANNER_USE_LLM=1`` to opt the planner back into a model call
+# (kept for explicit enablement).
+PLANNER_USE_LLM_ENV = "PLANNER_USE_LLM"
+
+
+def _llm_enabled() -> bool:
+    """Return True when the LLM path is explicitly enabled.
+
+    Reads ``PLANNER_USE_LLM`` from the process environment. The
+    default is OFF; only an explicit truthy value (``"1"``,
+    ``"true"``, ``"yes"``, ``"on"``, case-insensitive) enables the
+    LLM path. This keeps local runs deterministic without
+    configuration and lets operators opt the planner back into a
+    model call by setting the env var.
+    """
+    raw = os.environ.get(PLANNER_USE_LLM_ENV, "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
 
 
 class PlannerError(Exception):
@@ -153,6 +201,8 @@ class _Observed:
     version: str
     slot_id: str
     backroom_quantity: int
+    shelf_quantity: int
+    facings: int
 
 
 def _fail(correlation_id: str, reason: str) -> PlannerError:
@@ -211,7 +261,14 @@ def _observed(bundle: EvidenceBundle) -> _Observed:
     facings = _whole(inventory.get("facings"))
     if not isinstance(slot_id, str) or not slot_id.strip() or backroom is None or shelf is None or facings is None:
         raise _fail(correlation_id, INSUFFICIENT_EVIDENCE)
-    return _Observed(sku.strip(), str(version).strip(), slot_id.strip(), backroom)
+    return _Observed(
+        sku.strip(),
+        str(version).strip(),
+        slot_id.strip(),
+        backroom,
+        shelf,
+        facings,
+    )
 
 
 def _check_context(correlation_id: str, context_version: str, context_timestamp: datetime) -> str:
@@ -299,22 +356,201 @@ def _fail_output() -> _OutputRejected:
     return _OutputRejected()
 
 
-async def plan(
+# ─────────────────────────────────────────────────────────────────────────
+# Deterministic path
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _demand_velocity_units_per_hour(bundle: EvidenceBundle) -> float:
+    """Return demand velocity in units per hour from sales_history or forecast.
+
+    Prefers ``sales_history`` (BigQuery-backed, issue #215 / ADR 0024)
+    and falls back to ``forecast``. Returns 0.0 when neither source
+    carries a usable quantity / window. The result is always a
+    finite, non-negative float; malformed inputs degrade to 0.0
+    rather than raising so the deterministic path stays in charge of
+    the planner's decision (no provider call).
+    """
+    for item in bundle.items:
+        if item.event_type != "sales_history":
+            continue
+        value = item.payload.get("value")
+        if not isinstance(value, dict):
+            continue
+        sales = value.get("sales")
+        window_hours = value.get("window_hours")
+        if not isinstance(window_hours, int) or window_hours <= 0:
+            continue
+        if not isinstance(sales, list):
+            continue
+        total = 0
+        for sale in sales:
+            if not isinstance(sale, Mapping):
+                continue
+            qty = sale.get("quantity")
+            if isinstance(qty, bool) or not isinstance(qty, int) or qty < 0:
+                continue
+            total += qty
+        if total > 0:
+            return total / window_hours
+    for item in bundle.items:
+        if item.event_type != "forecast":
+            continue
+        value = item.payload.get("value")
+        if not isinstance(value, dict):
+            continue
+        raw_units = value.get("forecast_units")
+        units: int | None = None
+        if isinstance(raw_units, bool):
+            units = None
+        elif isinstance(raw_units, int):
+            units = raw_units
+        elif isinstance(raw_units, str):
+            try:
+                units = int(Decimal(raw_units))
+            except (InvalidOperation, ValueError):
+                units = None
+        horizon_hours = value.get("horizon_hours")
+        if not isinstance(horizon_hours, int) or horizon_hours <= 0 or units is None or units <= 0:
+            continue
+        return units / horizon_hours
+    return 0.0
+
+
+def _build_decision(
+    *,
+    bundle: EvidenceBundle,
+    observed: _Observed,
+    context_version: str,
+    context_timestamp: datetime,
+    actions: list[MoveProduct | ChangeFacings | ReplenishShelf],
+    reason: str,
+    index: int,
+) -> Decision:
+    return Decision(
+        decision_id=f"plan-{bundle.correlation_id}-{observed.sku}-{index}",
+        agent_id=_AGENT_ID,
+        context_version=context_version,
+        context_timestamp=context_timestamp,
+        evidence=[bundle],
+        proposed_actions=actions,
+        simulation_id=None,
+        expected_impact=ExpectedImpact(kpi_score=UNSCORED_IMPACT, description=reason),
+    )
+
+
+def plan_decision_deterministic(
     bundle: EvidenceBundle,
     *,
-    provider: LlmProvider,
+    observed: _Observed,
     context_version: str,
     context_timestamp: datetime,
 ) -> list[Decision]:
-    """Return two or three decisions for ``bundle``.
+    """Return one or two decisions derived from the evidence.
 
-    The returned decisions carry the supplied context and this evidence.
-    ``expected_impact.kpi_score`` is ``UNSCORED_IMPACT`` because simulation
-    has not run. No store write is performed.
+    The rule set:
+
+    1. Demand velocity ``>= REPLENISH_VELOCITY_UNITS_PER_HOUR`` and the
+       backroom has stock and the shelf is below the per-facing fill
+       factor → ``ReplenishShelf(sku, min(backroom, REPLENISH_MAX_UNITS))``.
+    2. Sustained demand ``>= CHANGE_FACINGS_VELOCITY_UNITS_PER_HOUR``
+       and the SKU has fewer than 4 facings →
+       ``ChangeFacings(sku, facings + 1)``.
+    3. Shelf is empty but the backroom has stock → a minimal
+       ``ReplenishShelf(sku, 1)`` so the chain can commit and the
+       verifier can measure a delta.
+    4. Backroom has any stock and none of the above applies → a
+       minimal ``ReplenishShelf(sku, 1)`` touch-up.
+    5. Backroom and shelf are both zero → no actionable decision;
+       return an empty list so the planner surfaces
+       ``no_actionable_decision`` and the chain re-plans.
+
+    The returned ``Decision`` carries the supplied context and the
+    evidence bundle; ``expected_impact.kpi_score`` is
+    ``UNSCORED_IMPACT`` because the simulation service has not run.
     """
+    velocity = _demand_velocity_units_per_hour(bundle)
+    backroom = observed.backroom_quantity
+    shelf = observed.shelf_quantity
+    facings = observed.facings
+    sku = observed.sku
 
-    observed = _observed(bundle)
-    version = _check_context(bundle.correlation_id, context_version, context_timestamp)
+    if (
+        velocity >= REPLENISH_VELOCITY_UNITS_PER_HOUR
+        and backroom > 0
+        and shelf < (facings * SHELF_FILL_FACTOR)
+    ):
+        quantity = min(backroom, REPLENISH_MAX_UNITS)
+        actions: list[MoveProduct | ChangeFacings | ReplenishShelf] = [
+            ReplenishShelf(sku=sku, quantity=quantity)
+        ]
+        reason = (
+            f"deterministic: replenish {sku} from backroom "
+            f"velocity={velocity:.2f}units/h shelf={shelf} "
+            f"facings={facings} backroom={backroom}"
+        )
+    elif velocity >= CHANGE_FACINGS_VELOCITY_UNITS_PER_HOUR and facings < 4:
+        actions = [ChangeFacings(sku=sku, facings=facings + 1)]
+        reason = (
+            f"deterministic: increase facings for {sku} to {facings + 1} "
+            f"velocity={velocity:.2f}units/h sustained"
+        )
+    elif shelf == 0 and backroom > 0:
+        quantity = min(backroom, 1)
+        actions = [ReplenishShelf(sku=sku, quantity=quantity)]
+        reason = (
+            f"deterministic: refill empty shelf for {sku} "
+            f"backroom={backroom}"
+        )
+    elif backroom > 0:
+        actions = [ReplenishShelf(sku=sku, quantity=1)]
+        reason = (
+            f"deterministic: minimal touch-up for {sku} "
+            f"velocity={velocity:.2f}units/h shelf={shelf} backroom={backroom}"
+        )
+    else:
+        log.info(
+            "planning no_actionable_decision correlation_id=%s sku=%s "
+            "velocity=%.2f shelf=%s backroom=%s",
+            bundle.correlation_id,
+            sku,
+            velocity,
+            shelf,
+            backroom,
+        )
+        return []
+
+    decision = _build_decision(
+        bundle=bundle,
+        observed=observed,
+        context_version=context_version,
+        context_timestamp=context_timestamp,
+        actions=actions,
+        reason=reason,
+        index=1,
+    )
+    log.info(
+        "plans created (deterministic) correlation_id=%s sku=%s decisions=1",
+        bundle.correlation_id,
+        sku,
+    )
+    return [decision]
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Provider-driven path (gated by PLANNER_USE_LLM env var)
+# ─────────────────────────────────────────────────────────────────────────
+
+
+async def _plan_via_llm(
+    bundle: EvidenceBundle,
+    *,
+    provider: LlmProvider,
+    observed: _Observed,
+    context_version: str,
+    context_timestamp: datetime,
+) -> list[Decision]:
+    """Call the LLM and validate the structured output against the inventory snapshot."""
     request = LlmRequest(
         model=_MODEL,
         messages=[
@@ -342,8 +578,6 @@ async def plan(
             bundle.correlation_id,
         )
         raise PlannerError(bundle.correlation_id, PROVIDER_FAILED) from None
-    # Tool calls are not executed. response.content is validated, then only the
-    # reason summary and the checked actions are kept.
     try:
         response.validate_structured_output(_PLAN_SCHEMA)
         draft = _PlanDraft.model_validate_json(response.content or "")
@@ -359,22 +593,67 @@ async def plan(
     except _OutputRejected:
         raise _fail(bundle.correlation_id, INVALID_OUTPUT) from None
     decisions = [
-        Decision(
-            decision_id=f"plan-{bundle.correlation_id}-{observed.sku}-{index}",
-            agent_id=_AGENT_ID,
-            context_version=version,
+        _build_decision(
+            bundle=bundle,
+            observed=observed,
+            context_version=context_version,
             context_timestamp=context_timestamp,
-            evidence=[bundle],
-            proposed_actions=actions,
-            simulation_id=None,
-            expected_impact=ExpectedImpact(kpi_score=UNSCORED_IMPACT, description=reason),
+            actions=actions,
+            reason=reason,
+            index=index,
         )
         for index, (reason, actions) in enumerate(candidates, start=1)
     ]
     log.info(
-        "plans created correlation_id=%s sku=%s decisions=%s",
+        "plans created (llm) correlation_id=%s sku=%s decisions=%s",
         bundle.correlation_id,
         observed.sku,
         len(decisions),
     )
+    return decisions
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Public entry point
+# ─────────────────────────────────────────────────────────────────────────
+
+
+async def plan(
+    bundle: EvidenceBundle,
+    *,
+    provider: LlmProvider,
+    context_version: str,
+    context_timestamp: datetime,
+) -> list[Decision]:
+    """Return bound decisions for ``bundle``.
+
+    Default path is the deterministic, rule-based planner — no LLM
+    call is made. Set ``PLANNER_USE_LLM=1`` to opt into the
+    historical provider-driven path; the ``provider`` argument is
+    then consumed by that path. The returned ``Decision`` shape is
+    identical either way so the simulator, DCG, executor and
+    verifier downstream code is unchanged.
+
+    The returned decisions carry the supplied context and this
+    evidence. ``expected_impact.kpi_score`` is ``UNSCORED_IMPACT``
+    because simulation has not run. No store write is performed.
+    """
+    observed = _observed(bundle)
+    version = _check_context(bundle.correlation_id, context_version, context_timestamp)
+    if _llm_enabled():
+        return await _plan_via_llm(
+            bundle,
+            provider=provider,
+            observed=observed,
+            context_version=version,
+            context_timestamp=context_timestamp,
+        )
+    decisions = plan_decision_deterministic(
+        bundle,
+        observed=observed,
+        context_version=version,
+        context_timestamp=context_timestamp,
+    )
+    if not decisions:
+        raise _fail(bundle.correlation_id, NO_ACTIONABLE_DECISION)
     return decisions

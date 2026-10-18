@@ -1,5 +1,14 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
+
+# The planner ships a deterministic path as its default; the historical
+# provider-driven path is gated by ``PLANNER_USE_LLM``. The existing
+# planner / replan / simulator suites were written against the provider
+# path, so enable the LLM path at session scope and let the
+# deterministic tests opt out via ``monkeypatch.setenv``.
+os.environ.setdefault("PLANNER_USE_LLM", "true")
 
 from retailtwin_api.analytics_repository import (
     InMemoryAnomalyRepository,

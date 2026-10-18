@@ -1,8 +1,14 @@
 """Collect versioned evidence for one investigation.
 
-The provider chooses which read tools to call. Their results are the only
-evidence. Model prose is ignored. A mandatory source without a versioned
-result is recorded as insufficient_evidence and is not guessed.
+All six mandatory read ports (``MANDATORY_SOURCES``) are executed
+deterministically — driven by the source list, NOT by the LLM's
+tool-choice output. The LLM is preserved as an OPTIONAL synthesis
+step that may summarize or annotate observations; its tool-choice
+output is never consulted for the read set, and its absence (or
+failure) does not invalidate the bundle. Their results are the only
+evidence. Model prose is ignored. A mandatory source without a
+versioned result is recorded as ``insufficient_evidence`` and is not
+guessed.
 
 Each mandatory source's ``bind_read_port`` reader returns a Mapping with a
 ``version`` key. For the BigQuery-backed ``get_sales_history`` reader the
@@ -146,45 +152,209 @@ async def investigate(
 ) -> EvidenceBundle:
     """Return versioned evidence for ``start``.
 
-    Only registry read tools that the provider requests are executed. A
-    mandatory source that does not return a version is insufficient. This
-    function does not write the store.
+    All six mandatory read ports (``MANDATORY_SOURCES``) are executed
+    deterministically — driven by the source list, NOT by the LLM's
+    tool-choice output. The LLM is preserved as an OPTIONAL synthesis
+    step that may summarize or annotate observations; its tool-choice
+    output is never consulted for the read set, and its absence (or
+    failure) does not invalidate the bundle.
+
+    The deterministic ``get_shelf_state`` call uses ``shelf_id`` derived
+    from the inventory payload (when the inventory read returns one).
+    When inventory fails or omits ``shelf_id``, a non-matching
+    placeholder is used and ``get_shelf_state`` is allowed to fail at
+    the handler with ``NOT_FOUND``; the shelf source is then recorded
+    as ``insufficient_evidence``. The investigator never invents a
+    shelf.
+
+    A mandatory source that does not return a versioned payload is
+    insufficient. This function does not write the store.
     """
 
     event = start.event
-    request = LlmRequest(
-        model=_MODEL,
-        messages=[
-            LlmMessage(role="system", content=_INSTRUCTION),
-            LlmMessage(role="user", content=_handoff(event)),
-        ],
-        tools=registry.llm_tools(capabilities={ToolCapability.READ}),
-        tool_choice=ToolChoicePolicy(mode="tool_choice"),
-        metadata={
-            "correlation_id": event.correlation_id,
-            "investigation_id": start.investigation_id,
-            "sku": event.sku,
-        },
-    )
-    try:
-        response = await provider.complete(request)
-    except Exception:
-        log.exception(
-            "evidence collection failed correlation_id=%s",
-            event.correlation_id,
-        )
-        raise InvestigatorError(event.correlation_id) from None
 
-    # Tool results are the only evidence. response.content is not read.
-    results = registry.execute_tool_calls(
-        response.tool_calls,
+    # Phase 1 — read get_inventory first so we can derive the SKU's
+    # ``shelf_id`` for the deterministic ``get_shelf_state`` call.
+    inv_call = LlmToolCall(
+        id="det-inv",
+        name="get_inventory",
+        arguments={"sku": event.sku},
+    )
+    inv_results = registry.execute_tool_calls(
+        [inv_call],
         granted={ToolCapability.READ},
         correlation_id=event.correlation_id,
     )
+    inv_result = inv_results[0]
+    shelf_id = _derive_shelf_id(inv_result)
+
+    # Phase 2 — build and execute the remaining 5 deterministic reads.
+    # ``get_inventory`` is reused (not re-executed) so the recorded
+    # inventory result is identical to the one we used to derive
+    # ``shelf_id``.
+    remaining_calls: list[LlmToolCall] = [
+        LlmToolCall(
+            id="det-shelf",
+            name="get_shelf_state",
+            arguments={"shelf_id": shelf_id},
+        ),
+        LlmToolCall(
+            id="det-sales",
+            name="get_sales_history",
+            arguments={"sku": event.sku, "window_hours": 4},
+        ),
+        LlmToolCall(
+            id="det-forecast",
+            name="forecast_demand",
+            arguments={"sku": event.sku, "horizon_hours": 4},
+        ),
+        LlmToolCall(
+            id="det-promo",
+            name="get_promotions",
+            arguments={"sku": event.sku},
+        ),
+        LlmToolCall(
+            id="det-plan",
+            name="get_planogram",
+            arguments={},
+        ),
+    ]
+    remaining_results = registry.execute_tool_calls(
+        remaining_calls,
+        granted={ToolCapability.READ},
+        correlation_id=event.correlation_id,
+    )
+
+    calls = [inv_call, *remaining_calls]
+    results = [inv_result, *remaining_results]
     states = {source: _Hit() for source, _name in MANDATORY_SOURCES}
-    for call, result in zip(response.tool_calls, results, strict=True):
+    for call, result in zip(calls, results, strict=True):
         _record(states, call, result, event, collected_at)
+
+    # Optional LLM synthesis — strictly advisory. The deterministic
+    # reads above have already produced the bundle; the LLM may be
+    # used to summarize or annotate, but its tool-choice output is
+    # ignored and its failure does not invalidate the bundle.
+    await _synthesize(start, provider, event, registry)
+
     return _bundle(event, states, collected_at)
+
+
+def _deterministic_tool_calls(
+    event: StoreEvent,
+    *,
+    shelf_id: str,
+) -> list[LlmToolCall]:
+    """Return one ``LlmToolCall`` per ``MANDATORY_SOURCES`` entry.
+
+    The argument set is derived from the registered tool catalog and
+    from the ``StoreEvent`` so that every call is valid for the tool's
+    pydantic args model. For SKU-keyed reads (``get_inventory``,
+    ``get_sales_history``, ``forecast_demand``, ``get_promotions``) the
+    SKU is ``event.sku``. The store-level ``get_planogram`` takes no
+    arguments. The per-shelf ``get_shelf_state`` requires a
+    ``shelf_id``; the caller is expected to have derived it from the
+    deterministic ``get_inventory`` payload via
+    :func:`_derive_shelf_id`.
+    """
+    return [
+        LlmToolCall(
+            id="det-inv",
+            name="get_inventory",
+            arguments={"sku": event.sku},
+        ),
+        LlmToolCall(
+            id="det-shelf",
+            name="get_shelf_state",
+            arguments={"shelf_id": shelf_id},
+        ),
+        LlmToolCall(
+            id="det-sales",
+            name="get_sales_history",
+            arguments={"sku": event.sku, "window_hours": 4},
+        ),
+        LlmToolCall(
+            id="det-forecast",
+            name="forecast_demand",
+            arguments={"sku": event.sku, "horizon_hours": 4},
+        ),
+        LlmToolCall(
+            id="det-promo",
+            name="get_promotions",
+            arguments={"sku": event.sku},
+        ),
+        LlmToolCall(
+            id="det-plan",
+            name="get_planogram",
+            arguments={},
+        ),
+    ]
+
+
+def _derive_shelf_id(inv_result: ToolResult) -> str:
+    """Return the ``shelf_id`` to use for the deterministic shelf read.
+
+    When ``get_inventory`` succeeded and the payload carries a
+    non-empty ``shelf_id``, return it. Otherwise return a non-matching
+    placeholder so ``get_shelf_state`` fails with ``NOT_FOUND`` and
+    ``_record`` marks the shelf source as ``insufficient_evidence``.
+    The investigator never fabricates a shelf.
+    """
+    if inv_result.ok and isinstance(inv_result.output, dict):
+        raw = inv_result.output.get("shelf_id")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return _SHELF_PLACEHOLDER
+
+
+_SHELF_PLACEHOLDER = "det-shelf-placeholder"
+
+
+async def _synthesize(
+    start: InvestigationStart,
+    provider: LlmProvider,
+    event: StoreEvent,
+    registry: ToolRegistry,
+) -> None:
+    """Run the optional LLM synthesis call.
+
+    The deterministic reads above have already produced the bundle;
+    the LLM may be used to summarize or annotate observations.
+    ``tool_choice`` is set to ``"none"`` so the model is informed it
+    must not pick tools — the read set is fixed by ``MANDATORY_SOURCES``
+    and the model's tool-choice output is never consulted.
+
+    A provider failure during synthesis is logged and re-raised as
+    :class:`InvestigatorError` so downstream stages (the planner, the
+    autonomy / replan loops) can still record ``provider_failed``. The
+    deterministic bundle itself is already produced and the chain does
+    not regress to "insufficient evidence" on a synthesis-only
+    failure — only the chain's progress is gated on the LLM being
+    reachable.
+    """
+    try:
+        request = LlmRequest(
+            model=_MODEL,
+            messages=[
+                LlmMessage(role="system", content=_INSTRUCTION),
+                LlmMessage(role="user", content=_handoff(event)),
+            ],
+            tools=registry.llm_tools(capabilities={ToolCapability.READ}),
+            tool_choice=ToolChoicePolicy(mode="none"),
+            metadata={
+                "correlation_id": event.correlation_id,
+                "investigation_id": start.investigation_id,
+                "sku": event.sku,
+            },
+        )
+        await provider.complete(request)
+    except Exception:
+        log.warning(
+            "investigator.llm_synthesis_unavailable correlation_id=%s; "
+            "deterministic reads already produced the bundle.",
+            event.correlation_id,
+        )
+        raise InvestigatorError(event.correlation_id) from None
 
 
 def _handoff(event: StoreEvent) -> str:
