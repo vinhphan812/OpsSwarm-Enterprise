@@ -27,7 +27,6 @@ on:
 # by the deploy job and is granted on that job's permissions block.
 permissions:
   contents: read
-  variables: read
 
 concurrency:
   group: web-ci-${{ github.ref }}
@@ -166,7 +165,6 @@ jobs:
     # short-lived GCP credentials via google-github-actions/auth.
     permissions:
       contents: read
-      variables: read
       id-token: write
 
     outputs:
