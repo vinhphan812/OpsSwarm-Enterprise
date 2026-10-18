@@ -41,11 +41,6 @@
   --color-anomaly-high: #ff4d3d;
   --color-anomaly-medium: #ff9f1a;
   --color-anomaly-low: #f2d34b;
-  /* Stockout-risk overlay bands, also the legend's swatches. */
-  --color-risk-low: #0ca30c;
-  --color-risk-elevated: #fab219;
-  --color-risk-high: #ff8a1f;
-  --color-risk-severe: #ff3b30;
 }
 
 html,
@@ -64,168 +59,8 @@ body {
 /* The 3D view fills the window; the Agent Activity panel floats over its right side. */
 .app {
   position: relative;
-  display: flex;
-  flex-direction: column;
   height: 100dvh;
   overflow: hidden;
-}
-
-/* The 3D view and the side panel, between the header and the footer: the overlays and the
-   panel are placed inside it, so neither bar covers them. */
-.twin-body {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-}
-
-.twin-header,
-.twin-footer {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-  padding: 0 16px;
-  background: var(--color-panel);
-  border-color: var(--color-line);
-  white-space: nowrap;
-}
-
-.twin-header {
-  height: 40px;
-  border-bottom: 1px solid var(--color-line);
-}
-
-.twin-header-brand,
-.twin-header-status,
-.twin-footer-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.twin-header-name {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--color-ink);
-}
-
-.twin-header-tagline {
-  overflow: hidden;
-  font-size: 12px;
-  color: var(--color-ink-muted);
-  text-overflow: ellipsis;
-}
-
-.twin-header-tagline::before {
-  content: "·";
-  margin-right: 10px;
-  color: var(--color-ink-faint);
-}
-
-.twin-header-store {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-ink-soft);
-}
-
-.twin-header-mode,
-.twin-header-source {
-  padding: 1px 8px;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-.twin-header-mode[data-mode="live"] {
-  color: var(--color-good);
-}
-
-.twin-header-mode[data-mode="simulation"] {
-  color: var(--color-simulation);
-}
-
-.twin-header-source {
-  font-weight: 600;
-  letter-spacing: 0;
-}
-
-/* Demo vs Live data: amber dashed for the synthetic store, solid accent for apps/api. */
-.twin-header-source[data-source="demo"] {
-  color: var(--color-warning);
-  border-style: dashed;
-}
-
-.twin-header-source[data-source="live"] {
-  color: var(--color-accent);
-}
-
-.twin-header-switch {
-  font-size: 12px;
-  color: var(--color-accent);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* The demo notice under the header: amber, full width, so the synthetic store is never taken
-   for live store telemetry. */
-.twin-demo-banner {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 3px 16px;
-  font-size: 12px;
-  color: var(--color-warning);
-  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-panel));
-  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
-  white-space: nowrap;
-}
-
-.twin-demo-banner-tag {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 3px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--color-canvas);
-  background: var(--color-warning);
-}
-
-.twin-demo-banner-text {
-  overflow: hidden;
-  color: var(--color-ink);
-  text-overflow: ellipsis;
-}
-
-.twin-footer {
-  height: 24px;
-  border-top: 1px solid var(--color-line);
-  font-size: 11px;
-  color: var(--color-ink-faint);
-}
-
-.twin-footer-stack {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.twin-footer-meta {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 640px) {
-  .twin-header-tagline,
-  .twin-header-store {
-    display: none;
-  }
 }
 
 .viewport {
@@ -1838,3 +1673,91 @@ tr[data-open="true"] .receipt-caret {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+
+/* Flagship controller status (DCG verdict from GET /flagship/status) */
+.flagship-status {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 8px;
+  background: var(--color-surface-1, transparent);
+}
+.flagship-status .activity-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.flagship-phase {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--color-surface-2, rgba(127, 127, 127, 0.15));
+}
+.flagship-phase.phase-running { background: rgba(255, 193, 7, 0.18); color: #d18a00; }
+.flagship-phase.phase-complete { background: rgba(76, 175, 80, 0.18); color: #2e7d32; }
+.flagship-phase.phase-error { background: rgba(244, 67, 54, 0.18); color: #c62828; }
+.flagship-phase.phase-idle { background: rgba(127, 127, 127, 0.15); }
+.flagship-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.8rem;
+  border-bottom: 1px solid var(--color-border, rgba(127, 127, 127, 0.18));
+}
+.flagship-row:last-of-type { border-bottom: 0; }
+.flagship-label { opacity: 0.75; }
+.flagship-value, .flagship-value-big { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.flagship-verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 10px 0 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--color-surface-2, rgba(127, 127, 127, 0.08));
+}
+.flagship-verdict .flagship-value-big {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.flagship-reason { font-size: 0.75rem; opacity: 0.7; }
+.flagship-verdict.verdict-allow .flagship-value-big { color: #2e7d32; }
+.flagship-verdict.verdict-deny .flagship-value-big { color: #c62828; }
+.flagship-verdict.verdict-refresh .flagship-value-big { color: #d18a00; }
+.flagship-verdict.verdict-human .flagship-value-big { color: #1565c0; }
+.flagship-error,
+.flagship-error-detail {
+  color: #c62828;
+  font-size: 0.8rem;
+  margin: 4px 0;
+}
+.flagship-timeline {
+  margin-top: 10px;
+  font-size: 0.8rem;
+}
+.flagship-timeline summary {
+  cursor: pointer;
+  font-weight: 500;
+  padding: 4px 0;
+}
+.flagship-timeline-list {
+  list-style: none;
+  padding: 4px 0 0 0;
+  margin: 0;
+}
+.timeline-stage {
+  padding: 4px 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.timeline-stage.stage-guard { color: #1565c0; font-weight: 500; }
+.timeline-stage.stage-error { color: #c62828; }
+.timeline-index { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: 0.6; }
+.timeline-stage-name { font-weight: 500; min-width: 90px; }
+.timeline-detail { opacity: 0.8; }

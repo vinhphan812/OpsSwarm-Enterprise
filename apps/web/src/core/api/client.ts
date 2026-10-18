@@ -1,12 +1,9 @@
 import i18n from "@/i18n";
-import { isDemoMode } from "@/core/twin/demoMode";
-import type { AgentEventsResponse, FlagshipStatusResponse, HealthResponse, RetailTwinClient } from "@/types/api.type";
+import type { FlagshipStatus, HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { PromotionsSummary } from "@/types/promotion.type";
 import type { RevenueSummary } from "@/types/revenue.type";
 import type { CandidatesResponse, ReviewResult, Simulation, SimulationsResponse } from "@/types/simulation.type";
-import type { AnomaliesResponse } from "@/types/anomaly.type";
-import type { CheckoutResponse } from "@/types/checkout.type";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -31,10 +28,6 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
   const base = baseUrl.replace(/\/$/, "");
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    // The demo is synthetic: whatever control a click reaches, it never writes to apps/api.
-    if (init?.method && init.method !== "GET" && isDemoMode()) {
-      throw new ApiError(0, "demo_read_only", i18n.t("errors.demoReadOnly"));
-    }
     const doFetch = fetchImpl ?? fetch;
     let response: Response;
     try {
@@ -63,18 +56,18 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       }),
-anomalies: () => request<AnomaliesResponse>("/anomalies"),
-    checkout: (checkoutId: string) => request<CheckoutResponse>(`/checkouts/${encodeURIComponent(checkoutId)}`),
-    flagshipStatus: () => request<FlagshipStatusResponse>("/flagship/status"),
-    flagshipReset: () => request<{ run_id: string }>("/flagship/reset", { method: "POST" }),
-    flagshipStart: (correlationId: string) =>
-      request<{ run_id: string; correlation_id: string; phase: string }>("/flagship/start", {
+    flagshipStatus: () => request<FlagshipStatus>("/flagship/status"),
+    flagshipReset: () =>
+      request<{ phase: string; context_version: string }>("/flagship/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correlation_id: correlationId }),
       }),
-    agentEvents: (since?: string | null) =>
-      request<AgentEventsResponse>(`/agent/events${since ? `?since=${encodeURIComponent(since)}` : ""}`),
+    flagshipStart: () =>
+      request<unknown>("/flagship/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      }),
   };
 }
 

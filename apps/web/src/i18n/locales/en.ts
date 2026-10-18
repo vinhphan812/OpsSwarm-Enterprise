@@ -1,26 +1,4 @@
 export const en = {
-  brand: {
-    name: "RetailTwin AI",
-    tagline: "Autonomous Store Intelligence",
-    storeHint: "The store the Live Twin reports",
-    live: "LIVE",
-    simulation: "SIMULATION",
-    demo: "Demo data",
-    demoHint: "A synthetic store from fixtures/demo. Nothing on this page writes to the Live Twin.",
-    liveData: "Live data",
-    liveDataHint: "The Live Twin, as apps/api serves it. Accept and Reject change it.",
-    openLive: "Open the live twin",
-    openDemo: "Open the demo",
-    demoBannerLabel: "Demo data notice",
-    demoBannerTag: "DEMO",
-    demoBanner: "Synthetic demo store, not live store telemetry. Nothing here writes to the Live Twin.",
-  },
-  footer: {
-    context: "Context {{version}}",
-    contextHint: "The Live Twin's context_version, as served. It moves after each execution.",
-    build: "Build {{build}}",
-    devBuild: "dev",
-  },
   cameraHelp: {
     label: "Camera controls help",
     title: "Camera controls",
@@ -98,7 +76,6 @@ export const en = {
     list: "Open anomalies",
     detected: "since {{time}}",
     olderState: "read from an older twin state",
-    loadFailed: "Could not load anomalies.",
     type: {
       stockout: "Stockout",
       demand_surge: "Demand surge",
@@ -213,7 +190,6 @@ export const en = {
     unknown: "Unknown error",
     unreachable: "The API is unreachable.",
     requestFailed: "Request failed ({{status}}).",
-    demoReadOnly: "The demo does not write to the Live Twin.",
   },
   scene: {
     stock: {
@@ -440,6 +416,19 @@ export const en = {
       proposal_changed: "The proposal changed after it was reviewed.",
     },
   },
+  flagship: {
+    section: "Flagship controller (live status)",
+    runId: "Run id",
+    correlationId: "Correlation",
+    contextVersion: "Live version",
+    guardVerdict: "DCG verdict",
+    committedDecision: "Committed decision",
+    replan: "Replan",
+    verification: "Verification",
+    timeline: "Timeline",
+    pollError: "Could not read flagship status: {{error}}",
+    runError: "Flagship run failed: {{error}}",
+  },
   proposal: {
     candidate: {
       noKpis: "No KPI scores available yet",
@@ -513,24 +502,6 @@ export const en = {
       hint: "Plan {{id}}: business score {{delta}} against the current shelves, projected by {{version}}. Not measured in the store.",
       noSimulation: "No open simulation for the KPI evaluator to score.",
       notScored: "The KPI evaluator has not scored a plan against the baseline.",
-    },
-  },
-  overlay: {
-    label: "Overlays",
-    stockout_risk: "Stockout risk",
-    ai_changes: "AI changes",
-    stockout_riskHint: "Colour each slot by the chance its shelf runs out",
-    ai_changesHint: "Show the slots and moves the AI changed or proposes",
-    legend: {
-      title: "Stockout risk",
-      horizon: "next {{hours}} h",
-      low: "under 5%",
-      elevated: "5–15%",
-      high: "15–30%",
-      severe: "over 30%",
-      noData: "Slots without a forecast keep their colour.",
-      notServed: "Not served on Live yet: apps/api has no stockout risk, so no slot is coloured.",
-      demo: "Demo forecast, not live store data.",
     },
   },
   lens: {
