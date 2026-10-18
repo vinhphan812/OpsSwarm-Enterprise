@@ -166,6 +166,7 @@ jobs:
     # short-lived GCP credentials via google-github-actions/auth.
     permissions:
       contents: read
+      variables: read
       id-token: write
 
     outputs:
