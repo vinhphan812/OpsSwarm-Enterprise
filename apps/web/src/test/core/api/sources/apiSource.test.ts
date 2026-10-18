@@ -7,7 +7,7 @@ function fakeClient(store: RetailTwinClient["store"]): RetailTwinClient {
   return { 
     health: vi.fn(), 
     inventory: vi.fn(), revenue: vi.fn(), promotions: vi.fn(), simulations: vi.fn(), simulation: vi.fn(), candidates: vi.fn(), reviewSimulation: vi.fn(), 
-    anomalies: vi.fn(), checkout: vi.fn(),
+    anomalies: vi.fn(), checkouts: vi.fn(),
     flagshipStatus: vi.fn(), flagshipReset: vi.fn(), flagshipStart: vi.fn(), agentEvents: vi.fn(),
     store 
   };

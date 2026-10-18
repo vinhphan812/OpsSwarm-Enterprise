@@ -260,7 +260,7 @@ export const demoClient: RetailTwinClient = {
   revenue: (period) => Promise.resolve(demoRevenue(period)),
   promotions: () => Promise.resolve(demoPromotions()),
   anomalies: () => Promise.resolve(demoAnomalies()),
-  checkout: (checkoutId) => {
+  checkouts: (checkoutId) => {
     const summary = demoCheckout(checkoutId);
     if (!summary) {
       // Return empty response for unknown checkout IDs

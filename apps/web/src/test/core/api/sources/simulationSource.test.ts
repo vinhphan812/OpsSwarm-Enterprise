@@ -37,7 +37,7 @@ function fakeClient(
     candidates,
     reviewSimulation: vi.fn(),
     anomalies: vi.fn(),
-    checkout: vi.fn(),
+    checkouts: vi.fn(),
     flagshipStatus: vi.fn(),
     flagshipReset: vi.fn(),
     flagshipStart: vi.fn(),
