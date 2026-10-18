@@ -1,6 +1,12 @@
 name: Web CI / CD
 
 on:
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: "Force build even if no web files changed"
+        required: false
+        default: "false"
   push:
     branches: [main]
     paths:
@@ -17,12 +23,10 @@ on:
       - '.firebaserc'
       - '.github/workflows/web.yml'
 
-# Least-privilege permissions at workflow level. `id-token: write` is
-# only required by the `deploy:` job and is granted on that job's
-# `permissions:` block (ADR 0026).
+# ADR 0026 — least-privilege permissions.  id-token: write is only needed
+# by the deploy job and is granted on that job's permissions block.
 permissions:
   contents: read
-  variables: read
 
 concurrency:
   group: web-ci-${{ github.ref }}
@@ -30,9 +34,7 @@ concurrency:
 
 env:
   NODE_OPTIONS: --max-old-space-size=4096
-  VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
   FIREBASE_SITE_ID: ${{ vars.FIREBASE_SITE_ID }}
-  PRODUCTION_API_ORIGIN: ${{ vars.FIREBASE_API_BASE_URL }}
 
 jobs:
   security:
@@ -42,7 +44,15 @@ jobs:
     name: Build & Test
     runs-on: [self-hosted, Linux, X64]
 
+    # Move VITE_API_BASE_URL here (job-level) so it can be referenced in outputs.
+    # Using workflow-level env causes a circular dependency: the workflow-level env
+    # block cannot resolve ${{ vars.* }} when that same block is referenced inside
+    # job-level outputs.  Job-level env resolves vars normally at job start.
+    env:
+      VITE_API_BASE_URL: ${{ vars.FIREBASE_API_BASE_URL }}
+
     outputs:
+      # Reference the job-level env directly — vars.* cannot be used in outputs.
       api_origin: ${{ env.VITE_API_BASE_URL }}
 
     defaults:
@@ -143,7 +153,7 @@ jobs:
 
   deploy:
     name: Deploy to Firebase Hosting
-    needs: [build-test, security]
+    needs: [build-test]
     runs-on: [self-hosted, Linux, X64]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
@@ -152,7 +162,6 @@ jobs:
     # short-lived GCP credentials via google-github-actions/auth.
     permissions:
       contents: read
-      variables: read
       id-token: write
 
     outputs:
