@@ -169,3 +169,4 @@ This repository does not currently declare a license file. Add the chosen licens
 - [docs/CURRENT_STATUS.md](docs/CURRENT_STATUS.md) — authoritative current maturity and gate status.
 - [docs/CLOUD_RUNTIME_MATRIX.md](docs/CLOUD_RUNTIME_MATRIX.md) — canonical GCP/Firebase production configuration.
 - [docs/adr/](docs/adr/README.md) — architecture decision log. Every PR names the ADR it tracks.
+# Trigger deployment
