@@ -41,6 +41,11 @@
   --color-anomaly-high: #ff4d3d;
   --color-anomaly-medium: #ff9f1a;
   --color-anomaly-low: #f2d34b;
+  /* Stockout-risk overlay bands, also the legend's swatches. */
+  --color-risk-low: #0ca30c;
+  --color-risk-elevated: #fab219;
+  --color-risk-high: #ff8a1f;
+  --color-risk-severe: #ff3b30;
 }
 
 html,
@@ -59,8 +64,168 @@ body {
 /* The 3D view fills the window; the Agent Activity panel floats over its right side. */
 .app {
   position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100dvh;
   overflow: hidden;
+}
+
+/* The 3D view and the side panel, between the header and the footer: the overlays and the
+   panel are placed inside it, so neither bar covers them. */
+.twin-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.twin-header,
+.twin-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 16px;
+  background: var(--color-panel);
+  border-color: var(--color-line);
+  white-space: nowrap;
+}
+
+.twin-header {
+  height: 40px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.twin-header-brand,
+.twin-header-status,
+.twin-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.twin-header-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.twin-header-tagline {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  text-overflow: ellipsis;
+}
+
+.twin-header-tagline::before {
+  content: "·";
+  margin-right: 10px;
+  color: var(--color-ink-faint);
+}
+
+.twin-header-store {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-soft);
+}
+
+.twin-header-mode,
+.twin-header-source {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.twin-header-mode[data-mode="live"] {
+  color: var(--color-good);
+}
+
+.twin-header-mode[data-mode="simulation"] {
+  color: var(--color-simulation);
+}
+
+.twin-header-source {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Demo vs Live data: amber dashed for the synthetic store, solid accent for apps/api. */
+.twin-header-source[data-source="demo"] {
+  color: var(--color-warning);
+  border-style: dashed;
+}
+
+.twin-header-source[data-source="live"] {
+  color: var(--color-accent);
+}
+
+.twin-header-switch {
+  font-size: 12px;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The demo notice under the header: amber, full width, so the synthetic store is never taken
+   for live store telemetry. */
+.twin-demo-banner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 3px 16px;
+  font-size: 12px;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-panel));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  white-space: nowrap;
+}
+
+.twin-demo-banner-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-canvas);
+  background: var(--color-warning);
+}
+
+.twin-demo-banner-text {
+  overflow: hidden;
+  color: var(--color-ink);
+  text-overflow: ellipsis;
+}
+
+.twin-footer {
+  height: 24px;
+  border-top: 1px solid var(--color-line);
+  font-size: 11px;
+  color: var(--color-ink-faint);
+}
+
+.twin-footer-stack {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.twin-footer-meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .twin-header-tagline,
+  .twin-header-store {
+    display: none;
+  }
 }
 
 .viewport {
@@ -636,6 +801,15 @@ body {
     height: 45dvh;
     width: auto !important;
   }
+
+  /* The simulation banner takes the full width, and stops above the open bottom sheet. */
+  .simulation-banner {
+    max-width: calc(100% - 32px) !important;
+  }
+
+  .simulation-banner[data-panel="open"] {
+    max-height: calc(100% - var(--sim-banner-top, 60px) - 45dvh - 24px);
+  }
 }
 
 /* Text input shared by the panel and its dialogs: the SKU lookup and the product search. */
@@ -850,10 +1024,13 @@ tr[data-open="true"] .receipt-caret {
 }
 
 /* Under the switches at the top left, where the side panel never covers it.
-   Run details on the left, Accept and Reject on the right; they drop below on a narrow screen. */
+   Run details on the left, Accept and Reject on the right; they drop below on a narrow screen.
+   It ends above the bottom-left controls (camera help, Overlays, the legend) and scrolls
+   instead of running under them: `--sim-banner-top` moves with the KPI strip, and
+   `--bottom-left-reserve` grows while the overlay legend is open. */
 .simulation-banner {
   position: absolute;
-  top: 60px;
+  top: var(--sim-banner-top, 60px);
   left: 16px;
   z-index: 10;
   display: flex;
@@ -861,7 +1038,7 @@ tr[data-open="true"] .receipt-caret {
   align-items: flex-start;
   gap: 10px 20px;
   max-width: min(600px, calc(100% - 32px));
-  max-height: calc(100% - 76px);
+  max-height: calc(100% - var(--sim-banner-top, 60px) - var(--bottom-left-reserve, 68px));
   overflow-y: auto;
   padding: 10px 12px 10px 14px;
   font-size: 12px;
@@ -1553,6 +1730,61 @@ tr[data-open="true"] .receipt-caret {
 }
 
 /* "Why AI chose": the agent's own reason, served with the recommended plan. */
+/* "Compare plans": opens the table of a folded panel, at the right of its header. */
+.candidate-panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-simulation);
+  cursor: pointer;
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 45%, transparent);
+  border-radius: 999px;
+}
+
+.candidate-panel-toggle:hover,
+.candidate-panel-toggle:focus-visible {
+  color: var(--color-ink);
+  border-color: var(--color-simulation);
+}
+
+/* The folded panel's one line: the lead plan, its badge and its business score. */
+.candidate-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--color-ink);
+}
+
+.candidate-lead-score {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: auto;
+  color: var(--color-ink-soft);
+}
+
+.candidate-lead-score .candidate-cell-value,
+.candidate-lead-score .candidate-cell-delta {
+  display: inline;
+}
+
+.candidate-lead-score .candidate-cell-value {
+  font-weight: 700;
+}
+
+.candidate-lead-score .candidate-cell-delta {
+  font-size: 11px;
+}
+
 .candidate-rationale {
   display: flex;
   gap: 8px;
@@ -1761,3 +1993,90 @@ tr[data-open="true"] .receipt-caret {
 .timeline-index { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; opacity: 0.6; }
 .timeline-stage-name { font-weight: 500; min-width: 90px; }
 .timeline-detail { opacity: 0.8; }
+
+/* ─── Run AI Demo: the one place to start, next to the lens and view switches ─── */
+
+.run-demo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.run-demo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: #ffffff;
+  background: var(--color-simulation);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-simulation) 45%, transparent);
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.run-demo-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.run-demo-btn:disabled {
+  cursor: progress;
+  opacity: 0.75;
+}
+
+.run-demo-source {
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--color-ink-muted);
+}
+
+.run-demo-source[data-source="replay"] {
+  font-style: italic;
+}
+
+.run-demo-stop {
+  height: 30px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-panel) 75%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.run-demo-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 6px 6px 6px 12px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  border: 1px solid var(--color-alert);
+  border-radius: 10px;
+}
+
+.run-demo-error button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font: inherit;
+  color: var(--color-ink);
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  cursor: pointer;
+}

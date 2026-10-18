@@ -39,7 +39,8 @@ test("reads apps/api by default, and shows an API failure without crashing", asy
   // load, for the KPI strip; the longer windows wait for the Revenue lens.
   expect(paths).not.toContain("/promotions");
   const revenueReads = fetchMock.mock.calls.map(([url]) => new URL(String(url))).filter((url) => url.pathname === "/revenue");
-  expect(revenueReads.map((url) => url.searchParams.get("period"))).toEqual(["today"]);
+  // apps/api takes `hourly` for today (#344); the lens's own "today" would be refused with a 422.
+  expect(revenueReads.map((url) => url.searchParams.get("period"))).toEqual(["hourly"]);
   expect(screen.getByRole("heading", { name: "Agent Activity" })).toBeTruthy();
   expect(screen.getByRole("main")).toBeTruthy();
   expect(screen.getByRole("textbox", { name: "SKU" })).toBeTruthy();
@@ -66,6 +67,52 @@ test("calls no API under ?twin=demo", async () => {
   render(<DemoApp />);
 
   expect(await screen.findByRole("heading", { name: "Agent Activity" })).toBeTruthy();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(fetchMock).not.toHaveBeenCalled();
+  window.history.replaceState(null, "", "/");
+});
+
+test("on /live, even with ?twin=demo, reads apps/api and says it failed, never falling back to the demo", async () => {
+  const fetchMock = vi.fn(async (_url: RequestInfo | URL): Promise<Response> => {
+    throw new TypeError("offline");
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/live?twin=demo");
+  // The page picks its twin source when it loads, so load it again under this URL.
+  vi.resetModules();
+  const { App: LiveApp } = await import("@/app/App");
+  const { useTwinStore } = await import("@/state/twin.store");
+  const { useAnomalyStore } = await import("@/state/anomaly.store");
+
+  render(<LiveApp />);
+
+  expect(await screen.findByText("Could not load the Digital Twin")).toBeTruthy();
+  const paths = fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname);
+  expect(paths).toContain("/store");
+  expect(paths).toContain("/revenue");
+  // Live, and only Live: no demo label, banner, store, simulation or anomalies stand in.
+  expect(screen.getByText("Live data")).toBeTruthy();
+  expect(screen.queryByText("Demo data")).toBeNull();
+  expect(screen.queryByRole("note", { name: "Demo data notice" })).toBeNull();
+  expect(useTwinStore.getState().live).toBeNull();
+  expect(useTwinStore.getState().simulation).toBeNull();
+  expect(useAnomalyStore.getState().anomalies).toEqual([]);
+  window.history.replaceState(null, "", "/");
+});
+
+test("on /demo, labels the store as demo data and calls no API", async () => {
+  const fetchMock = vi.fn(async () => new Response("{}", { status: 404 }));
+  vi.stubGlobal("fetch", fetchMock);
+  window.history.replaceState(null, "", "/demo");
+  vi.resetModules();
+  const { App: DemoApp } = await import("@/app/App");
+  const { useTwinStore } = await import("@/state/twin.store");
+
+  render(<DemoApp />);
+
+  expect(await screen.findByText("Demo data")).toBeTruthy();
+  expect(screen.queryByText("Live data")).toBeNull();
+  await waitFor(() => expect(useTwinStore.getState().live?.products.length).toBeGreaterThan(0));
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(fetchMock).not.toHaveBeenCalled();
   window.history.replaceState(null, "", "/");

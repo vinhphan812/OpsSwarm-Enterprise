@@ -17,8 +17,10 @@ import { useTwinStore } from "@/state/twin.store";
 import type { SimulationAction } from "@/types/simulation.type";
 import { commitSimulation, createMemoryReviewer, discardSimulation, openSimulation } from "./memorySimulation";
 import { createApiReviewer, type SimulationReviewer } from "./simulationReview";
-import { demoAllowed } from "./demoMode";
+import { isDemoMode, LIVE_PATH } from "./demoMode";
 import { defaultClient } from "@/core/api/client";
+import { createApiDemoRunner, type DemoRunner } from "@/core/demo/demoRunner";
+import { createFixtureDemoRunner } from "@/core/demo/fixtureDemoRunner";
 
 /** The editable twin behind `?twin=memory|demo`, once `pickSource` has made it. */
 let memoryTwin: MemoryTwin | null = null;
@@ -77,53 +79,12 @@ function memoryTwinSource(initial: StoreResponse = fixtureStoreState()): TwinSou
 }
 
 /**
- * The `?twin=` dev twin picked in the URL, or "" for apps/api. In a production build, only
- * `demo`, and only when the build allows it (`demoAllowed`).
- */
-function devTwinMode(): string {
-  const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
-  if (!import.meta.env.DEV) return mode === "demo" && demoAllowed() ? mode : "";
-  return mode === "memory" || mode === "demo" || mode === "firestore" || mode in DEV_SOURCES ? mode : "";
-}
-
-/**
- * The open simulation from apps/api, read alongside the apps/api Live Twin. A `?twin=`
- * dev twin has none: there `twin.simulate()` and the demo fixture fill it instead.
- */
-export function pickSimulationSource(): SimulationSource | null {
-  return devTwinMode() ? null : createSimulationSource();
-}
-
-/** True when the twin is reading apps/api (not a local dev twin). */
-export function isApiTwin(): boolean {
-  return devTwinMode() === "";
-}
-
-/**
- * Where the banner's Accept and Reject go: the review routes of apps/api, or the memory
- * twin's guarded commit under `?twin=memory|demo`. Other dev twins open no simulation, so
- * they have none. Call after `pickSource`.
- */
-export function pickSimulationReviewer(): SimulationReviewer | null {
-  const mode = devTwinMode();
-  if (!mode) return createApiReviewer();
-  return memoryTwin && (mode === "memory" || mode === "demo" || mode === "firestore")
-    ? createMemoryReviewer(memoryTwin)
-    : null;
-}
-
-/**
- * `?twin=firestore`: memory twin populated from `GET /store` (Firestore). Same
- * console surface as `?twin=memory` (`twin.agentRun()`, `twin.simulate()`,
- * `twin.commit()` etc.) but with the real 555-product inventory hydrated from
- * the backend instead of the empty fixture. The snapshot resolves empty until
- * the fetch lands; `twin.update` then swaps the state and bumps the context
- * version so subscribers see the new state. Fetch failures fall back to the
- * empty fixture and surface a console warning.
+ * `?twin=firestore` (development builds): a memory twin hydrated from `GET /store`, with the
+ * console surface of `?twin=memory`. It starts on the empty fixture until the read lands;
+ * a failed read stays on it and warns in the console.
  */
 function firestoreTwinSource(): TwinSource {
-  const empty = fixtureStoreState();
-  const twin = createMemoryTwin(empty);
+  const twin = createMemoryTwin(fixtureStoreState());
   memoryTwin = twin;
   defaultClient
     .store()
@@ -137,7 +98,7 @@ function firestoreTwinSource(): TwinSource {
   return attachTwinConsole(twin);
 }
 
-/** Same console surface as memoryTwinSource; reused by `?twin=firestore`. */
+/** The `twin` console object of a memory twin; see `memoryTwinSource`. */
 function attachTwinConsole(twin: MemoryTwin): TwinSource {
   Object.assign(window, {
     twin: {
@@ -171,10 +132,62 @@ function attachTwinConsole(twin: MemoryTwin): TwinSource {
 }
 
 /**
+ * The `?twin=` dev twin picked in the URL, or "" for apps/api. In a production build, only
+ * `demo`, and only when the build allows it (`demoAllowed`).
+ * `/live` is always apps/api, whatever its `?twin=` (pathname is authoritative over query params).
+ */
+function devTwinMode(): string {
+  if (window.location.pathname === LIVE_PATH) return "";
+  if (isDemoMode()) return "demo";
+  const mode = new URLSearchParams(window.location.search).get("twin") ?? "";
+  if (!import.meta.env.DEV) return "";
+  return mode === "memory" || mode === "firestore" || mode in DEV_SOURCES ? mode : "";
+}
+
+/**
+ * The open simulation from apps/api, read alongside the apps/api Live Twin. A `?twin=`
+ * dev twin has none: there `twin.simulate()` and the demo fixture fill it instead.
+ */
+export function pickSimulationSource(): SimulationSource | null {
+  return devTwinMode() ? null : createSimulationSource();
+}
+
+/**
+ * Where the banner's Accept and Reject go: the review routes of apps/api, or the memory
+ * twin's guarded commit under `?twin=memory|demo`. Other dev twins open no simulation, so
+ * they have none. Call after `pickSource`.
+ */
+export function pickSimulationReviewer(): SimulationReviewer | null {
+  const mode = devTwinMode();
+  if (!mode) return createApiReviewer();
+  return memoryTwin && (mode === "memory" || mode === "demo" || mode === "firestore")
+    ? createMemoryReviewer(memoryTwin)
+    : null;
+}
+
+/**
+ * What the Run AI Demo button runs: the flagship controller of apps/api (#41), or the demo
+ * fixtures standing in for it under `?twin=demo`, which never call apps/api. Other dev twins
+ * have no demo. Call after `pickSource`.
+ */
+export function pickDemoRunner(): DemoRunner | null {
+  const mode = devTwinMode();
+  if (!mode) return createApiDemoRunner(defaultClient);
+  return mode === "demo" && memoryTwin ? createFixtureDemoRunner(memoryTwin) : null;
+}
+
+/**
+ * True when the app reads the Live Twin from apps/api, not a dev twin.
+ * Use in the header to show "Live data" vs "Demo data" chip.
+ */
+export function isApiTwin(): boolean {
+  return devTwinMode() === "";
+}
+
+/**
  * The Live Twin from apps/api. While developing, `?twin=fixture|memory|demo|firestore|offline|slow|flaky`
  * swaps in a local twin instead. `demo` is the stocked demo store (fixtures/demo) with an
- * open demo simulation and its candidates, and turns on the other demo data too (`isDemoMode`).
- * `firestore` is a memory twin hydrated from `GET /store` (Firestore). A production build always reads apps/api.
+ * open demo simulation and its candidates, and turns on the other demo data too (`isDemoMode`). A production build always reads apps/api.
  */
 export function pickSource(): TwinSource {
   const mode = devTwinMode();

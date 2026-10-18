@@ -19,7 +19,7 @@ export function FlagshipStatusSection() {
   // Hide the section once the controller is back at IDLE with no run.
   if (status.phase === "IDLE" && !status.run_id) return null;
 
-  const verdictClass = verdictToClass(status.guard_verdict);
+  const verdictClass = verdictToClass(status.guard_verdict ?? null);
 
   return (
     <section className="activity-section flagship-status" data-testid="flagship-status">

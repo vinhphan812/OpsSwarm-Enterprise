@@ -1,4 +1,26 @@
 export const en = {
+  brand: {
+    name: "RetailTwin AI",
+    tagline: "Autonomous Store Intelligence",
+    storeHint: "The store the Live Twin reports",
+    live: "LIVE",
+    simulation: "SIMULATION",
+    demo: "Demo data",
+    demoHint: "A synthetic store from fixtures/demo. Nothing on this page writes to the Live Twin.",
+    liveData: "Live data",
+    liveDataHint: "The Live Twin, as apps/api serves it. Accept and Reject change it.",
+    openLive: "Open the live twin",
+    openDemo: "Open the demo",
+    demoBannerLabel: "Demo data notice",
+    demoBannerTag: "DEMO",
+    demoBanner: "Synthetic demo store, not live store telemetry. Nothing here writes to the Live Twin.",
+  },
+  footer: {
+    context: "Context {{version}}",
+    contextHint: "The Live Twin's context_version, as served. It moves after each execution.",
+    build: "Build {{build}}",
+    devBuild: "dev",
+  },
   cameraHelp: {
     label: "Camera controls help",
     title: "Camera controls",
@@ -76,6 +98,7 @@ export const en = {
     list: "Open anomalies",
     detected: "since {{time}}",
     olderState: "read from an older twin state",
+    loadFailed: "Could not load anomalies.",
     type: {
       stockout: "Stockout",
       demand_surge: "Demand surge",
@@ -190,6 +213,7 @@ export const en = {
     unknown: "Unknown error",
     unreachable: "The API is unreachable.",
     requestFailed: "Request failed ({{status}}).",
+    demoReadOnly: "The demo does not write to the Live Twin.",
   },
   scene: {
     stock: {
@@ -416,6 +440,21 @@ export const en = {
       proposal_changed: "The proposal changed after it was reviewed.",
     },
   },
+  demo: {
+    run: "Run AI Demo",
+    again: "Run AI Demo again",
+    starting: "Starting the AI demo…",
+    running: "AI demo running…",
+    hint: "Resets the store and lets the agent handle the seeded problem, step by step",
+    stopFollowing: "Stop following",
+    error: "The AI demo could not run: {{error}}",
+    retry: "Retry",
+    failed: "The AI demo could not run",
+    source: {
+      replay: "Replay of demo data, no Live writes",
+      flagship: "Flagship run on apps/api",
+    },
+  },
   flagship: {
     section: "Flagship controller (live status)",
     runId: "Run id",
@@ -460,6 +499,8 @@ export const en = {
       readFailed: "Couldn't refresh the candidates; showing the last values served.",
       showing: "Showing {{plan}} in 3D",
       pick: "Pick a plan to show it in 3D",
+      expand: "Compare plans",
+      collapse: "Hide comparison",
     },
     kpi: {
       stockout_risk: "Stockout risk",
@@ -503,28 +544,6 @@ export const en = {
       noSimulation: "No open simulation for the KPI evaluator to score.",
       notScored: "The KPI evaluator has not scored a plan against the baseline.",
     },
-  },
-  brand: {
-    name: "RetailTwin AI",
-    tagline: "Autonomous Store Intelligence",
-    storeHint: "The store the Live Twin reports",
-    live: "LIVE",
-    simulation: "SIMULATION",
-    demo: "Demo data",
-    demoHint: "A synthetic store from fixtures/demo. Nothing on this page writes to the Live Twin.",
-    liveData: "Live data",
-    liveDataHint: "The Live Twin, as apps/api serves it. Accept and Reject change it.",
-    openLive: "Open the live twin",
-    openDemo: "Open the demo",
-    demoBannerLabel: "Demo data notice",
-    demoBannerTag: "DEMO",
-    demoBanner: "Synthetic demo store, not live store telemetry. Nothing here writes to the Live Twin.",
-  },
-  footer: {
-    context: "Context {{version}}",
-    contextHint: "The Live Twin's context_version, as served. It moves after each execution.",
-    build: "Build {{build}}",
-    devBuild: "dev",
   },
   overlay: {
     label: "Overlays",

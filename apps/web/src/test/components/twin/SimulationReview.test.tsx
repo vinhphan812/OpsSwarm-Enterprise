@@ -10,7 +10,9 @@ import { GUARD_VERDICT, REVIEW_DECISION, SIMULATION_STATUS } from "@/enums/simul
 import { VIEW_MODE } from "@/enums/ui.enum";
 import { demoSimulation } from "@/fixtures/demo/simulation";
 import { demoStoreState } from "@/fixtures/demo/store";
+import { PANEL_WIDTH } from "@/constants/app.constant";
 import { useGuardStore } from "@/state/guard.store";
+import { usePanelStore } from "@/state/panel.store";
 import { useTwinStore } from "@/state/twin.store";
 import { useUiStore } from "@/state/ui.store";
 import type { ReviewResult, Simulation } from "@/types/simulation.type";
@@ -191,6 +193,24 @@ describe("Accept and Reject on the simulation banner", () => {
         .setSimulation({ ...simulation, state: { ...simulation.state, context_version: `${simulation.state.context_version}-r2` } }),
     );
     expect(actions()).not.toBeNull();
+  });
+});
+
+describe("the simulation banner beside the Agent Activity panel", () => {
+  afterEach(() => usePanelStore.getState().setOpen(true));
+
+  it("stops short of the open panel, so the panel never covers Accept, Reject or Compare plans", () => {
+    open();
+    usePanelStore.getState().setOpen(true);
+    const { rerender } = render(<SimulationBanner reviewer={vi.fn()} />);
+    const banner = screen.getByRole("status", { name: "Simulation view" });
+    expect(banner.dataset.panel).toBe("open");
+    expect(banner.style.maxWidth).toBe(`min(600px, calc(100% - ${PANEL_WIDTH + 56}px))`);
+
+    act(() => usePanelStore.getState().setOpen(false));
+    rerender(<SimulationBanner reviewer={vi.fn()} />);
+    expect(banner.dataset.panel).toBeUndefined();
+    expect(banner.style.maxWidth).toBe("min(600px, calc(100% - 32px))");
   });
 });
 

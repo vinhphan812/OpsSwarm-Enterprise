@@ -175,6 +175,22 @@ Reject ─▶ POST /simulations/{simulation_id}/reject ─▶ run closed, Live u
 
 **What apps/api has to serve** for this to work without `?twin=`: the two routes above with the `ReviewRequest` body and the `ReviewResult` answer. An approval needs both versions to be current, and a rejection only `proposal_context_version` (it never writes Live); a refused review answers `evaluated` with a `REVIEW_REASON`; an approval returns the guard's verdict; and a committed or rejected run drops out of `GET /simulations?status=open`.
 
+### Run AI Demo (#211, #331)
+
+**▶ Run AI Demo** (`RunDemoButton`, top left next to the view switch) is the one place to start. A press turns **Follow agent** on, opens the Operations lens in Live, and runs the `DemoRunner` that `pickDemoRunner` picked. `useDemoDirector` then moves the UI with the run's own entries (those under its `correlation_id`; time passing moves nothing):
+
+- INVESTIGATE, ACT and VERIFY move the camera (`useAgentFocus`).
+- SIMULATE switches to Simulation once the simulation it names is open.
+- ACT switches back to Live.
+- VERIFY opens the Operations lens.
+
+A late stage moves nothing. The button says what plays: *Replay of demo data, no Live writes* or *Flagship run on apps/api*. It is disabled while a run starts or plays, so a run is started once however often it is pressed. **Stop following** leaves the view to the user while the run plays on. A failure shows its reason with **Retry**.
+
+There are two runners:
+
+- **`createApiDemoRunner`** (apps/api). It reads `GET /flagship/status` first. It follows a RUNNING run (another tab, a second press) and sends neither reset nor start. Otherwise it sends `POST /flagship/reset`, then `POST /flagship/start` with a fresh `correlation_id`, which it does not await. It then reads the status and the run's stages (`GET /agent/events`, else the status `timeline`) every `DEMO_RUN_POLL_MS`. The run ends at COMPLETE. It fails on ERROR, when another run replaces it, or when nothing names it within 30 s; failed reads are retried with backoff.
+- **`createFixtureDemoRunner`** (`?twin=demo`). It never calls apps/api, and every write goes to the memory twin. It resets the demo store, anomalies and open simulation, then replays the demo agent run on P003 under `DEMO_RUN_ID`, the correlation id of the P003 stockout alert, so the alert follows the run. At ACT the memory twin commits the simulation through the guard; at VERIFY the alert closes. Other dev twins have no runner, so no button.
+
 ### State diff
 
 `diffStates(prev, next)` (`core/twin/stateDiff.ts`) says what changed between two twin states, per SKU and sorted by SKU: `moved` (from and to `shelf_id`/`slot_id`), `facings` (before and after), `quantity` (signed `shelfDelta` and `backroomDelta`), and `added` / `removed` SKUs. A product can be in several lists at once, such as a move that also changes its facings. States of different stores give `EMPTY_DIFF`. The diff is always read from **state**: simulation actions only label a change (#92), so a cue can never show something the state does not.

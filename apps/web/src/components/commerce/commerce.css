@@ -174,12 +174,12 @@
   border-radius: 12px;
 }
 
-.viewport:has(.kpi-strip) .simulation-banner {
-  top: 130px;
+.viewport:has(.kpi-strip) {
+  --sim-banner-top: 130px;
 }
 
-.viewport:has(.kpi-strip-open) .simulation-banner {
-  top: 104px;
+.viewport:has(.kpi-strip-open) {
+  --sim-banner-top: 104px;
 }
 
 .kpi-tile {
@@ -802,6 +802,10 @@ button.promotion-product[aria-pressed="true"] {
 .overlay-toggle[data-selected="true"]:hover {
   color: var(--color-panel);
   cursor: pointer;
+}
+
+.viewport:has(.overlay-legend) {
+  --bottom-left-reserve: 220px;
 }
 
 .overlay-legend {

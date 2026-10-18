@@ -223,6 +223,26 @@ describe("createApiDemoRunner", () => {
   });
 });
 
+describe("createApiDemoRunner run correlation", () => {
+  it("names its run in POST /flagship/start, and never adopts a run the controller started under another id", async () => {
+    // As when start is sent without the run's correlation_id: the controller runs under its own default.
+    const { client, finishStart } = fakeClient(
+      [[event("theirs", "PLAN", "run-weekend-demand-surge-1")]],
+      [status("RUNNING", null, { correlation_id: "run-weekend-demand-surge-1" })],
+    );
+    const started = runner(client).start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.flagshipStart).toHaveBeenCalledWith("run-1");
+    finishStart("run-weekend-demand-surge-1");
+    const run = await started;
+    expect(run.correlationId).toBe("run-1");
+    const failed = expect(run.done).rejects.toThrow("Another flagship run replaced this one.");
+    await vi.advanceTimersByTimeAsync(POLL);
+    await failed;
+    expect(useRunStore.getState().activity).toEqual([]);
+  });
+});
+
 describe("createApiDemoRunner transient fetch failures", () => {
   it("retries transient agentEvents failures with bounded backoff and eventually succeeds", async () => {
     const { client } = fakeClient(

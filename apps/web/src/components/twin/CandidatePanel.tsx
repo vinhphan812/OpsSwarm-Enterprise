@@ -1,6 +1,6 @@
 import { Tooltip } from "@heroui/react";
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CandidateIcon, ChevronDownIcon } from "@/components/icons";
 import { compareCandidates, planLetter, type KpiCell } from "@/core/twin/candidateComparison";
 import { selectedCandidate, useTwinStore } from "@/state/twin.store";
@@ -70,6 +70,24 @@ function KpiValue({ cell, scored }: { cell: KpiCell | undefined; scored: boolean
 }
 
 /**
+ * The lead plan in one line, for the folded panel: the plan the agent recommends (or, with
+ * none served, the top served business score), its business score and its move from Current.
+ */
+function LeadPlan({ plan, badge, cell, scored }: { plan: string; badge: string; cell: KpiCell | undefined; scored: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <p className="candidate-lead">
+      <CandidateIcon className="candidate-star" />
+      <strong>{plan}</strong>
+      <span className="candidate-badge recommended">{badge}</span>
+      <span className="candidate-lead-score">
+        {t("proposal.kpi.business_score")} <KpiValue cell={cell} scored={scored} />
+      </span>
+    </p>
+  );
+}
+
+/**
  * Compares the candidates of the open run (#39): one column per proposal, labelled Plan A,
  * B, C in served order, the served `baseline` as Current, and a row per KPI, the business
  * score first, with each value and its move from Current. The plan the agent recommends
@@ -79,9 +97,14 @@ function KpiValue({ cell, scored }: { cell: KpiCell | undefined; scored: boolean
  * arithmetic is the display-only difference to the baseline. Says so when there is no
  * baseline, a candidate is not scored, or the last read failed. Renders only in the
  * Simulation view, while the run has candidates. Never writes Live.
+ * Folded (`defaultExpanded={false}`, as in the simulation banner), it shows only the lead
+ * plan, its rationale and the plan on screen, and "Compare plans" opens the table, so the
+ * banner fits the view without a scroll of its own.
  */
-export function CandidatePanel() {
+export function CandidatePanel({ defaultExpanded = true }: { defaultExpanded?: boolean }) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const tableId = useId();
   const viewMode = useUiStore((state) => state.viewMode);
   const twin = useTwinStore();
   const selected = selectedCandidate(twin);
@@ -99,6 +122,8 @@ export function CandidatePanel() {
     [id === selected?.candidate_id ? "selected" : "", id === recommendedId ? "recommended" : ""].filter(Boolean).join(" ") || undefined;
   const evaluators = [...new Set(proposals.map((candidate) => candidate.evaluator_version))].join(", ");
   const recommended = proposals.find((candidate) => candidate.candidate_id === recommendedId);
+  const lead = recommended ?? proposals.find((candidate) => candidate.candidate_id === topScoreId);
+  const scoreRow = rows.find((row) => row.name === KPI_NAME.BusinessScore);
 
   return (
     <div className="candidate-panel" role="region" aria-label={t("proposal.compare.label")}>
@@ -107,75 +132,97 @@ export function CandidatePanel() {
           {t("proposal.compare.title")}
           <DemoBadge />
         </span>
-        <span className="candidate-panel-meta">{t("proposal.compare.evaluator", { version: evaluators })}</span>
+        {expanded ? <span className="candidate-panel-meta">{t("proposal.compare.evaluator", { version: evaluators })}</span> : null}
+        <button
+          type="button"
+          className="candidate-panel-toggle"
+          aria-expanded={expanded}
+          aria-controls={tableId}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {t(expanded ? "proposal.compare.collapse" : "proposal.compare.expand")}
+          <ChevronDownIcon className={`candidate-justification-chevron${expanded ? " expanded" : ""}`} />
+        </button>
       </div>
 
       {twin.simulationReadFailed ? (
         <p className="candidate-panel-note warning" role="alert">{t("proposal.compare.readFailed")}</p>
       ) : null}
-      {baseline ? null : <p className="candidate-panel-note">{t("proposal.compare.noBaseline")}</p>}
+      {!expanded && lead ? (
+        <LeadPlan
+          plan={planOf(lead.candidate_id)}
+          badge={t(recommended ? "proposal.compare.recommended" : "proposal.compare.topScore")}
+          cell={scoreRow?.cells[lead.candidate_id]}
+          scored={lead.kpis.length > 0}
+        />
+      ) : null}
+      {expanded ? (
+        <>
+          {baseline ? null : <p className="candidate-panel-note">{t("proposal.compare.noBaseline")}</p>}
 
-      <div className="candidate-table-wrap">
-        <table className="candidate-table">
-          <thead>
-            <tr>
-              <th scope="col">
-                <span className="sr-only">{t("proposal.compare.kpi")}</span>
-              </th>
-              {baseline ? <th scope="col" className="candidate-current">{t("proposal.compare.current")}</th> : null}
-              {proposals.map(({ candidate_id }) => (
-                <th key={candidate_id} scope="col" className={columnClass(candidate_id)}>
-                  <Tooltip content={t("proposal.candidate.switchHint", { id: candidate_id })} delay={300}>
-                    <button
-                      type="button"
-                      className="candidate-column-btn"
-                      aria-pressed={candidate_id === selected?.candidate_id}
-                      onClick={() => select(candidate_id)}
-                    >
-                      {candidate_id === recommendedId ? <CandidateIcon className="candidate-star" /> : null}
-                      {planOf(candidate_id)}
-                    </button>
-                  </Tooltip>
-                  {candidate_id === recommendedId ? (
-                    <span className="candidate-badge recommended">{t("proposal.compare.recommended")}</span>
-                  ) : candidate_id === topScoreId && !recommendedId ? (
-                    <span className="candidate-badge">{t("proposal.compare.topScore")}</span>
-                  ) : null}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.name} className={row.name === KPI_NAME.BusinessScore ? "candidate-score-row" : undefined}>
-                <th scope="row">{label(row)}</th>
-                {baseline ? (
-                  <td className="candidate-current">{row.baseline ? formatKpiValue(row.baseline.value, row.baseline.unit) : "—"}</td>
-                ) : null}
-                {proposals.map((candidate) => (
-                  <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
-                    <KpiValue cell={row.cells[candidate.candidate_id]} scored={candidate.kpis.length > 0} />
-                  </td>
+          <div className="candidate-table-wrap" id={tableId}>
+            <table className="candidate-table">
+              <thead>
+                <tr>
+                  <th scope="col">
+                    <span className="sr-only">{t("proposal.compare.kpi")}</span>
+                  </th>
+                  {baseline ? <th scope="col" className="candidate-current">{t("proposal.compare.current")}</th> : null}
+                  {proposals.map(({ candidate_id }) => (
+                    <th key={candidate_id} scope="col" className={columnClass(candidate_id)}>
+                      <Tooltip content={t("proposal.candidate.switchHint", { id: candidate_id })} delay={300}>
+                        <button
+                          type="button"
+                          className="candidate-column-btn"
+                          aria-pressed={candidate_id === selected?.candidate_id}
+                          onClick={() => select(candidate_id)}
+                        >
+                          {candidate_id === recommendedId ? <CandidateIcon className="candidate-star" /> : null}
+                          {planOf(candidate_id)}
+                        </button>
+                      </Tooltip>
+                      {candidate_id === recommendedId ? (
+                        <span className="candidate-badge recommended">{t("proposal.compare.recommended")}</span>
+                      ) : candidate_id === topScoreId && !recommendedId ? (
+                        <span className="candidate-badge">{t("proposal.compare.topScore")}</span>
+                      ) : null}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.name} className={row.name === KPI_NAME.BusinessScore ? "candidate-score-row" : undefined}>
+                    <th scope="row">{label(row)}</th>
+                    {baseline ? (
+                      <td className="candidate-current">{row.baseline ? formatKpiValue(row.baseline.value, row.baseline.unit) : "—"}</td>
+                    ) : null}
+                    {proposals.map((candidate) => (
+                      <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
+                        <KpiValue cell={row.cells[candidate.candidate_id]} scored={candidate.kpis.length > 0} />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-            <tr>
-              <th scope="row">{t("proposal.compare.actions")}</th>
-              {baseline ? <td className="candidate-current">{baseline.proposed_actions.length}</td> : null}
-              {proposals.map((candidate) => (
-                <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
-                  {candidate.proposed_actions.length}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      {rows.length ? (
-        baseline ? <p className="candidate-panel-meta candidate-delta-note">{t("proposal.compare.deltaNote")}</p> : null
-      ) : (
-        <span className="candidate-panel-no-kpis">{t("proposal.candidate.noKpis")}</span>
-      )}
+                <tr>
+                  <th scope="row">{t("proposal.compare.actions")}</th>
+                  {baseline ? <td className="candidate-current">{baseline.proposed_actions.length}</td> : null}
+                  {proposals.map((candidate) => (
+                    <td key={candidate.candidate_id} className={columnClass(candidate.candidate_id)}>
+                      {candidate.proposed_actions.length}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          {rows.length ? (
+            baseline ? <p className="candidate-panel-meta candidate-delta-note">{t("proposal.compare.deltaNote")}</p> : null
+          ) : (
+            <span className="candidate-panel-no-kpis">{t("proposal.candidate.noKpis")}</span>
+          )}
+        </>
+      ) : null}
 
       {recommended?.rationale ? (
         <p className="candidate-rationale">
@@ -186,20 +233,22 @@ export function CandidatePanel() {
         </p>
       ) : null}
 
-      {selected ? <ProvenanceSection text={selected.provenance} /> : null}
+      {expanded && selected ? <ProvenanceSection text={selected.provenance} /> : null}
 
-      <div className="candidate-selector">
-        <span className="candidate-panel-meta">
-          {selected ? t("proposal.compare.showing", { plan: planOf(selected.candidate_id) }) : t("proposal.compare.pick")}
-        </span>
-        {selected ? (
-          <Tooltip content={t("proposal.candidate.showSimulation")} delay={300}>
-            <button type="button" className="candidate-back" onClick={() => select(null)}>
-              {t("proposal.candidate.simulationProposal")}
-            </button>
-          </Tooltip>
-        ) : null}
-      </div>
+      {expanded || selected ? (
+        <div className="candidate-selector">
+          <span className="candidate-panel-meta">
+            {selected ? t("proposal.compare.showing", { plan: planOf(selected.candidate_id) }) : t("proposal.compare.pick")}
+          </span>
+          {selected ? (
+            <Tooltip content={t("proposal.candidate.showSimulation")} delay={300}>
+              <button type="button" className="candidate-back" onClick={() => select(null)}>
+                {t("proposal.candidate.simulationProposal")}
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

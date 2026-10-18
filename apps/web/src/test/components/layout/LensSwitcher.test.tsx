@@ -49,7 +49,7 @@ test("opening revenue reads GET /revenue for the period, and shows zeros until i
   expect(await screen.findByRole("heading", { name: "Revenue", level: 1 })).toBeTruthy();
   expect(screen.getByRole("radio", { name: "Today" }).getAttribute("aria-checked")).toBe("true");
   expect(screen.getByText("No sales in this period yet.")).toBeTruthy();
-  await waitFor(() => expect(requested()).toContain("/revenue?period=today"));
+  await waitFor(() => expect(requested()).toContain("/revenue?period=hourly"));
 
   fireEvent.click(screen.getByRole("radio", { name: "7 days" }));
   expect(screen.getByRole("heading", { name: "Revenue by day" })).toBeTruthy();
