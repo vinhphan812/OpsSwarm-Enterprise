@@ -352,8 +352,8 @@ jobs:
 
       - name: Verify CORS permits frontend origin
         run: |
-          # Check CORS headers for health endpoint
-          CORS_HEADER=$(curl --fail --silent -I \
+          # Check CORS headers for health endpoint (use GET, not HEAD, as /health returns 405 for HEAD)
+          CORS_HEADER=$(curl --fail --silent -i \
             -H "Origin: ${FRONTEND_URL}" \
             "${API_ORIGIN}/health" 2>/dev/null | \
             grep -i "access-control-allow-origin" || true)
