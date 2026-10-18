@@ -22,12 +22,15 @@ from .contracts import (
     ToolCallError,
     ToolChoicePolicy,
 )
+from .adk_adapter import AdkLlmProvider, is_adk_enabled
+from .adk_register import register_adk_provider
 from .factory import LlmConfig, create_provider, llm_config_from_settings, register_provider
 from .fake import FakeLlmProvider
 from .openai_compatible import OpenAiCompatibleProvider
 from .vertex import VertexProvider
 
 __all__ = [
+    "AdkLlmProvider",
     "AuthenticationError",
     "ConfigurationError",
     "FakeLlmProvider",
@@ -53,6 +56,8 @@ __all__ = [
     "ToolChoicePolicy",
     "VertexProvider",
     "create_provider",
+    "is_adk_enabled",
     "llm_config_from_settings",
+    "register_adk_provider",
     "register_provider",
 ]
