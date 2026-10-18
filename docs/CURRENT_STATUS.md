@@ -150,7 +150,7 @@ Do not infer implementation merely because a component is documented in the targ
 | Gate | Status | Evidence required |
 | --- | --- | --- |
 | Day-0 / Foundation #10 | NOT PASSED | integrated web + API + Firestore + Pub/Sub + Gemini tool + Cloud Run smoke test; runbook `docs/DAY0_GATE_RUNBOOK.md`; orchestrator `scripts/verify-day0-gate.sh`; evidence `artifacts/day0-foundation/<run-id>.json` |
-| G02 Twin Control #49 | NOT PASSED | agent tool changes Simulation Twin + 3D while Live remains unchanged |
+| G02 Twin Control #49 | NOT PASSED (API evidence harness: `tests/e2e/gates/g02_twin_control_gate.py`) | agent tool changes Simulation Twin + 3D while Live remains unchanged |
 | G03 Autonomous #50 | NOT PASSED (API evidence harness: `tests/e2e/gates/g03_autonomous_gate.py`) | store event starts agent without prompt; Pub/Sub trigger and production read ports for non-inventory sources still open |
 | G04 Guard #51 | NOT PASSED (API evidence harness: `tests/e2e/gates/g04_guard_gate.py`) | stale decision is rejected and cannot mutate Live Twin; UI view of the rejection is #40 |
 | G05 Live Commit #52 | NOT PASSED (API evidence harness: `tests/e2e/gates/g05_live_commit_gate.py`) | valid guarded decision changes Live Twin and 3D; rendered 3D frame and observed post-action KPI not yet captured |

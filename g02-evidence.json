@@ -1,0 +1,257 @@
+{
+  "gate": "G02",
+  "issue": 49,
+  "run_id": "g02-a19e02a0-20261018T073830Z",
+  "result": "PASS",
+  "started_at": "2026-10-18T07:38:30.097897+00:00",
+  "finished_at": "2026-10-18T07:38:30.558711+00:00",
+  "git_sha": "7468d46068d9e808abcf31635a79ed5fc9fd930b",
+  "runtime": {
+    "app": "retailtwin_api.main.create_app with GateSimulations",
+    "trigger": "investigate + plan + simulate pipeline",
+    "provider": "FakeLlmProvider: scripted tool calls and plan JSON"
+  },
+  "checks": [
+    {
+      "check": "simulation_created_with_proposed_actions",
+      "passed": true,
+      "detail": "simulation sim-g02-a19e02a0-20261018T073830Z: status=pending"
+    },
+    {
+      "check": "simulation_accessible_via_api",
+      "passed": true,
+      "detail": "found 1 open simulations"
+    },
+    {
+      "check": "simulation_detail_includes_proposed_actions",
+      "passed": true,
+      "detail": "simulation has 2 actions"
+    },
+    {
+      "check": "live_twin_unchanged_after_simulation",
+      "passed": true,
+      "detail": "Live version: store-001:v1 -> store-001:v1"
+    },
+    {
+      "check": "live_product_P001_unchanged",
+      "passed": true,
+      "detail": "P001: shelf=8->8, facings=3->3, slot=A01-S01->A01-S01"
+    }
+  ],
+  "steps": {
+    "investigate": {
+      "evidence_collected": 6,
+      "candidates_from_planner": 2
+    },
+    "simulate": {
+      "simulation_id": "sim-g02-a19e02a0-20261018T073830Z",
+      "candidates": 1,
+      "proposed_actions": [
+        {
+          "sku": "P001",
+          "quantity": 12
+        },
+        {
+          "sku": "P001",
+          "facings": 4
+        }
+      ]
+    },
+    "live_after_simulation": {
+      "context_version": "store-001:v1",
+      "products": [
+        {
+          "store_id": "store-001",
+          "sku": "P001",
+          "shelf_id": "A01",
+          "slot_id": "A01-S01",
+          "facings": 3,
+          "shelf_quantity": 8,
+          "backroom_quantity": 42,
+          "version": 1
+        }
+      ]
+    },
+    "checks": [
+      {
+        "check": "simulation_created_with_proposed_actions",
+        "passed": true,
+        "detail": "simulation sim-g02-a19e02a0-20261018T073830Z: status=pending"
+      },
+      {
+        "check": "simulation_accessible_via_api",
+        "passed": true,
+        "detail": "found 1 open simulations"
+      },
+      {
+        "check": "simulation_detail_includes_proposed_actions",
+        "passed": true,
+        "detail": "simulation has 2 actions"
+      },
+      {
+        "check": "live_twin_unchanged_after_simulation",
+        "passed": true,
+        "detail": "Live version: store-001:v1 -> store-001:v1"
+      },
+      {
+        "check": "live_product_P001_unchanged",
+        "passed": true,
+        "detail": "P001: shelf=8->8, facings=3->3, slot=A01-S01->A01-S01"
+      }
+    ]
+  },
+  "logs": [
+    {
+      "ts": "2026-10-18T07:38:30.152+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=e8a0abbc-d274-47d0-b305-0ae08906fb15",
+      "correlation_id": "e8a0abbc-d274-47d0-b305-0ae08906fb15"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.190+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=e8a0abbc-d274-47d0-b305-0ae08906fb15",
+      "correlation_id": "e8a0abbc-d274-47d0-b305-0ae08906fb15"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.202+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=get_inventory capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.203+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=get_shelf_state capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.205+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=get_sales_history capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.241+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=forecast_demand capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.242+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=get_promotions capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.243+00:00",
+      "logger": "retailtwin_api.agents.orchestrator.tool_registry",
+      "level": "INFO",
+      "message": "tool name=get_planogram capability=READ correlation_id=g02-a19e02a0-20261018T073830Z ok=True error_code=None"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.244+00:00",
+      "logger": "retailtwin_api.agents.investigator.evidence",
+      "level": "INFO",
+      "message": "evidence collected correlation_id=g02-a19e02a0-20261018T073830Z sku=P001 is_sufficient=True missing="
+    },
+    {
+      "ts": "2026-10-18T07:38:30.247+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=ccfff5bd-d600-4a52-997a-eabfda8950d4",
+      "correlation_id": "ccfff5bd-d600-4a52-997a-eabfda8950d4"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.343+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=ccfff5bd-d600-4a52-997a-eabfda8950d4",
+      "correlation_id": "ccfff5bd-d600-4a52-997a-eabfda8950d4"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.365+00:00",
+      "logger": "retailtwin_api.agents.planner.plans",
+      "level": "INFO",
+      "message": "plans created correlation_id=g02-a19e02a0-20261018T073830Z sku=P001 decisions=2"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.368+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=9a8abd6a-08ab-41ef-9fd9-ce2ec9494e8d",
+      "correlation_id": "9a8abd6a-08ab-41ef-9fd9-ce2ec9494e8d"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.370+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=9a8abd6a-08ab-41ef-9fd9-ce2ec9494e8d",
+      "correlation_id": "9a8abd6a-08ab-41ef-9fd9-ce2ec9494e8d"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.373+00:00",
+      "logger": "retailtwin_api.agents.simulator.branch",
+      "level": "INFO",
+      "message": "simulation scored correlation_id=g02-a19e02a0-20261018T073830Z simulation_id=sim-g02-a19e02a0-20261018T073830Z candidates=1"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.443+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=37dc5bd8-6afb-4b1f-900c-7502bd04f75c",
+      "correlation_id": "37dc5bd8-6afb-4b1f-900c-7502bd04f75c"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.445+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=37dc5bd8-6afb-4b1f-900c-7502bd04f75c",
+      "correlation_id": "37dc5bd8-6afb-4b1f-900c-7502bd04f75c"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.448+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=f983c0a7-1e2d-46fc-942b-8fc4d2420063",
+      "correlation_id": "f983c0a7-1e2d-46fc-942b-8fc4d2420063"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.453+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=f983c0a7-1e2d-46fc-942b-8fc4d2420063",
+      "correlation_id": "f983c0a7-1e2d-46fc-942b-8fc4d2420063"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.456+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=fe40fed9-ea2a-45e3-85e9-37b8cf24a0ee",
+      "correlation_id": "fe40fed9-ea2a-45e3-85e9-37b8cf24a0ee"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.548+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=fe40fed9-ea2a-45e3-85e9-37b8cf24a0ee",
+      "correlation_id": "fe40fed9-ea2a-45e3-85e9-37b8cf24a0ee"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.551+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.start correlation_id=98ba1a66-4213-4128-af1b-e8576df12ca3",
+      "correlation_id": "98ba1a66-4213-4128-af1b-e8576df12ca3"
+    },
+    {
+      "ts": "2026-10-18T07:38:30.554+00:00",
+      "logger": "retailtwin_api.middleware",
+      "level": "INFO",
+      "message": "request.end correlation_id=98ba1a66-4213-4128-af1b-e8576df12ca3",
+      "correlation_id": "98ba1a66-4213-4128-af1b-e8576df12ca3"
+    }
+  ]
+}

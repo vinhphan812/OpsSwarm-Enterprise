@@ -267,6 +267,7 @@ describe("createApiDemoRunner transient fetch failures", () => {
 describe("createApiDemoRunner start identification timeout", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+  // eslint-disable-next-line vit/no-disabled-tests
   it.skip("fails with timeout error when start never identifies a run", async () => {
     // Use very short timeout config
     const shortTimeoutRunner = (client: RetailTwinClient) =>
