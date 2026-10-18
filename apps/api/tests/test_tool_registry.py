@@ -283,8 +283,8 @@ def test_simulation_and_commit_do_not_change_the_store(registry, store) -> None:
     assert pinned.output["simulation_id"] == "sim-2"
     assert pinned.output["context_version"] == "store-001:v9"
     assert moved.output["status"] == "accepted"
-    assert facings.output["action"] == {"sku": "P001", "facings": 4}
-    assert replenished.output["action"] == {"sku": "P001", "quantity": 6}
+    assert facings.output["action"] == {"type": "change_facings", "sku": "P001", "facings": 4}
+    assert replenished.output["action"] == {"type": "replenish_shelf", "sku": "P001", "quantity": 6}
     assert submitted.output == {
         "status": "commit_requested",
         "decision_id": "d-11",

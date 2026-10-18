@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Union, Dict
+from typing import List, Optional, Any, Union, Dict, Literal
 from enum import Enum
 from pydantic import BaseModel, Field
 from datetime import datetime, timezone
@@ -21,16 +21,22 @@ class ToolCapability(str, Enum):
     COMMIT_REQUEST = "COMMIT_REQUEST"
 
 # 3. Actions
+# ``type`` is served with every action so clients can tell them apart (the
+# web app's ``parseSimulation`` requires it). It has a default, so callers and
+# payloads that omit it still parse; the union stays untagged for that reason.
 class MoveProduct(BaseModel):
+    type: Literal["move_product"] = "move_product"
     sku: str
     from_slot: str
     to_slot: str
 
 class ChangeFacings(BaseModel):
+    type: Literal["change_facings"] = "change_facings"
     sku: str
     facings: int = Field(..., ge=1, le=100)
 
 class ReplenishShelf(BaseModel):
+    type: Literal["replenish_shelf"] = "replenish_shelf"
     sku: str
     quantity: int = Field(..., ge=1, le=1000)
 

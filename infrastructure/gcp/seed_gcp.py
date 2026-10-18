@@ -103,6 +103,9 @@ def load_seed_manifest() -> dict[str, Any] | None:
 # Import seed data
 from data.seed.demo_seed import DEMO_PRODUCTS, SeedProduct
 
+# Firestore rejects a commit with more than 500 writes; the demo store has 556 products.
+FIRESTORE_COMMIT_LIMIT = 500
+
 
 def command_env() -> dict[str, str]:
     env = os.environ.copy()
@@ -332,18 +335,19 @@ def seed_firestore(transport: HttpTransport, dry_run: bool = False, force: bool 
             }
         }
 
-    payload = {"writes": writes}
     url = f"{database_root()}:commit"
-    raw = json.dumps(payload).encode("utf-8")
+    # Each commit is atomic; the upserts are idempotent, so a failed batch is safe to rerun.
+    for start in range(0, len(writes), FIRESTORE_COMMIT_LIMIT):
+        raw = json.dumps({"writes": writes[start : start + FIRESTORE_COMMIT_LIMIT]}).encode("utf-8")
 
-    response = transport.request("POST", url, raw, {"Content-Type": "application/json"})
+        response = transport.request("POST", url, raw, {"Content-Type": "application/json"})
 
-    if response.status != 200:
-        try:
-            error = json.loads(response.body)
-            raise RuntimeError(f"Firestore seed failed: {error.get('error', {}).get('message', response.body)}")
-        except json.JSONDecodeError:
-            raise RuntimeError(f"Firestore seed failed (HTTP {response.status}): {response.body[:200]}")
+        if response.status != 200:
+            try:
+                error = json.loads(response.body)
+                raise RuntimeError(f"Firestore seed failed: {error.get('error', {}).get('message', response.body)}")
+            except json.JSONDecodeError:
+                raise RuntimeError(f"Firestore seed failed (HTTP {response.status}): {response.body[:200]}")
 
     return {
         "seeded_products": len(DEMO_PRODUCTS),

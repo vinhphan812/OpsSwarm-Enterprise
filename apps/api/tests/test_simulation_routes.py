@@ -111,7 +111,7 @@ def test_simulation_detail_keeps_proposed_state_separate_from_live(simulation_cl
     body = response.json()
     assert body["state"]["context_version"] == "sim-001:v1"
     assert body["state"]["store"]["context_version"] == "store-001:v1"
-    assert body["actions"] == [{"sku": "P001", "from_slot": "A01-S01", "to_slot": "A02-S01"}]
+    assert body["actions"] == [{"type": "move_product", "sku": "P001", "from_slot": "A01-S01", "to_slot": "A02-S01"}]
 
 
 def test_simulation_and_candidate_empty_and_not_found_behavior(simulation_client) -> None:

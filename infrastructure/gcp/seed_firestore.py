@@ -5,7 +5,7 @@ Issue #135: Seed and reset real GCP data for deterministic end-to-end demo.
 
 This script seeds the Firestore Live Twin with the canonical demo baseline:
 - Store: store-001
-- Products: ~20 SKUs including P001 (foundation) and P017 (demand surge target)
+- Products: 556 SKUs including P001 (foundation) and P017 (demand surge target)
 - All inventory documents with version=1
 
 Idempotent: safe to run multiple times. The seed() method uses update semantics.
@@ -135,6 +135,15 @@ def _timestamp() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Firestore rejects a commit with more than 500 writes; the demo store has 556 products.
+FIRESTORE_COMMIT_LIMIT = 500
+
+
+def commit_batches(writes: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Split writes into commits Firestore accepts. Each batch is atomic; the upserts are idempotent."""
+    return [writes[i : i + FIRESTORE_COMMIT_LIMIT] for i in range(0, len(writes), FIRESTORE_COMMIT_LIMIT)]
+
+
 # Import seed data
 from data.seed.demo_seed import DEMO_PRODUCTS, SeedProduct
 
@@ -206,18 +215,18 @@ class FirestoreSeeder:
                 }
             })
 
-        payload: dict[str, Any] = {"writes": writes}
         url = f"{database_root()}:commit"
-        raw = json.dumps(payload).encode("utf-8")
+        for batch in commit_batches(writes):
+            raw = json.dumps({"writes": batch}).encode("utf-8")
 
-        response = self._transport.request("POST", url, raw, {"Content-Type": "application/json"})
+            response = self._transport.request("POST", url, raw, {"Content-Type": "application/json"})
 
-        if response.status != 200:
-            try:
-                error = json.loads(response.body)
-                raise RuntimeError(f"Seed failed: {error.get('error', {}).get('message', response.body)}")
-            except json.JSONDecodeError:
-                raise RuntimeError(f"Seed failed (HTTP {response.status}): {response.body[:200]}")
+            if response.status != 200:
+                try:
+                    error = json.loads(response.body)
+                    raise RuntimeError(f"Seed failed: {error.get('error', {}).get('message', response.body)}")
+                except json.JSONDecodeError:
+                    raise RuntimeError(f"Seed failed (HTTP {response.status}): {response.body[:200]}")
 
         return {
             "seeded_products": len(products),

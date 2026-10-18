@@ -27,7 +27,7 @@ Live mutation → Verifier → 3D update
 | Script | Purpose |
 |--------|---------|
 | `seed_gcp.py` | Seed all GCP services (Firestore, BigQuery, Pub/Sub) |
-| `seed_firestore.py` | Seed Firestore Live Twin with 20 products including P017 |
+| `seed_firestore.py` | Seed Firestore Live Twin with 556 products including P017 |
 | `seed_bigquery.py` | Seed BigQuery with 4 weeks of historical sales context |
 | `seed_pubsub.py` | Publish demand-surge events through Pub/Sub |
 | `reset_demo.py` | Reset all GCP services to baseline |
@@ -84,13 +84,16 @@ CONFIRM_RESET=yes python infrastructure/gcp/reset_demo.py --firestore-only
 
 ### Firestore Live Twin
 
-The Firestore seed creates 20 products including:
+The Firestore seed creates 556 products (`data/seed/demo_seed.py`): the demo
+store (P001-P016, P018, P020, P101-P637, the same products as
+`data/schemas/store-state.demo.json`) plus P017. It writes them in commits of
+at most 500, Firestore's limit per commit. Including:
 
 | SKU | Shelf | Slot | Facings | Shelf Qty | Backroom Qty |
 |-----|-------|------|---------|-----------|--------------|
 | P001 | A01 | A01-S01 | 3 | 8 | 42 |
 | **P017** | **A02** | **A02-S03** | **3** | **12** | **35** |
-| P002 | A01 | A01-S02 | 2 | 10 | 30 |
+| P002 | A01 | A01-S20 | 2 | 10 | 10 |
 | ... | ... | ... | ... | ... | ... |
 
 P017 is the demand-surge target with limited initial facings (3) that the AI
