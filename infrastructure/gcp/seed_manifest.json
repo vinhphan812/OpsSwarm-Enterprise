@@ -1,0 +1,45 @@
+{
+  "run_id": "run-20261018-084800-issue216",
+  "namespace": "retailtwin-demo",
+  "created_at": "2026-10-18T08:48:00Z",
+  "source": "data.seed.demo_seed.DEMO_PRODUCTS",
+  "source_json": null,
+  "store_id": "store-001",
+  "version": "v1",
+  "project": "retailtwin-ai-511002",
+  "region": "us-central1",
+  "issue": "#216",
+  "branch": "docs/216-production-data-audit-run",
+  "evidence_doc": "docs/PRODUCTION_DATA_AUDIT_RUN.md",
+  "counts": {
+    "firestore": 20,
+    "firestore_inventory_batches": 1,
+    "firestore_p017_injects": 2,
+    "bigquery_sales_events": 49,
+    "bigquery_sales_events_distinct_skus": 2,
+    "pubsub_topics_present": 1
+  },
+  "checksums": {
+    "p001_shelf": 8,
+    "p001_backroom": 42,
+    "p017_shelf_baseline": 12,
+    "p017_backroom_baseline": 35,
+    "p017_facings_baseline": 3,
+    "p017_shelf_surge": 8,
+    "p017_backroom_surge": 35,
+    "p017_facings_surge": 2,
+    "p017_slot": "A02-S03",
+    "p018_shelf": 0,
+    "p019_shelf": 22,
+    "p020_shelf": 9
+  },
+  "script_sha256": "4bbc60d1c3d92a5c95db21d4029dd85a85b0053bafb7603ce389d47468bfe9be",
+  "script_path": "infrastructure/gcp/seed_firestore.py",
+  "idempotency": {
+    "strategy": "firestore:commit update with currentDocument.exists=true precondition",
+    "second_reseed_doc_count": 20,
+    "second_reseed_sku_set_unchanged": true,
+    "duplicate_facts_produced": false
+  },
+  "notes": "Issue #216 live reseed cycle. Reset deletes 1st-page (100 docs) then re-seed; the cleanup_inventory.py and reseed_canonical.py one-offs are required because the upstream script's GET has no pageSize. P017 is injected with surge SKU values (shelf=8, facings=2, slot=A02-S03, version=2) after the canonical seed. The canonical DEMO_PRODUCTS in data/seed/demo_seed.py does not include the surge representation."
+}
