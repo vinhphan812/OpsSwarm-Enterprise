@@ -490,6 +490,8 @@ def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
             raise RuntimeError("observed_at must be an ISO string")
         from datetime import datetime
 
+        from kpi.evaluator import SlotState  # type: ignore[import-not-found]
+
         built = SimulationSnapshot(
             simulation_id=snapshot["simulation_id"],
             store_id=snapshot["store_id"],
@@ -497,17 +499,17 @@ def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
             correlation_id=snapshot["correlation_id"],
             observed_at=datetime.fromisoformat(observed_at),
             slots=tuple(
-                {
-                    "sku": slot["sku"],
-                    "slot_id": slot["slot_id"],
-                    "shelf_quantity": slot["shelf_quantity"],
-                    "backroom_quantity": slot["backroom_quantity"],
-                    "facings": slot["facings"],
-                    "sales_velocity_units_per_hour": Decimal(
+                SlotState(
+                    sku=slot["sku"],
+                    slot_id=slot["slot_id"],
+                    shelf_quantity=slot["shelf_quantity"],
+                    backroom_quantity=slot["backroom_quantity"],
+                    facings=slot["facings"],
+                    sales_velocity_units_per_hour=Decimal(
                         slot.get("sales_velocity_units_per_hour") or "0"
                     ),
-                    "price": Decimal(slot.get("price") or "0"),
-                }
+                    price=Decimal(slot.get("price") or "0"),
+                )
                 for slot in snapshot["slots"]
             ),
         )
@@ -536,7 +538,7 @@ def _build_flagship_evaluator() -> Callable[..., Mapping[str, Any]]:
             built,
             candidate_id,
             tuple(converted),
-            evaluator_version=evaluator_version,
+            **({"evaluator_version": evaluator_version} if evaluator_version is not None else {}),
         ).as_dict()
 
     return _evaluator
