@@ -5,7 +5,7 @@ import logging
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
-
+from retailtwin_api.schemas import REVENUE_PERIOD_LITERAL
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 
 from retailtwin_api.agents.executor import CommitService
@@ -710,7 +710,7 @@ def list_anomalies(
 @router.get("/revenue", response_model=RevenueResponse, include_in_schema=True)
 def get_revenue(
     request: Request,
-    period: Literal["hourly", "daily", "weekly", "monthly"] = Query(default="daily"),
+    period: Literal["hourly", "daily", "weekly", "monthly", "7d", "30d"] = Query(default="daily"),
     start: datetime | None = Query(default=None),
     end: datetime | None = Query(default=None),
     store_id: str | None = Query(default=None, min_length=1),
@@ -718,22 +718,42 @@ def get_revenue(
 ) -> RevenueResponse:
     """Return revenue aggregates for a store over the requested period.
 
-    Degrades gracefully: if the analytics backend is unavailable, returns an empty
-    revenue response with code "analytics_unavailable" logged as a warning.
+    Supports extended UI-facing periods (7d, 30d) which map to daily aggregation
+    with explicit date windows. Degrades gracefully: if the analytics backend is
+    unavailable, returns an empty revenue response with code "analytics_unavailable".
     """
     target_store = store_id or request.app.state.settings.store_id
     now = datetime.now(timezone.utc)
-    period_start = start or (now - timedelta(days=1))
-    period_end = end or now
+    # Map UI-facing periods to backend periods and windows.
+    # 7d/30d use daily aggregation with explicit start/end.
+    period_map: dict[str, tuple[str, timedelta]] = {
+        "hourly": ("hourly", timedelta(0)),
+        "daily": ("daily", timedelta(days=1)),
+        "weekly": ("daily", timedelta(weeks=1)),
+        "monthly": ("daily", timedelta(days=30)),
+        "7d": ("daily", timedelta(days=7)),
+        "30d": ("daily", timedelta(days=30)),
+    }
+    backend_period, window = period_map.get(period, ("daily", timedelta(days=1)))
+    # Explicit start/end override the period window.
+    if start is None and end is None:
+        period_start = now - window
+        period_end = now
+    else:
+        period_start = start or (now - window)
+        period_end = end or now
     if period_start > period_end:
         raise ApiError(422, "invalid_range", "start must be before end.")
     try:
-        return repo.get_revenue(
+        result = repo.get_revenue(
             store_id=target_store,
-            period=period,
+            period=cast(REVENUE_PERIOD_LITERAL, backend_period),
             start=period_start,
             end=period_end,
         )
+        # Preserve original period in response (e.g. "7d" not "daily")
+        result.period = period  # type: ignore[attr-defined]
+        return result
     except AnalyticsError as exc:
         logger.warning(
             "analytics.revenue_unavailable",

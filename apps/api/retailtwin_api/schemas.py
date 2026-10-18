@@ -6,6 +6,9 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
+# Shared period literal — imported by analytics_repository and routes.
+REVENUE_PERIOD_LITERAL = Literal["hourly", "daily", "weekly", "monthly", "7d", "30d"]
+
 
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
@@ -208,7 +211,7 @@ class RevenueBucket(BaseModel):
 
 class RevenueResponse(BaseModel):
     store_id: str = Field(min_length=1)
-    period: Literal["hourly", "daily", "weekly", "monthly"]
+    period: REVENUE_PERIOD_LITERAL
     start: datetime
     end: datetime
     total_revenue: float

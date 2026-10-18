@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import { REVENUE_PERIOD } from "@/enums/commerce.enum";
 import type { AgentEventsResponse, FlagshipStatus, HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { PromotionsSummary } from "@/types/promotion.type";
@@ -29,6 +30,13 @@ type ErrorEnvelope = {
 export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailTwinClient {
   const base = baseUrl.replace(/\/$/, "");
 
+  /** Maps UI period to backend period. */
+  const UI_TO_BACKEND_PERIOD: Record<string, string> = {
+    [REVENUE_PERIOD.Today]: "hourly",
+    [REVENUE_PERIOD.Week]: "7d",
+    [REVENUE_PERIOD.Month]: "30d",
+  };
+
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const doFetch = fetchImpl ?? fetch;
     let response: Response;
@@ -47,7 +55,10 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
     health: () => request<HealthResponse>("/health"),
     store: () => request<StoreResponse>("/store"),
     inventory: (sku: string) => request<ProductInventory>(`/inventory/${encodeURIComponent(sku)}`),
-    revenue: (period) => request<RevenueSummary>(`/revenue?period=${encodeURIComponent(period)}`),
+    revenue: (period) => {
+      const backendPeriod = UI_TO_BACKEND_PERIOD[period] ?? period;
+      return request<RevenueSummary>(`/revenue?period=${encodeURIComponent(backendPeriod)}`);
+    },
     promotions: () => request<PromotionsSummary>("/promotions"),
     simulations: () => request<SimulationsResponse>("/simulations?status=open"),
     simulation: (simulationId: string) => request<Simulation>(`/simulations/${encodeURIComponent(simulationId)}`),

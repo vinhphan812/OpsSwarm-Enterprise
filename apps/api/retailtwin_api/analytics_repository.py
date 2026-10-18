@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Protocol, cast
 
 from retailtwin_api.schemas import (
+    REVENUE_PERIOD_LITERAL,
     Anomaly,
     AnomaliesResponse,
     AnomalySeverity,
@@ -96,7 +97,7 @@ class RevenueRepository(Protocol):
     def get_revenue(
         self,
         store_id: str,
-        period: Literal["hourly", "daily", "weekly", "monthly"],
+        period: REVENUE_PERIOD_LITERAL,
         start: datetime,
         end: datetime,
     ) -> RevenueResponse: ...
@@ -210,7 +211,7 @@ class InMemoryRevenueRepository:
     def get_revenue(
         self,
         store_id: str,
-        period: Literal["hourly", "daily", "weekly", "monthly"],
+        period: REVENUE_PERIOD_LITERAL,
         start: datetime,
         end: datetime,
     ) -> RevenueResponse:
@@ -476,7 +477,7 @@ class BigQueryRevenueRepository:
     def get_revenue(
         self,
         store_id: str,
-        period: Literal["hourly", "daily", "weekly", "monthly"],
+        period: REVENUE_PERIOD_LITERAL,
         start: datetime,
         end: datetime,
     ) -> RevenueResponse:
@@ -502,12 +503,14 @@ class BigQueryRevenueRepository:
         )
 
 
-def _period_trunc(period: Literal["hourly", "daily", "weekly", "monthly"]) -> str:
+def _period_trunc(period: REVENUE_PERIOD_LITERAL) -> str:
     return {
         "hourly": "TIMESTAMP_TRUNC(occurred_at, HOUR)",
         "daily": "TIMESTAMP_TRUNC(occurred_at, DAY)",
         "weekly": "TIMESTAMP_TRUNC(occurred_at, WEEK)",
         "monthly": "TIMESTAMP_TRUNC(occurred_at, MONTH)",
+        "7d": "TIMESTAMP_TRUNC(occurred_at, DAY)",
+        "30d": "TIMESTAMP_TRUNC(occurred_at, DAY)",
     }[period]
 
 
@@ -516,7 +519,7 @@ def _bq_revenue_query(
     project: str,
     dataset: str,
     store_id: str,
-    period: Literal["hourly", "daily", "weekly", "monthly"],
+    period: REVENUE_PERIOD_LITERAL,
     start: datetime,
     end: datetime,
 ) -> tuple[list[RevenueBucket], dict[str, int | float]]:
@@ -808,7 +811,7 @@ class _UnavailableRevenueRepository:
     def get_revenue(
         self,
         store_id: str,
-        period: Literal["hourly", "daily", "weekly", "monthly"],
+        period: REVENUE_PERIOD_LITERAL,
         start: datetime,
         end: datetime,
     ) -> RevenueResponse:

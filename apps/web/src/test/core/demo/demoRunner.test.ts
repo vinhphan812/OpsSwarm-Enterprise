@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiDemoRunner, timelineEntries, toActivityEntry } from "@/core/demo/demoRunner";
 import { useRunStore } from "@/state/run.store";
-import type { AgentEvent, FlagshipStatusResponse, RetailTwinClient } from "@/types/api.type";
+import type { AgentEvent, FlagshipStatus, FlagshipStatusResponse, RetailTwinClient } from "@/types/api.type";
 
 const POLL = 100;
 
@@ -368,15 +368,27 @@ describe("toActivityEntry", () => {
 
 describe("timelineEntries", () => {
   it("extracts agent stages from status timeline", () => {
-    const statusResponse: FlagshipStatusResponse = {
+    const statusResponse: FlagshipStatus = {
       run_id: "r1",
       phase: "RUNNING",
       correlation_id: "run-1",
+      seed: 1,
+      started_at: null,
+      completed_at: null,
+      context_version: null,
+      guard_verdict: null,
+      guard_reason_code: null,
+      committed_decision_id: null,
+      replan_refresh_count: 0,
+      replan_reason_code: null,
+      verification_status: null,
+      verification_reason_code: null,
       timeline: [
-        { stage: "investigate", detail: "checking inventory", at: "2026-10-16T08:00:00Z" },
-        { stage: "plan", detail: "creating proposal", at: "2026-10-16T08:01:00Z" },
-        { stage: "verify", detail: "all good", at: "2026-10-16T08:02:00Z" },
+        { stage: "investigate", detail: "checking inventory" },
+        { stage: "plan", detail: "creating proposal" },
+        { stage: "verify", detail: "all good" },
       ],
+      error: null,
     };
 
     const entries = timelineEntries(statusResponse);
@@ -389,10 +401,23 @@ describe("timelineEntries", () => {
   });
 
   it("returns empty array when correlation_id is null", () => {
-    const statusResponse: FlagshipStatusResponse = {
+    const statusResponse: FlagshipStatus = {
       run_id: null,
       phase: "IDLE",
       correlation_id: null,
+      seed: 1,
+      started_at: null,
+      completed_at: null,
+      context_version: null,
+      guard_verdict: null,
+      guard_reason_code: null,
+      committed_decision_id: null,
+      replan_refresh_count: 0,
+      replan_reason_code: null,
+      verification_status: null,
+      verification_reason_code: null,
+      timeline: [],
+      error: null,
     };
 
     const entries = timelineEntries(statusResponse);
@@ -401,16 +426,28 @@ describe("timelineEntries", () => {
   });
 
   it("filters out non-agent stages from timeline", () => {
-    const statusResponse: FlagshipStatusResponse = {
+    const statusResponse: FlagshipStatus = {
       run_id: "r1",
       phase: "RUNNING",
       correlation_id: "run-1",
+      seed: 1,
+      started_at: null,
+      completed_at: null,
+      context_version: null,
+      guard_verdict: null,
+      guard_reason_code: null,
+      committed_decision_id: null,
+      replan_refresh_count: 0,
+      replan_reason_code: null,
+      verification_status: null,
+      verification_reason_code: null,
       timeline: [
-        { stage: "start", detail: "started", at: "2026-10-16T08:00:00Z" },
-        { stage: "investigate", detail: "checking", at: "2026-10-16T08:01:00Z" },
-        { stage: "event", detail: "something happened", at: "2026-10-16T08:02:00Z" },
-        { stage: "plan", detail: "planning", at: "2026-10-16T08:03:00Z" },
+        { stage: "start", detail: "started" },
+        { stage: "investigate", detail: "checking" },
+        { stage: "event", detail: "something happened" },
+        { stage: "plan", detail: "planning" },
       ],
+      error: null,
     };
 
     const entries = timelineEntries(statusResponse);
@@ -418,5 +455,123 @@ describe("timelineEntries", () => {
     expect(entries).toHaveLength(2);
     expect(entries[0].stage).toBe("INVESTIGATE");
     expect(entries[1].stage).toBe("PLAN");
+  });
+});
+
+describe("createApiDemoRunner STARTING status handling (idempotent start contract)", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+  /** Short retry config for tests - faster backoff */
+  const SHORT_RETRY_CONFIG = { maxRetries: 3, initialDelayMs: 50, maxDelayMs: 200, backoffMultiplier: 2 };
+  const SHORT_TIMEOUT_CONFIG = { identificationTimeoutMs: 1000 };
+
+  function statusWithServerState(
+    phase: FlagshipStatus["phase"],
+    serverState: FlagshipStatus["status"],
+    extra: Partial<FlagshipStatus> = {},
+  ): FlagshipStatus {
+    return {
+      run_id: extra.run_id ?? "r",
+      phase,
+      correlation_id: (extra.correlation_id ?? "run-1") as string | null,
+      seed: 1,
+      started_at: null,
+      completed_at: null,
+      context_version: null,
+      guard_verdict: null,
+      guard_reason_code: null,
+      committed_decision_id: null,
+      replan_refresh_count: 0,
+      replan_reason_code: null,
+      verification_status: null,
+      verification_reason_code: null,
+      timeline: [],
+      error: null,
+      status: serverState,
+      ...extra,
+    };
+  }
+
+  it("waits for STARTING to transition to RUNNING and succeeds", async () => {
+    // Initial status is STARTING, then transitions to RUNNING
+    const { client } = fakeClient(
+      [[event("a", "VERIFY")]],
+      [
+        // After waitForServerReady: STARTING -> RUNNING
+        statusWithServerState("RUNNING", "RUNNING"),
+        statusWithServerState("COMPLETE", "RUNNING"),
+      ],
+      // Initial status is STARTING - triggers wait
+      statusWithServerState("RUNNING", "STARTING"),
+    );
+
+    const runner = (client: RetailTwinClient) =>
+      createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, SHORT_TIMEOUT_CONFIG);
+
+    const run = await runner(client).start();
+    await vi.advanceTimersByTimeAsync(POLL * 2);
+    await expect(run.done).resolves.toBeUndefined();
+    expect(useRunStore.getState().activity.map((entry) => entry.id)).toEqual(["a"]);
+  });
+
+  it("throws error when STARTING transitions to ERROR", async () => {
+    const { client } = fakeClient(
+      [],
+      [
+        // After waitForServerReady: STARTING -> ERROR
+        statusWithServerState("ERROR", "ERROR", { error: "Server failed to start: connection timeout" }),
+      ],
+      // Initial status is STARTING - triggers wait
+      statusWithServerState("RUNNING", "STARTING"),
+    );
+
+    const runner = (client: RetailTwinClient) =>
+      createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, SHORT_TIMEOUT_CONFIG);
+
+    const runPromise = runner(client).start();
+    await vi.advanceTimersByTimeAsync(POLL * 2);
+    await expect(runPromise).rejects.toThrow("Server failed to start");
+  });
+
+  it("respects max retries and does not hammer server - finite retry loop", async () => {
+    // Simulate STARTING that never resolves - should timeout
+    const { client } = fakeClient(
+      [],
+      [
+        statusWithServerState("RUNNING", "STARTING"),
+        statusWithServerState("RUNNING", "STARTING"),
+        statusWithServerState("RUNNING", "STARTING"),
+      ],
+      statusWithServerState("RUNNING", "STARTING"),
+    );
+
+    const runner = (client: RetailTwinClient) =>
+      createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, { identificationTimeoutMs: 200 });
+
+    const runPromise = runner(client).start();
+    // Wait for timeout
+    await vi.advanceTimersByTimeAsync(300);
+    await expect(runPromise).rejects.toThrow("Server failed to start within");
+  });
+
+  it("skips wait when status field is missing (backward compatibility)", async () => {
+    // Old backend without status field - should work without waiting
+    // Use IDLE phase so it will reset and start (not join)
+    const { client, calls } = fakeClient(
+      [[event("a", "VERIFY")]],
+      [status("RUNNING"), status("COMPLETE")],
+      // No status field - backward compatibility
+      // Use IDLE phase so it goes through reset/start path
+      status("IDLE"),
+    );
+
+    const runner = (client: RetailTwinClient) =>
+      createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, SHORT_TIMEOUT_CONFIG);
+
+    const run = await runner(client).start();
+    expect(calls).toEqual(["reset", "start"]);
+    await vi.advanceTimersByTimeAsync(POLL * 2);
+    await expect(run.done).resolves.toBeUndefined();
   });
 });

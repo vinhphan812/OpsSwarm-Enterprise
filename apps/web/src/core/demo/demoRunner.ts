@@ -1,7 +1,7 @@
 import { DEMO_RUN_POLL_MS } from "@/constants/app.constant";
 import { useRunStore } from "@/state/run.store";
 import type { ActivityEntry, ControlStage } from "@/types/agent.type";
-import type { AgentEvent, FlagshipStatusResponse, RetailTwinClient } from "@/types/api.type";
+import type { AgentEvent, FlagshipStatus, RetailTwinClient } from "@/types/api.type";
 
 /**
  * What a Run AI Demo button plays: a `replay` of fixtures/demo on the memory twin, which
@@ -52,13 +52,14 @@ const TIMELINE_STAGE: Record<string, ControlStage> = {
  * the step's own detail, under the run's `correlation_id`. Nothing is added: a step that is
  * not an agent stage is left out, and an ACT the controller does not record stays absent.
  */
-export function timelineEntries(status: FlagshipStatusResponse): ActivityEntry[] {
+export function timelineEntries(status: FlagshipStatus): ActivityEntry[] {
   if (!status.correlation_id) return [];
   const correlationId = status.correlation_id;
   return (status.timeline ?? []).flatMap((step, index): ActivityEntry[] => {
     const stage = TIMELINE_STAGE[step.stage];
     if (!stage) return [];
-    return [{ id: `${status.run_id}:${index}`, ts: step.at, stage, summary: step.detail ?? "", correlation_id: correlationId }];
+    // Use index-based ID since timeline entries may not have 'at' timestamp
+    return [{ id: `${status.run_id ?? 'unknown'}:${index}`, ts: new Date().toISOString(), stage, summary: step.detail ?? "", correlation_id: correlationId }];
   });
 }
 
@@ -66,25 +67,26 @@ export function timelineEntries(status: FlagshipStatusResponse): ActivityEntry[]
 const newCorrelationId = () => `flagship-${crypto.randomUUID()}`;
 
 /**
- * Retry configuration for transient fetch failures.
+ * Retry configuration aligned with backend's idempotent start contract.
+ * Backend uses exponential backoff: 1s, 2s, 4s - max 3 attempts.
  */
 interface RetryConfig {
   /** Maximum number of retry attempts. */
   maxRetries: number;
-  /** Initial delay in ms between retries. */
+  /** Initial delay in ms between retries (matches backend's 1s). */
   initialDelayMs: number;
-  /** Maximum delay in ms between retries. */
+  /** Maximum delay in ms between retries (matches backend's 4s). */
   maxDelayMs: number;
-  /** Multiplier for exponential backoff. */
+  /** Multiplier for exponential backoff (matches backend: 2x). */
   backoffMultiplier: number;
 }
 
-/** Default retry configuration. */
+/** Default retry configuration aligned with backend contract. */
 const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxRetries: 3,
-  initialDelayMs: 500,
-  maxDelayMs: 4000,
-  backoffMultiplier: 2,
+  initialDelayMs: 1000, // Backend's first backoff is 1s
+  maxDelayMs: 4000, // Backend's max backoff is 4s
+  backoffMultiplier: 2, // Backend uses 1s, 2s, 4s progression
 };
 
 /** Timeout configuration for start identification. */
@@ -143,9 +145,64 @@ function isTransientError(error: unknown): boolean {
  * A timeout is applied to the start identification: if POST/start never results in a run being
  * identified within the configured timeout, the runner fails with a clear error.
  *
+ * The frontend now consumes the backend's idempotent start contract:
+ * - Checks `status` field (NOT_STARTED, STARTING, RUNNING, ERROR) for server state
+ * - On STARTING, polls until RUNNING or ERROR with timeout
+ * - Retry timing aligned with backend's exponential backoff (1s, 2s, 4s)
+ *
  * It never advances a stage itself: the stages are the controller's.
  * TODO(BE): #41 to answer `start` at once (202) and to record each stage, ACT included, in the feed.
  */
+
+/**
+ * Wait for the server to transition from STARTING to RUNNING or ERROR.
+ * Uses the backend's retry info for timing if available.
+ */
+async function waitForServerReady(
+  client: RetailTwinClient,
+  retryConfig: RetryConfig,
+  timeoutMs: number,
+): Promise<FlagshipStatus> {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const status = await client.flagshipStatus();
+
+    // Check server state from idempotent start contract
+    // Handle backward compatibility: if status field is missing, assume not STARTING
+    const serverStatus = status.status;
+    if (serverStatus === "RUNNING") {
+      return status;
+    }
+    if (serverStatus === "ERROR") {
+      return status;
+    }
+    // If status is undefined or NOT_STARTED, exit the wait loop
+    if (!serverStatus || serverStatus === "NOT_STARTED") {
+      return status;
+    }
+
+    // If status is STARTING, use backend's retry info if available
+    // Otherwise use our own backoff timing aligned with backend (1s, 2s, 4s)
+    let delayMs: number;
+    if (status.retry_info?.next_retry_at) {
+      // Use backend's suggested next retry time
+      const serverDelay = status.retry_info.next_retry_at * 1000 - Date.now();
+      delayMs = Math.max(100, serverDelay);
+    } else {
+      // Fall back to our own exponential backoff aligned with backend
+      const attempt = status.retry_info?.attempt ?? 1;
+      delayMs = Math.min(
+        retryConfig.initialDelayMs * Math.pow(retryConfig.backoffMultiplier, attempt - 1),
+        retryConfig.maxDelayMs,
+      );
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  throw new Error(`Server failed to start within ${timeoutMs}ms`);
+}
 export function createApiDemoRunner(
   client: RetailTwinClient,
   pollMs = DEMO_RUN_POLL_MS,
@@ -157,11 +214,11 @@ export function createApiDemoRunner(
     source: DEMO_RUN_SOURCE.Flagship,
     async start() {
       // Initial status fetch - with retry for transient failures
-      let initialStatus!: import("@/types/api.type").FlagshipStatusResponse;
+      let initialStatus!: import("@/types/api.type").FlagshipStatus;
       let initialAttempt = 0;
       while (initialAttempt <= retryConfig.maxRetries) {
         try {
-          initialStatus = await client.flagshipStatus() as unknown as FlagshipStatusResponse;
+          initialStatus = await client.flagshipStatus();
           break;
         } catch (error) {
           initialAttempt++;
@@ -173,6 +230,23 @@ export function createApiDemoRunner(
         }
       }
       if (!initialStatus) throw new Error("Failed to get initial status");
+
+      // Consume backend's idempotent start contract
+      // Check server state (status field) for coordinated retry handling
+      if (initialStatus.status === "STARTING") {
+        // Server is starting with retry - wait for it to complete
+        // Use timeout aligned with backend's max retry time (3 attempts * 4s = ~12s max)
+        const serverReadyStatus = await waitForServerReady(
+          client,
+          retryConfig,
+          timeoutConfig.identificationTimeoutMs,
+        );
+        if (serverReadyStatus.status === "ERROR") {
+          throw new Error(serverReadyStatus.error ?? "Server failed to start");
+        }
+        // Use the resolved status
+        initialStatus = serverReadyStatus;
+      }
 
       const joined = initialStatus.phase === "RUNNING" && initialStatus.correlation_id ? initialStatus.correlation_id : null;
       if (!joined) await client.flagshipReset();
@@ -213,7 +287,7 @@ export function createApiDemoRunner(
       /**
        * Read stages from agentEvents feed with bounded retry for transient failures.
        */
-      const readStagesWithRetry = async (status: FlagshipStatusResponse): Promise<void> => {
+      const readStagesWithRetry = async (status: FlagshipStatus): Promise<void> => {
         let cursor: string | null = null;
         while (true) {
           let attempt = 0;
@@ -248,11 +322,11 @@ export function createApiDemoRunner(
       /**
        * Poll status with bounded retry for transient failures.
        */
-      const pollStatusWithRetry = async (): Promise<FlagshipStatusResponse> => {
+      const pollStatusWithRetry = async (): Promise<FlagshipStatus> => {
         let attempt = 0;
         while (attempt <= retryConfig.maxRetries) {
           try {
-            const status = await client.flagshipStatus() as unknown as FlagshipStatusResponse;
+            const status = await client.flagshipStatus();
             return status;
           } catch (error) {
             attempt++;
@@ -296,7 +370,7 @@ export function createApiDemoRunner(
         };
 
         if (!joined) {
-          client.flagshipStart().then(
+          client.flagshipStart(ours).then(
             () => {
               answer = { ok: true };
               identify();

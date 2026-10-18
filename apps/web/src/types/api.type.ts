@@ -15,6 +15,17 @@ export type HealthResponse = {
   fixture_loaded: boolean;
 };
 
+/** Server state from idempotent start - separate from run phase */
+export type ServerState = "NOT_STARTED" | "STARTING" | "RUNNING" | "ERROR";
+
+/** Retry info from the backend's idempotent start */
+export type RetryInfo = {
+  attempt: number;
+  max_attempts: number;
+  next_retry_at: number | null;
+  backoff_delays: number[];
+};
+
 /** Response from `GET /flagship/status`. */
 export type FlagshipStatusResponse = {
   run_id: string | null;
@@ -22,6 +33,10 @@ export type FlagshipStatusResponse = {
   correlation_id: string | null;
   error?: string;
   timeline?: { stage: string; detail?: string; at: string }[];
+  /** Server state from idempotent start contract (NOT_STARTED, STARTING, RUNNING, ERROR) */
+  status?: ServerState;
+  /** Retry info when backend is retrying start */
+  retry_info?: RetryInfo;
 };
 
 /** An event from `GET /agent/events`. */
@@ -68,6 +83,15 @@ export type FlagshipStatus = {
   verification_reason_code: string | null;
   timeline: Array<{ stage: string; detail?: string; status?: string; duration_ms?: number }>;
   error: string | null;
+  /** Server state from idempotent start contract (NOT_STARTED, STARTING, RUNNING, ERROR) */
+  status?: "NOT_STARTED" | "STARTING" | "RUNNING" | "ERROR";
+  /** Retry info when backend is retrying start */
+  retry_info?: {
+    attempt: number;
+    max_attempts: number;
+    next_retry_at: number | null;
+    backoff_delays: number[];
+  };
 };
 
 export type RetailTwinClient = {

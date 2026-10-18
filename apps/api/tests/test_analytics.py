@@ -225,7 +225,7 @@ class TestRevenue:
         assert response.status_code == 422
 
     def test_accepts_period_parameter(self, client: TestClient):
-        for period in ("hourly", "daily", "weekly", "monthly"):
+        for period in ("hourly", "daily", "weekly", "monthly", "7d", "30d"):
             response = client.get("/revenue", params={"period": period})
             assert response.status_code == 200, f"period={period} failed"
             assert response.json()["period"] == period
