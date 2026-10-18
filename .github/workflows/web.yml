@@ -195,7 +195,7 @@ jobs:
           path: apps/web/dist/
 
       - name: Install firebase-tools
-        run: npm install -g firebase-tools@14.9.0
+        run: npm install -g firebase-tools@14.9.0 && echo "PATH=$(npm bin -g):$PATH" >> $GITHUB_ENV
 
       - name: Deploy to Firebase Hosting
         id: deploy
@@ -204,6 +204,7 @@ jobs:
         run: |
           # Deploy using firebase-tools CLI with an access token derived from WIF.
           # The site is read from firebase.json (hosting.site), not from a CLI flag.
+          export PATH="$(npm bin -g):$PATH"
           set +e
           DEPLOY_OUTPUT=$(firebase-tools deploy \
             --only hosting \
