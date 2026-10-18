@@ -46,5 +46,8 @@ htmlcov/
 assets/3d/generated/
 *.blend1
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Day-0 Foundation Gate evidence (build output)
 artifacts/
