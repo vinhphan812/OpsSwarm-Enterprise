@@ -17,9 +17,14 @@ import { ProductDetailsDialog } from "@/components/twin/ProductDetailsDialog";
 import { SimulationBanner } from "@/components/twin/SimulationBanner";
 import { TwinIssuesNotice } from "@/components/twin/TwinIssuesNotice";
 import { TwinStatusOverlay } from "@/components/twin/TwinStatusOverlay";
-import { pickSimulationReviewer, pickSimulationSource, pickSource } from "@/core/twin/devSources";
+import { TwinDemoBanner } from "@/components/layout/TwinDemoBanner";
+import { TwinHeader } from "@/components/layout/TwinHeader";
+import {
+  pickSimulationReviewer,
+  pickSimulationSource,
+  pickSource,
+} from "@/core/twin/devSources";
 import { useAgentFocus } from "@/hooks/agentFocus.hook";
-import { useAnomalyPolling } from "@/hooks/anomalyPolling.hook";
 import { useNetworkStatus } from "@/hooks/networkStatus.hook";
 import { useProductParam } from "@/hooks/productParam.hook";
 import { useSimulationSource } from "@/hooks/simulationSource.hook";
@@ -37,16 +42,17 @@ export function TwinPage() {
   useNetworkStatus();
   useProductParam();
   useAgentFocus();
-  useAnomalyPolling();
 
   return (
-    <>
+    <div className="twin-body">
+      <TwinHeader />
+      <TwinDemoBanner />
       <main className="viewport relative">
         <StoreScene />
         <SimulationBanner reviewer={reviewer} />
         <TwinStatusOverlay />
         {/* TODO(BE): apps/api does not serve GET /revenue and GET /promotions yet; until it does the
-          Revenue and Promotions lenses show their empty report and a toast, or the demo data under ?twin=demo. */}
+        Revenue and Promotions lenses show their empty report and a toast, or the demo data under ?twin=demo. */}
         <div className="lens-switcher">
           <LensSwitcher />
           <ViewModeSwitch />
@@ -70,6 +76,6 @@ export function TwinPage() {
         <AiImpactDialog />
       </main>
       <AgentActivityPanel />
-    </>
+    </div>
   );
 }

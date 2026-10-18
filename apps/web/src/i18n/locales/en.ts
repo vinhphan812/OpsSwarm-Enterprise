@@ -1,4 +1,26 @@
 export const en = {
+  brand: {
+    name: "RetailTwin AI",
+    tagline: "Autonomous Store Intelligence",
+    storeHint: "The store the Live Twin reports",
+    live: "LIVE",
+    simulation: "SIMULATION",
+    demo: "Demo data",
+    demoHint: "A synthetic store from fixtures/demo. Nothing on this page writes to the Live Twin.",
+    liveData: "Live data",
+    liveDataHint: "The Live Twin, as apps/api serves it. Accept and Reject change it.",
+    openLive: "Open the live twin",
+    openDemo: "Open the demo",
+    demoBannerLabel: "Demo data notice",
+    demoBannerTag: "DEMO",
+    demoBanner: "Synthetic demo store, not live store telemetry. Nothing here writes to the Live Twin.",
+  },
+  footer: {
+    context: "Context {{version}}",
+    contextHint: "The Live Twin's context_version, as served. It moves after each execution.",
+    build: "Build {{build}}",
+    devBuild: "dev",
+  },
   cameraHelp: {
     label: "Camera controls help",
     title: "Camera controls",
@@ -76,6 +98,7 @@ export const en = {
     list: "Open anomalies",
     detected: "since {{time}}",
     olderState: "read from an older twin state",
+    loadFailed: "Could not load anomalies.",
     type: {
       stockout: "Stockout",
       demand_surge: "Demand surge",
@@ -190,6 +213,7 @@ export const en = {
     unknown: "Unknown error",
     unreachable: "The API is unreachable.",
     requestFailed: "Request failed ({{status}}).",
+    demoReadOnly: "The demo does not write to the Live Twin.",
   },
   scene: {
     stock: {
@@ -576,9 +600,6 @@ export const en = {
   },
   commerce: {
     loadFailed: "Could not load the sales figures.",
-  },
-  anomalies: {
-    loadFailed: "Could not load the anomalies.",
   },
   storeStatus: {
     title: "Inventory",

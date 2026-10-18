@@ -381,7 +381,10 @@ jobs:
           echo "Building with VITE_API_BASE_URL=$VITE_API_BASE_URL"
 
       - name: TypeScript & build
-        run: npm run build
+        run: |
+          # Bust the TS incremental build cache so a fresh type-check runs every time.
+          rm -f apps/web/.tsbuildinfo apps/web/tsconfig.tsbuildinfo
+          npm run build
 
       - name: Run tests
         run: npm test
