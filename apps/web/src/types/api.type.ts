@@ -1,9 +1,11 @@
 import type { RevenuePeriod } from "@/enums/commerce.enum";
-import type { PromotionsSummary } from "./promotion.type";
-import type { RevenueSummary } from "./revenue.type";
+import type { PromotionsSummary } from "@/types/promotion.type";
+import type { RevenueSummary } from "@/types/revenue.type";
 import type { ReviewDecision } from "@/enums/simulation.enum";
-import type { CandidatesResponse, ReviewRequest, ReviewResult, Simulation, SimulationsResponse } from "./simulation.type";
-import type { ProductInventory, StoreResponse } from "./twin.type";
+import type { CandidatesResponse, ReviewRequest, ReviewResult, Simulation, SimulationsResponse } from "@/types/simulation.type";
+import type { ProductInventory, StoreResponse } from "@/types/twin.type";
+import type { AnomaliesResponse } from "@/types/anomaly.type";
+import type { CheckoutResponse } from "@/types/checkout.type";
 
 export type HealthResponse = {
   status: "ok" | "degraded";
@@ -11,6 +13,36 @@ export type HealthResponse = {
   environment: string;
   store_id: string;
   fixture_loaded: boolean;
+};
+
+/** Response from `GET /flagship/status`. */
+export type FlagshipStatusResponse = {
+  run_id: string | null;
+  phase: "IDLE" | "RUNNING" | "COMPLETE" | "ERROR";
+  correlation_id: string | null;
+  error?: string;
+  timeline?: { stage: string; detail?: string; at: string }[];
+};
+
+/** An event from `GET /agent/events`. */
+export type AgentEvent = {
+  id: string;
+  ts: string;
+  stage: string;
+  status: string;
+  correlation_id: string;
+  summary?: string;
+  decision?: string;
+  sku?: string;
+  shelf_id?: string;
+  slot_id?: string;
+  simulation_id?: string;
+};
+
+/** Response from `GET /agent/events`. */
+export type AgentEventsResponse = {
+  events: AgentEvent[];
+  cursor: string | null;
 };
 
 /**
@@ -63,4 +95,12 @@ export type RetailTwinClient = {
   flagshipReset: () => Promise<{ phase: string; context_version: string }>;
   /** `POST /flagship/start`. Drives the 8-stage chain end-to-end on the canonical surge event. */
   flagshipStart: () => Promise<unknown>;
+  /** `GET /agent/events`. Paginated activity feed. */
+  agentEvents: (since?: string | null) => Promise<AgentEventsResponse>;
+  /** `GET /anomalies`. */
+  anomalies: () => Promise<AnomaliesResponse>;
+  /** `GET /stockout-risk`. Returns risk scores for all slots. */
+  stockoutRisk: () => Promise<unknown>;
+  /** `GET /checkouts`. */
+  checkouts: () => Promise<CheckoutResponse>;
 };
