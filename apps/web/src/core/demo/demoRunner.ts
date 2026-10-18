@@ -161,7 +161,7 @@ export function createApiDemoRunner(
       let initialAttempt = 0;
       while (initialAttempt <= retryConfig.maxRetries) {
         try {
-          initialStatus = await client.flagshipStatus();
+          initialStatus = await client.flagshipStatus() as FlagshipStatusResponse;
           break;
         } catch (error) {
           initialAttempt++;
@@ -252,7 +252,7 @@ export function createApiDemoRunner(
         let attempt = 0;
         while (attempt <= retryConfig.maxRetries) {
           try {
-            const status = await client.flagshipStatus();
+            const status = await client.flagshipStatus() as FlagshipStatusResponse;
             return status;
           } catch (error) {
             attempt++;
@@ -296,7 +296,7 @@ export function createApiDemoRunner(
         };
 
         if (!joined) {
-          client.flagshipStart(ours).then(
+          client.flagshipStart().then(
             () => {
               answer = { ok: true };
               identify();
