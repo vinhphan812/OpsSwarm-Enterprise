@@ -194,6 +194,9 @@ jobs:
           name: web-dist
           path: apps/web/dist/
 
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools@14.9.0
+
       - name: Deploy to Firebase Hosting
         id: deploy
         env:
@@ -202,7 +205,7 @@ jobs:
           # Deploy using firebase-tools CLI with an access token derived from WIF.
           # The site is read from firebase.json (hosting.site), not from a CLI flag.
           set +e
-          DEPLOY_OUTPUT=$(npx firebase-tools@14.9.0 deploy \
+          DEPLOY_OUTPUT=$(firebase-tools deploy \
             --only hosting \
             --project retailtwin-ai-511002 \
             --token "${GOOGLE_OAUTH_ACCESS_TOKEN}" \
