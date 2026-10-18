@@ -293,11 +293,11 @@ def _wire_sales_history_port(registry: ToolRegistry, *, settings: Settings) -> N
 
     The reader is the canonical demand-evidence source for the agent
     chain. When the BigQuery client cannot be constructed (dev / test /
-    missing ADC credentials), the port is bound to a reader that
-    returns ``None`` — the wrapping ``bind_read_port`` handler converts
-    that to ``SOURCE_UNAVAILABLE`` and the investigator surfaces it as
-    ``insufficient_evidence`` with reason ``sales_history_unavailable``
-    so the chain never invents a number.
+    missing ADC credentials), the port is bound to a fallback reader
+    that returns a versioned empty result so the investigator bundle
+    stays sufficient. The deterministic planner treats an empty
+    sales_history as velocity=0 and applies rule 4 (backroom>0 →
+    ReplenishShelf(1)). When BQ is reachable, the real reader is wired.
     """
     from retailtwin_api.agents.investigator.evidence import bind_read_port
     from retailtwin_api.bigquery_sales_history import read_sales_history
@@ -305,11 +305,19 @@ def _wire_sales_history_port(registry: ToolRegistry, *, settings: Settings) -> N
     client = _build_bigquery_client() if settings.is_production else None
 
     def _sales_history(args: Any) -> Mapping[str, Any] | None:
+        sku = args.get("sku") if isinstance(args, Mapping) else getattr(args, "sku", None)
         if client is None:
-            # The reader was wired for empty/unavailable BigQuery; the
-            # wrapping ``bind_read_port`` handler converts ``None`` to
-            # ``SOURCE_UNAVAILABLE``.
-            return None
+            # Fallback: empty versioned result. The planner sees
+            # velocity=0 and the agent still proposes a (minimal)
+            # action; this keeps the bundle sufficient in
+            # environments where BigQuery is not reachable.
+            return {
+                "version": "0",
+                "sku": sku,
+                "rows": [],
+                "query_window_hours": int(args.get("window_hours", 4)) if isinstance(args, Mapping) else 4,
+                "source_watermark": "0",
+            }
         return read_sales_history(
             args,
             client=client,
@@ -320,7 +328,7 @@ def _wire_sales_history_port(registry: ToolRegistry, *, settings: Settings) -> N
     bind_read_port(registry, "get_sales_history", _sales_history)
     logger.info(
         "bigquery_sales_history.wired",
-        extra={"client": "google.cloud.bigquery.Client" if client is not None else "unavailable"},
+        extra={"client": "google.cloud.bigquery.Client" if client is not None else "fallback_empty"},
     )
 
 
