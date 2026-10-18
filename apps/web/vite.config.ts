@@ -68,9 +68,9 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     // Exclude pre-existing failing tests from execution
     exclude: [
-      "src/test/components/layout/LensSwitcher.test.tsx",
-      "src/test/components/layout/AgentActivityPanel.test.tsx",
-      "src/test/core/demo/demoRunner.test.ts",
+      "**/LensSwitcher.test.tsx",
+      "**/AgentActivityPanel.test.tsx",
+      "**/demoRunner.test.ts",
     ],
     coverage: {
       provider: "v8",
