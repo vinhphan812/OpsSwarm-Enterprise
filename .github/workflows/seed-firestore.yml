@@ -1,0 +1,38 @@
+name: Seed Firestore
+
+on:
+  workflow_dispatch:
+    inputs:
+      reset:
+        description: 'Reset Firestore before seeding (delete all documents first)'
+        required: false
+        default: 'true'
+        type: boolean
+
+# Least-privilege: read contents for checkout, write id-token for WIF-based GCP auth.
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  seed:
+    name: Seed Firestore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - name: Seed Firestore
+        env:
+          CONFIRM_SEED: yes
+        run: |
+          RESET_FLAG=""
+          if [ "${{ inputs.reset }}" == "true" ]; then
+            RESET_FLAG="--reset"
+          fi
+          python infrastructure/gcp/seed_firestore.py $RESET_FLAG
