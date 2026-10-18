@@ -102,5 +102,5 @@ export type RetailTwinClient = {
   /** `GET /stockout-risk`. Returns risk scores for all slots. */
   stockoutRisk: () => Promise<unknown>;
   /** `GET /checkouts`. */
-  checkouts: () => Promise<CheckoutResponse>;
+  checkouts: (checkoutId?: string) => Promise<CheckoutResponse>;
 };

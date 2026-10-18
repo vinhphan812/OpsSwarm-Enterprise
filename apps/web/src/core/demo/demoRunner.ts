@@ -161,7 +161,7 @@ export function createApiDemoRunner(
       let initialAttempt = 0;
       while (initialAttempt <= retryConfig.maxRetries) {
         try {
-          initialStatus = await client.flagshipStatus() as FlagshipStatusResponse;
+          initialStatus = await client.flagshipStatus() as unknown as FlagshipStatusResponse;
           break;
         } catch (error) {
           initialAttempt++;
@@ -252,7 +252,7 @@ export function createApiDemoRunner(
         let attempt = 0;
         while (attempt <= retryConfig.maxRetries) {
           try {
-            const status = await client.flagshipStatus() as FlagshipStatusResponse;
+            const status = await client.flagshipStatus() as unknown as FlagshipStatusResponse;
             return status;
           } catch (error) {
             attempt++;
