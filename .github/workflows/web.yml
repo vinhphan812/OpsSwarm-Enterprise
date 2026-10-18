@@ -225,6 +225,11 @@ jobs:
             head -1 | \
             sed 's/"url":"//;s/"$//')
 
+          # Fallback to known URL if extraction fails
+          if [ -z "${FRONTEND_URL}" ]; then
+            FRONTEND_URL="https://retailtwin-ai-511002.web.app"
+          fi
+
           # Extract channel and version
           CHANNEL=$(echo "${DEPLOY_OUTPUT}" | \
             grep -o '"channel":"[^"]*"' | \
