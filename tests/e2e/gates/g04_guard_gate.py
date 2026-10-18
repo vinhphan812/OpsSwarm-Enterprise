@@ -39,7 +39,6 @@ if __package__ in (None, ""):  # run as a script: make ``gates`` importable
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from gates.common import (
-    REPLENISH,
     SKU,
     STORE,
     GateSimulations,
@@ -55,8 +54,9 @@ from gates.common import (
 from retailtwin_api.agents.investigator.evidence import investigate
 from retailtwin_api.agents.observer.consumer import InvestigationStart
 from retailtwin_api.agents.orchestrator.replan import ReplanStatus, replan
+from retailtwin_api.agents.planner.plans import _llm_enabled as _planner_uses_llm
 from retailtwin_api.agents.planner.plans import plan
-from retailtwin_api.contracts import Decision
+from retailtwin_api.contracts import Decision, ReplenishShelf
 from retailtwin_api.decisions import InMemoryDecisionSource
 from retailtwin_api.guard.decision_context_guard import (
     DecisionContextGuard,
@@ -212,7 +212,22 @@ def _run(run_id: str) -> dict[str, Any]:
                 simulations.put(simulation_for(client, simulation_id, linked, run_id))
                 decisions.put(simulation_id, linked)
                 answer = approve(client, simulation_id, run_id)
-                approvals.append({"decision_id": decision.decision_id, "simulation_id": simulation_id, "response": answer})
+                approvals.append(
+                    {
+                        "decision_id": decision.decision_id,
+                        "simulation_id": simulation_id,
+                        "actions": [action.model_dump() for action in decision.proposed_actions],
+                        "replenished": sum(
+                            a.quantity
+                            for a in decision.proposed_actions
+                            if isinstance(a, ReplenishShelf) and a.sku == SKU
+                        ),
+                        "only_replenish": all(
+                            isinstance(a, ReplenishShelf) and a.sku == SKU for a in decision.proposed_actions
+                        ),
+                        "response": answer,
+                    }
+                )
                 if answer["verdict"] != "ALLOW":
                     raise RuntimeError(f"approve refused: {answer['reason_code']}")
 
@@ -268,14 +283,20 @@ def _run(run_id: str) -> dict[str, Any]:
             approved.get("verdict") == "ALLOW" and approved.get("status") == "committed",
             f"verdict={approved.get('verdict')} status={approved.get('status')} detail={approved.get('detail_code')}",
         )
+        # The expected change comes from the committed decision itself, so the
+        # check holds whichever planner (rules or PLANNER_USE_LLM) proposed it.
+        committed = approvals[-1] if approvals else {}
+        moved = committed.get("replenished", 0)
         check(
             checks,
             "live_twin_changed_only_by_the_new_decision",
-            final["shelf_quantity"] == at_n1["shelf_quantity"] + REPLENISH
-            and final["backroom_quantity"] == at_n1["backroom_quantity"] - REPLENISH
+            committed.get("only_replenish", False)
+            and moved >= 1
+            and final["shelf_quantity"] == at_n1["shelf_quantity"] + moved
+            and final["backroom_quantity"] == at_n1["backroom_quantity"] - moved
             and final["version"] == at_n1["version"] + 1
             and store_final["context_version"] != store_before["context_version"],
-            f"{SKU} shelf {at_n1['shelf_quantity']}->{final['shelf_quantity']}, backroom "
+            f"D2 replenishes {moved} of {SKU}; {SKU} shelf {at_n1['shelf_quantity']}->{final['shelf_quantity']}, backroom "
             f"{at_n1['backroom_quantity']}->{final['backroom_quantity']}, version {at_n1['version']}->{final['version']}, "
             f"store {store_before['context_version']}->{store_final['context_version']}",
         )
@@ -310,7 +331,8 @@ def _run(run_id: str) -> dict[str, Any]:
         "runtime": {
             "app": "retailtwin_api.main.create_app",
             "live_twin_backend": "memory (seeded from data/schemas/store-state.example.json)",
-            "provider": "FakeLlmProvider: scripted tool calls and plan JSON; tools execute against the Live Twin",
+            "provider": "FakeLlmProvider: scripted tool calls; tools execute against the Live Twin",
+            "planner": "rules" if not _planner_uses_llm() else "provider (PLANNER_USE_LLM)",
             "provider_calls": provider.call_count,
         },
         "checks": checks,
