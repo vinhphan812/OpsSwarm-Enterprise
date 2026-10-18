@@ -1,8 +1,10 @@
 import i18n from "@/i18n";
-import type { FlagshipStatus, HealthResponse, RetailTwinClient } from "@/types/api.type";
+import type { AgentEventsResponse, FlagshipStatus, HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { PromotionsSummary } from "@/types/promotion.type";
 import type { RevenueSummary } from "@/types/revenue.type";
+import type { AnomaliesResponse } from "@/types/anomaly.type";
+import type { CheckoutResponse } from "@/types/checkout.type";
 import type { CandidatesResponse, ReviewResult, Simulation, SimulationsResponse } from "@/types/simulation.type";
 
 export class ApiError extends Error {
@@ -68,6 +70,13 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       }),
+    agentEvents: (since?: string | null) =>
+      request<AgentEventsResponse>(
+        since ? `/agent/events?since=${encodeURIComponent(since)}` : "/agent/events"
+      ),
+    anomalies: () => request<AnomaliesResponse>("/anomalies"),
+    stockoutRisk: () => request<unknown>("/stockout-risk"),
+    checkouts: (checkoutId?: string) => request<CheckoutResponse>(checkoutId ? `/checkouts/${checkoutId}` : "/checkouts"),
   };
 }
 
