@@ -349,14 +349,15 @@ def _wire_investigator_read_ports(registry: ToolRegistry, *, settings: Settings)
     store = _open_store(settings)
 
     def _shelf_state(args: Any) -> Mapping[str, Any]:
+        shelf_id = args.get("shelf_id") if isinstance(args, Mapping) else getattr(args, "shelf_id", None)
         products = [
             item.model_dump()
             for item in store.view().products
-            if item.shelf_id == args.shelf_id
+            if item.shelf_id == shelf_id
         ]
         if not products:
-            raise ToolFailure(NOT_FOUND, f"Shelf {args.shelf_id} is not in the store.")
-        return {"shelf_id": args.shelf_id, "products": products}
+            raise ToolFailure(NOT_FOUND, f"Shelf {shelf_id} is not in the store.")
+        return {"shelf_id": shelf_id, "products": products}
 
     # Re-register get_shelf_state with a Firestore-friendly timeout.
     existing_shelf = registry._tools.get("get_shelf_state")  # type: ignore[attr-defined]
@@ -372,9 +373,10 @@ def _wire_investigator_read_ports(registry: ToolRegistry, *, settings: Settings)
         )
 
     def _forecast_demand(args: Any) -> Mapping[str, Any]:
+        sku = args.get("sku") if isinstance(args, Mapping) else getattr(args, "sku", None)
         return {
             "version": _FORECAST_FORMULA_ID,
-            "sku": args.sku,
+            "sku": sku,
             "forecast_units": "0",
             "formula_id": _FORECAST_FORMULA_ID,
             "horizon_hours": _FORECAST_HORIZON_HOURS,
@@ -384,9 +386,10 @@ def _wire_investigator_read_ports(registry: ToolRegistry, *, settings: Settings)
     bind_read_port(registry, "forecast_demand", _forecast_demand)
 
     def _promotions(args: Any) -> Mapping[str, Any]:
+        sku = args.get("sku") if isinstance(args, Mapping) else getattr(args, "sku", None)
         return {
             "version": "0",
-            "sku": args.sku,
+            "sku": sku,
             "observed_at": datetime.now(tz=timezone.utc).isoformat(),
             "promotions": [],
         }
