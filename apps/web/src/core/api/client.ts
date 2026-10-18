@@ -1,4 +1,5 @@
 import i18n from "@/i18n";
+import { isDemoMode } from "@/core/twin/demoMode";
 import type { AgentEventsResponse, FlagshipStatusResponse, HealthResponse, RetailTwinClient } from "@/types/api.type";
 import type { ProductInventory, StoreResponse } from "@/types/twin.type";
 import type { PromotionsSummary } from "@/types/promotion.type";
@@ -30,6 +31,10 @@ export function createClient(baseUrl: string, fetchImpl?: typeof fetch): RetailT
   const base = baseUrl.replace(/\/$/, "");
 
   async function request<T>(path: string, init?: RequestInit): Promise<T> {
+    // The demo is synthetic: whatever control a click reaches, it never writes to apps/api.
+    if (init?.method && init.method !== "GET" && isDemoMode()) {
+      throw new ApiError(0, "demo_read_only", i18n.t("errors.demoReadOnly"));
+    }
     const doFetch = fetchImpl ?? fetch;
     let response: Response;
     try {

@@ -64,8 +64,168 @@ body {
 /* The 3D view fills the window; the Agent Activity panel floats over its right side. */
 .app {
   position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100dvh;
   overflow: hidden;
+}
+
+/* The 3D view and the side panel, between the header and the footer: the overlays and the
+   panel are placed inside it, so neither bar covers them. */
+.twin-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.twin-header,
+.twin-footer {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 16px;
+  background: var(--color-panel);
+  border-color: var(--color-line);
+  white-space: nowrap;
+}
+
+.twin-header {
+  height: 40px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.twin-header-brand,
+.twin-header-status,
+.twin-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.twin-header-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.twin-header-tagline {
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--color-ink-muted);
+  text-overflow: ellipsis;
+}
+
+.twin-header-tagline::before {
+  content: "·";
+  margin-right: 10px;
+  color: var(--color-ink-faint);
+}
+
+.twin-header-store {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink-soft);
+}
+
+.twin-header-mode,
+.twin-header-source {
+  padding: 1px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.twin-header-mode[data-mode="live"] {
+  color: var(--color-good);
+}
+
+.twin-header-mode[data-mode="simulation"] {
+  color: var(--color-simulation);
+}
+
+.twin-header-source {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Demo vs Live data: amber dashed for the synthetic store, solid accent for apps/api. */
+.twin-header-source[data-source="demo"] {
+  color: var(--color-warning);
+  border-style: dashed;
+}
+
+.twin-header-source[data-source="live"] {
+  color: var(--color-accent);
+}
+
+.twin-header-switch {
+  font-size: 12px;
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* The demo notice under the header: amber, full width, so the synthetic store is never taken
+   for live store telemetry. */
+.twin-demo-banner {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 3px 16px;
+  font-size: 12px;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-panel));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  white-space: nowrap;
+}
+
+.twin-demo-banner-tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--color-canvas);
+  background: var(--color-warning);
+}
+
+.twin-demo-banner-text {
+  overflow: hidden;
+  color: var(--color-ink);
+  text-overflow: ellipsis;
+}
+
+.twin-footer {
+  height: 24px;
+  border-top: 1px solid var(--color-line);
+  font-size: 11px;
+  color: var(--color-ink-faint);
+}
+
+.twin-footer-stack {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.twin-footer-meta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .twin-header-tagline,
+  .twin-header-store {
+    display: none;
+  }
 }
 
 .viewport {

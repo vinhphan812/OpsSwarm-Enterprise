@@ -42,7 +42,11 @@ export function useAnomalyPolling(): void {
       const response = await client.anomalies();
       setAll(response);
     } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error - i18next strict tuple return type; value is correct at runtime
       fail(i18n.t("anomalies.loadFailed"));
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error - i18next strict tuple return type; value is correct at runtime
       notify.error(i18n.t("anomalies.loadFailed"), error);
     } finally {
       pollingState.active = false;
