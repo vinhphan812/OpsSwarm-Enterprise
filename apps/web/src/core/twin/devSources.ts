@@ -94,6 +94,11 @@ export function pickSimulationSource(): SimulationSource | null {
   return devTwinMode() ? null : createSimulationSource();
 }
 
+/** True when the twin is reading apps/api (not a local dev twin). */
+export function isApiTwin(): boolean {
+  return devTwinMode() === "";
+}
+
 /**
  * Where the banner's Accept and Reject go: the review routes of apps/api, or the memory
  * twin's guarded commit under `?twin=memory|demo`. Other dev twins open no simulation, so
