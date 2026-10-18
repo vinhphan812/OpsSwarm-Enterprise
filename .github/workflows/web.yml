@@ -126,12 +126,10 @@ jobs:
           echo "PASS: No unexpected API origins found"
 
       - name: Run tests
-        run: npm test -- --passWithNoTests --exclude='**/TwinChrome.test.tsx' --exclude='**/demoRunner.test.ts' --exclude='**/AiImpact.test.tsx'
-        continue-on-error: true
+        run: npm test
 
       - name: Run tests with coverage
-        run: npm run test:coverage -- --passWithNoTests --exclude='**/TwinChrome.test.tsx' --exclude='**/demoRunner.test.ts' --exclude='**/AiImpact.test.tsx'
-        continue-on-error: true
+        run: npm run test:coverage
 
       - name: Upload web coverage report
         uses: actions/upload-artifact@v4
@@ -194,6 +192,10 @@ jobs:
           name: web-dist
           path: apps/web/dist/
 
+      - name: Install firebase-tools (cached)
+        working-directory: apps/web
+        run: npm ci
+
       - name: Deploy to Firebase Hosting
         id: deploy
         env:
@@ -201,8 +203,9 @@ jobs:
         run: |
           # Deploy using firebase-tools CLI with an access token derived from WIF.
           # The site is read from firebase.json (hosting.site), not from a CLI flag.
+          # firebase-tools is installed locally to avoid npx download latency/failures.
           set +e
-          DEPLOY_OUTPUT=$(npx firebase-tools@14.9.0 deploy \
+          DEPLOY_OUTPUT=$(./apps/web/node_modules/.bin/firebase-tools deploy \
             --only hosting \
             --project retailtwin-ai-511002 \
             --token "${GOOGLE_OAUTH_ACCESS_TOKEN}" \
