@@ -188,8 +188,8 @@ def test_publish_is_idempotent_against_duplicate_event_id_per_tick() -> None:
         pipe = _RecordingPipe()
         scheduler = DemandSurgeScheduler(pipe=pipe, interval_seconds=0.01)
         scheduler.start()
-        # Give 15× the interval to reliably fire 2+ ticks on slow CI runners.
-        await asyncio.sleep(0.15)
+        # Give 20× the interval to reliably fire 2+ ticks on slow CI runners.
+        await asyncio.sleep(0.20)
         await scheduler.stop()
         ids = [event.event_id for event in pipe.events]
         assert len(ids) >= 2
