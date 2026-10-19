@@ -15,8 +15,9 @@ export default defineConfig({
     // jsdom environment setup is slow on self-hosted runners; give workers
     // extra time to teardown cleanly before Vitest kills them.
     poolOptions: { forks: { teardownTimeout: 120_000 } },
-    // Exclude pre-existing failing tests from execution
+    // Exclude pre-existing failing tests and all node_modules from execution
     exclude: [
+      "**/node_modules/**",
       "**/LensSwitcher.test.tsx",
       "**/AgentActivityPanel.test.tsx",
       "**/demoRunner.test.ts",

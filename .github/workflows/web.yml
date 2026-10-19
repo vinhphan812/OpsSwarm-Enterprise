@@ -126,11 +126,11 @@ jobs:
           echo "PASS: No unexpected API origins found"
 
       - name: Run tests
-        run: npm test -- --passWithNoTests --exclude='**/node_modules/**' --exclude='**/TwinChrome.test.tsx' --exclude='**/demoRunner.test.ts' --exclude='**/AiImpact.test.tsx'
+        run: npm test -- --passWithNoTests
         continue-on-error: true
 
       - name: Run tests with coverage
-        run: npm run test:coverage -- --passWithNoTests --exclude='**/node_modules/**' --exclude='**/TwinChrome.test.tsx' --exclude='**/demoRunner.test.ts' --exclude='**/AiImpact.test.tsx'
+        run: npm run test:coverage -- --passWithNoTests
         continue-on-error: true
 
       - name: Upload web coverage report
