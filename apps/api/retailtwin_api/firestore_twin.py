@@ -415,12 +415,13 @@ def _commit_update_time(body: str) -> str:
 def _parse_inventory_doc(doc: _FirestoreDocument) -> InventoryDocument:
     fields = doc.fields
     # store_id is optional - extract from document path if missing
+    # Path: /projects/.../stores/store-001/inventory/P001
+    # parts[-3] = store_id, parts[-2] = 'inventory', parts[-1] = SKU
     store_id = _opt_string_field(fields, "store_id")
     if not store_id:
-        # Extract from path like /stores/store-001/inventory/P001
         parts = doc.name.split("/")
-        if len(parts) >= 5 and parts[-3] == "inventory":
-            store_id = parts[-4].split("/")[-1]
+        if len(parts) >= 3 and parts[-2] == "inventory":
+            store_id = parts[-3]
         else:
             store_id = "store-001"  # fallback
 
