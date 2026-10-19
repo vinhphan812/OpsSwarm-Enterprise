@@ -36,6 +36,13 @@ function createCanvasMock() {
 }
 
 import "./src/i18n";
+import i18n from "./src/i18n";
+import { beforeAll } from "vitest";
+
+// Wait for i18n to be initialized before tests run
+beforeAll(async () => {
+  await i18n.init();
+}, 10000);
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 

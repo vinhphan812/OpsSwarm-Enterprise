@@ -121,18 +121,24 @@ export type ErrorDetail = {
 };
 
 export async function toApiErrorExported(response: Response): Promise<ApiError> {
-  let body: { message?: string; code?: string; details?: ErrorDetail[] } = {};
+  let payload: unknown = null;
   try {
-    body = await response.json();
+    payload = await response.json();
   } catch {
-    // ignore parse errors
+    payload = null;
   }
+  const envelope = payload as ErrorEnvelope | null;
+  const code = typeof envelope?.error?.code === "string" ? envelope.error.code : "request_failed";
+  const message =
+    typeof envelope?.error?.message === "string"
+      ? envelope.error.message
+      : `HTTP ${response.status}`;
   return new ApiError(
     response.status,
-    body.code ?? "request_failed",
-    body.message ?? `HTTP ${response.status}`,
+    code,
+    message,
     null,
-    body.details ?? [],
+    envelope?.error && "details" in envelope.error ? (envelope.error.details as ErrorDetail[]) ?? [] : [],
   );
 }
 
