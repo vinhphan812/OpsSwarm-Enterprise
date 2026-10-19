@@ -849,27 +849,30 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
     def _get_token(self) -> str:
         """Access token from Application Default Credentials (the Cloud Run service identity).
 
-        Credentials are refreshed when they expire. An injected ``runner`` keeps the
-        local ``gcloud`` path for tooling; the service never needs a ``gcloud`` executable.
+        Credentials are refreshed when they expire.
         """
+        import google.auth.transport.requests as google_requests
+
         with self._token_lock:
-            if self._runner is not None:
-                if self._token is None:
-                    self._token = self._runner.run(["gcloud", "auth", "print-access-token", "--quiet"]).strip()
-                return self._token
             try:
                 if self._credentials is None:
                     import google.auth
 
                     self._credentials, _ = google.auth.default(scopes=[FIRESTORE_SCOPE])
                 if not self._credentials.valid:
-                    self._credentials.refresh(_UrllibAuthRequest())
+                    request = google_requests.Request()
+                    self._credentials.refresh(request)
                 token = self._credentials.token
+                if not token:
+                    raise TwinUnavailable("Could not obtain an access token.")
+                return str(token)
+            except TwinUnavailable:
+                raise
             except Exception as exc:
+                import traceback
                 raise TwinUnavailable(
-                    f"Application Default Credentials are not available: {type(exc).__name__}"
-                ) from None
-            return str(token or "")
+                    f"Application Default Credentials are not available: {type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                ) from exc
 
 
 class _UrllibAuthResponse:
