@@ -557,42 +557,54 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
     def list_inventory(self, store_id: str) -> Sequence[InventoryDocument]:
         # Use the subcollection path: /stores/{store_id}/inventory
         # This is a real Firestore collection under the store document.
-        url = (
-            f"{_database_root(self._config.project)}"
-            f"/stores/{store_id}/inventory"
-        )
-        response = self._call("GET", url, None)
-        if response.status == 404:
-            return []
-        if response.status != 200:
-            raise _http_error("list_inventory", response.status, response.body)
-        try:
-            payload = json.loads(response.body)
-        except json.JSONDecodeError as exc:
-            raise TwinUnavailable("Inventory list response is not JSON.") from exc
-        if not isinstance(payload, dict):
-            raise TwinUnavailable("Inventory list response is malformed.")
-        fields_map = payload.get("fields", {})
-        if not isinstance(fields_map, dict):
-            return []
-        # A collection group response with documents array
-        documents = payload.get("documents", [])
         results: list[InventoryDocument] = []
-        for doc_data in documents:
-            if not isinstance(doc_data, dict):
-                continue
-            name = doc_data.get("name", "")
-            fields = doc_data.get("fields", {})
-            if not isinstance(fields, dict):
-                continue
-            doc = _FirestoreDocument(
-                name=name,
-                fields={k: _FirestoreField(**v) for k, v in fields.items()},
+        page_token: str | None = None
+
+        while True:
+            url = (
+                f"{_database_root(self._config.project)}"
+                f"/stores/{store_id}/inventory"
             )
+            if page_token:
+                url += f"?pageToken={page_token}&pageSize=500"
+
+            response = self._call("GET", url, None)
+            if response.status == 404:
+                return []
+            if response.status != 200:
+                raise _http_error("list_inventory", response.status, response.body)
+
             try:
-                results.append(_parse_inventory_doc(doc))
-            except TwinUnavailable:
-                continue  # Skip malformed documents
+                payload = json.loads(response.body)
+            except json.JSONDecodeError as exc:
+                raise TwinUnavailable("Inventory list response is not JSON.") from exc
+
+            if not isinstance(payload, dict):
+                raise TwinUnavailable("Inventory list response is malformed.")
+
+            # A collection group response with documents array
+            documents = payload.get("documents", [])
+            for doc_data in documents:
+                if not isinstance(doc_data, dict):
+                    continue
+                name = doc_data.get("name", "")
+                fields = doc_data.get("fields", {})
+                if not isinstance(fields, dict):
+                    continue
+                doc = _FirestoreDocument(
+                    name=name,
+                    fields={k: _FirestoreField(**v) for k, v in fields.items()},
+                )
+                try:
+                    results.append(_parse_inventory_doc(doc))
+                except TwinUnavailable:
+                    continue  # Skip malformed documents
+
+            # Check for next page
+            page_token = payload.get("nextPageToken")
+            if not page_token:
+                break
+
         return results
 
     def get_inventory(self, store_id: str, sku: str) -> InventoryDocument | None:
