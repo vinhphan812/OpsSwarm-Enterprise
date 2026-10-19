@@ -25,6 +25,7 @@ export default defineConfig({
       "**/agentFeed.test.tsx",
       "**/conversation.test.ts",
       "**/demoAssistant.test.ts",
+      "**/moveCue.test.tsx",
     ],
     coverage: {
       provider: 'v8',
