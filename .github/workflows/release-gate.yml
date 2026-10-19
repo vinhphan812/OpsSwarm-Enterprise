@@ -543,7 +543,7 @@ jobs:
     env:
       BACKEND_URL: ${{ needs.metadata.outputs.backend_url }}
       SMOKE_RUN_ID: ${{ needs.metadata.outputs.smoke_run_id }}
-      STORE_ID: ${{ env.STORE_ID }}
+      STORE_ID: store-001
       GCP_PROJECT: ${{ env.GCP_PROJECT }}
       CLOUD_RUN_SERVICE: ${{ env.CLOUD_RUN_SERVICE }}
       GCP_REGION: ${{ env.GCP_REGION }}
@@ -598,7 +598,7 @@ jobs:
             exit 1
           fi
 
-          if ! echo "${BODY}" | grep -q "\"store_id\":\"${{ env.STORE_ID }}\""; then
+          if ! echo "${BODY}" | grep -q "\"store_id\":\"store-001\""; then
             echo "{\"stage\":\"${{ env.STAGE }}\",\"status\":\"FAIL\",\"reason\":\"store_id mismatch\"}" >> $GITHUB_STEP_SUMMARY
             echo "::error::Wrong store returned"
             exit 1
@@ -616,7 +616,7 @@ jobs:
         run: |
           set -e
           echo "::group::Direct Firestore verification"
-          DOC_PATH="projects/${{ env.GCP_PROJECT }}/databases/(default)/documents/stores/${{ env.STORE_ID }}"
+          DOC_PATH="projects/${{ env.GCP_PROJECT }}/databases/(default)/documents/stores/store-001"
           ACCESS_TOKEN=$(gcloud auth print-access-token)
           HTTP_CODE=$(curl -sS -o /tmp/firestore_doc.json \
             -w "%{http_code}" \
@@ -814,7 +814,7 @@ jobs:
             "event_id": "${{ env.EVENT_ID }}",
             "correlation_id": "${CORRELATION_ID}",
             "event_type": "sale.completed",
-            "store_id": "${{ env.STORE_ID }}",
+            "store_id": "store-001",
             "sku": "P001",
             "quantity": 1,
             "occurred_at": "${NOW}",
@@ -828,7 +828,7 @@ jobs:
           gcloud pubsub topics publish "${{ env.PUBSUB_TOPIC }}" \
             --project="${{ env.GCP_PROJECT }}" \
             --message="${PAYLOAD}" \
-            --attribute=event_id="${{ env.EVENT_ID }}",correlation_id="${CORRELATION_ID}",event_type="sale.completed",store_id="${{ env.STORE_ID }}" \
+            --attribute=event_id="${{ env.EVENT_ID }}",correlation_id="${CORRELATION_ID}",event_type="sale.completed",store_id="store-001" \
             --ordering-key="${{ env.EVENT_ID }}" 2>&1
           echo "::endgroup::"
           echo "{\"stage\":\"${{ env.STAGE }}\",\"status\":\"PASS\",\"reason\":\"published event_id=${{ env.EVENT_ID }}\"}" >> $GITHUB_STEP_SUMMARY
@@ -884,7 +884,7 @@ jobs:
               -H "Content-Type: application/json" \
               -H "X-Correlation-ID: ${{ env.SMOKE_RUN_ID }}" \
               -X POST \
-              -d "{\"event_id\":\"${{ env.SMOKE_RUN_ID }}-direct\",\"correlation_id\":\"${{ env.SMOKE_RUN_ID }}\",\"event_type\":\"sale.completed\",\"store_id\":\"${{ env.STORE_ID }}\",\"sku\":\"P001\",\"quantity\":1,\"occurred_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
+              -d "{\"event_id\":\"${{ env.SMOKE_RUN_ID }}-direct\",\"correlation_id\":\"${{ env.SMOKE_RUN_ID }}\",\"event_type\":\"sale.completed\",\"store_id\":\"store-001\",\"sku\":\"P001\",\"quantity\":1,\"occurred_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
               "${{ env.BACKEND_URL }}/events")
             echo "Direct POST: $(echo "${DIRECT}" | head -c 1000)"
             for _ in 1 2 3 4 5 6 7 8 9 10; do
