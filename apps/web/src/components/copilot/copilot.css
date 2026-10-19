@@ -1,0 +1,850 @@
+/* ---- Store Copilot (#332): a chat drawer over the 3D view, left of the Agent Activity panel ---- */
+
+/* Above the overlays and, on narrow screens, the panel's bottom sheet. Width and the gap for the
+   panel are set inline (COPILOT_WIDTH, PANEL_WIDTH). */
+.copilot {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: min(640px, calc(100% - 76px));
+  max-width: calc(100% - 24px);
+  overflow: hidden;
+  font-size: 13px;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-panel) 97%, transparent);
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(14px);
+}
+
+/* Full screen on narrow screens, over the panel's bottom sheet. */
+@media (max-width: 800px) {
+  .copilot {
+    top: 12px;
+    left: 12px;
+    height: auto;
+    width: auto !important;
+    margin-right: 0 !important;
+  }
+}
+
+/* ---- Header: who answers, and how ---- */
+
+.copilot-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 10px 12px 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--color-simulation) 9%, transparent), transparent);
+  border-bottom: 1px solid var(--color-line);
+}
+
+/* The Copilot's mark: the header, the avatar beside its bubbles, and the welcome. */
+.copilot-mark,
+.copilot-avatar,
+.copilot-welcome-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  color: #ffffff;
+  background: linear-gradient(
+    135deg,
+    var(--color-simulation),
+    color-mix(in srgb, var(--color-simulation) 40%, var(--color-card))
+  );
+  border-radius: 50%;
+}
+
+.copilot-mark {
+  width: 32px;
+  height: 32px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--color-simulation) 35%, transparent);
+}
+
+.copilot-heading {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.copilot-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.copilot-title-row h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.copilot-subtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-ink-muted);
+}
+
+/* Who answers: amber dashed for the demo script, accent for apps/api, violet once Gemini has. */
+.copilot-source {
+  display: inline-block;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  color: var(--color-ink-soft);
+  white-space: nowrap;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+}
+
+.copilot-source[data-source="demo_script"],
+.copilot-source[data-source="fixture"] {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--color-warning) 55%, transparent);
+}
+
+.copilot-source[data-source="live"] {
+  color: var(--color-accent);
+}
+
+.copilot-source[data-source="vertex_gemini"] {
+  color: var(--color-simulation);
+  background: color-mix(in srgb, var(--color-simulation) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-simulation) 55%, transparent);
+}
+
+/* ---- The conversation ---- */
+
+.copilot-messages {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 16px 14px;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+/* An empty conversation: the welcome sits in the middle, not at the top of a void. */
+.copilot-messages[data-empty] {
+  justify-content: center;
+}
+
+.copilot-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.copilot-row[data-kind="user"] {
+  justify-content: flex-end;
+  padding-left: 40px;
+}
+
+.copilot-avatar {
+  width: 26px;
+  height: 26px;
+  margin-top: 2px;
+}
+
+.copilot-avatar[data-alert] {
+  color: var(--color-alert);
+  background: color-mix(in srgb, var(--color-alert) 18%, var(--color-card));
+}
+
+.copilot-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.copilot-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 4px 14px 14px 14px;
+}
+
+.copilot-row[data-kind="user"] .copilot-bubble {
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--color-simulation) 24%, var(--color-card));
+  border-color: color-mix(in srgb, var(--color-simulation) 38%, transparent);
+  border-radius: 14px 14px 4px 14px;
+}
+
+.copilot-row[data-status="refused"] .copilot-bubble,
+.copilot-row[data-status="unsupported"] .copilot-bubble {
+  border-color: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
+
+.copilot-row[data-kind="error"] .copilot-bubble {
+  border-color: color-mix(in srgb, var(--color-alert) 40%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-alert);
+}
+
+.copilot-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Refused, can't do that, no reply: a pill, then why. */
+.copilot-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+.copilot-outcome-pill {
+  padding: 1px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-canvas);
+  background: var(--color-warning);
+  border-radius: 999px;
+}
+
+.copilot-row[data-kind="error"] .copilot-outcome-pill {
+  background: var(--color-alert);
+}
+
+.copilot-error-detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.copilot-error-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under a bubble: who wrote it, when, on which Live version. */
+.copilot-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  margin: 0 0 0 2px;
+  font-size: 11px;
+  color: var(--color-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot-meta-source[data-source="demo_script"] {
+  color: color-mix(in srgb, var(--color-warning) 75%, var(--color-ink-faint));
+}
+
+.copilot-meta-source[data-source="vertex_gemini"] {
+  color: var(--color-simulation);
+}
+
+.copilot-meta-id {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The products a reply names, as pills that select them in the store. */
+.copilot-products {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.copilot-products .activity-sku {
+  margin-left: 0;
+  padding: 1px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  text-decoration: none;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+}
+
+.copilot-products .activity-sku:hover,
+.copilot-products .activity-sku[aria-pressed="true"] {
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-simulation) 14%, transparent);
+  border-color: color-mix(in srgb, var(--color-simulation) 55%, transparent);
+}
+
+/* Evidence, tools, trace: small toggles in a row; an open one takes the whole width. */
+.copilot-details-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.copilot-details {
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.copilot-details[open] {
+  flex-basis: 100%;
+}
+
+.copilot-details summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  font-size: 11.5px;
+  color: var(--color-ink-muted);
+  list-style: none;
+  cursor: pointer;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.copilot-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.copilot-details summary::before {
+  content: "";
+  width: 0;
+  height: 0;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 5px solid currentColor;
+  transition: transform 0.15s;
+}
+
+.copilot-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.copilot-details summary:hover,
+.copilot-details[open] summary {
+  color: var(--color-ink);
+  border-color: var(--color-line-strong);
+}
+
+.copilot-details ul {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding: 9px 10px;
+  list-style: none;
+  background: color-mix(in srgb, var(--color-canvas) 55%, transparent);
+  border-radius: 10px;
+}
+
+.copilot-details li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.copilot-details-label {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.copilot-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  width: 100%;
+  font-size: 11px;
+  color: var(--color-ink-faint);
+}
+
+.copilot-details code,
+.copilot-tool code {
+  font-size: 11px;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+
+.copilot-tool[data-ok="false"] code {
+  color: var(--color-alert);
+}
+
+/* Retry under a failure. */
+.copilot-retry {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.copilot-retry:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-simulation) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-simulation) 55%, transparent);
+}
+
+.copilot-retry:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Three dots while a reply is on its way. */
+.copilot-typing {
+  flex-direction: row;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--color-ink-muted);
+}
+
+.copilot-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.copilot-dots i {
+  width: 5px;
+  height: 5px;
+  background: var(--color-simulation);
+  border-radius: 50%;
+  animation: copilot-bounce 1.2s infinite ease-in-out;
+}
+
+.copilot-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.copilot-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes copilot-bounce {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* ---- Welcome: what the Copilot is for, and prompts that show it ---- */
+
+.copilot-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.copilot-welcome-mark {
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--color-simulation) 35%, transparent);
+}
+
+.copilot-welcome-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.copilot-welcome-text {
+  max-width: 290px;
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+.copilot-samples {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.copilot-sample {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  font: inherit;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+  background: var(--color-card);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.copilot-sample:hover,
+.copilot-sample:focus-visible {
+  background: color-mix(in srgb, var(--color-simulation) 8%, var(--color-card));
+  border-color: color-mix(in srgb, var(--color-simulation) 55%, transparent);
+}
+
+.copilot-sample:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-simulation) 70%, transparent);
+  outline-offset: 1px;
+}
+
+.copilot-sample-icon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--color-simulation);
+  background: color-mix(in srgb, var(--color-simulation) 14%, transparent);
+  border-radius: 9px;
+}
+
+.copilot-sample-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.copilot-sample-text {
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.3;
+}
+
+.copilot-sample-hint {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--color-ink-muted);
+}
+
+.copilot-sample-go {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--color-ink-faint);
+  transform: rotate(-90deg);
+  transition: transform 0.15s, color 0.15s;
+}
+
+.copilot-sample:hover .copilot-sample-go,
+.copilot-sample:focus-visible .copilot-sample-go {
+  color: var(--color-simulation);
+  transform: translateX(2px) rotate(-90deg);
+}
+
+/* ---- The plan card: violet, as the Simulation view is ---- */
+
+.copilot-proposal {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 11px;
+  background: color-mix(in srgb, var(--color-simulation) 7%, var(--color-canvas));
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 40%, transparent);
+  border-radius: 12px;
+}
+
+.copilot-proposal-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  color: var(--color-simulation);
+}
+
+.copilot-proposal-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.copilot-proposal-run {
+  font-size: 11px;
+  color: var(--color-ink-muted);
+}
+
+.copilot-proposal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copilot-proposal-actions button {
+  padding: 2px 0;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-decoration-color: var(--color-line-strong);
+  text-underline-offset: 3px;
+}
+
+.copilot-proposal-actions button:hover:not(:disabled) {
+  text-decoration-color: var(--color-simulation);
+}
+
+.copilot-proposal-actions button:disabled {
+  color: var(--color-ink-muted);
+  text-decoration: none;
+  cursor: default;
+}
+
+.copilot-proposal-kpis table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.copilot-proposal-kpis tr + tr {
+  border-top: 1px solid color-mix(in srgb, var(--color-line) 60%, transparent);
+}
+
+.copilot-proposal-kpis th {
+  padding: 3px 10px 3px 0;
+  font-weight: 500;
+  text-align: left;
+  color: var(--color-ink-soft);
+}
+
+.copilot-proposal-kpis td {
+  padding: 3px 4px;
+  color: var(--color-ink-muted);
+}
+
+.copilot-proposal-kpis .copilot-proposal-kpi-value {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.copilot-proposal-kpis .candidate-cell-delta {
+  display: table-cell;
+  font-size: 11px;
+  text-align: right;
+}
+
+.copilot-proposal-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  list-style: none;
+}
+
+.copilot-proposal-checks li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-ink-soft);
+}
+
+.copilot-proposal-checks li[data-passed="true"] svg {
+  color: var(--color-good);
+}
+
+.copilot-proposal-checks li[data-passed="false"] svg {
+  color: var(--color-warning);
+}
+
+.copilot-proposal-guard {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-ink-soft);
+}
+
+.copilot-proposal-stale {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
+.copilot-proposal-muted {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-ink-muted);
+}
+
+/* ---- Composer: one rounded field, the send button inside it ---- */
+
+.copilot-compose {
+  padding: 10px 12px 10px;
+  background: color-mix(in srgb, var(--color-panel) 92%, transparent);
+  border-top: 1px solid var(--color-line);
+}
+
+.copilot-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 5px 5px 5px 12px;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.copilot-composer:focus-within {
+  border-color: color-mix(in srgb, var(--color-simulation) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-simulation) 18%, transparent);
+}
+
+.copilot-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 120px;
+  margin: 0;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-ink);
+  resize: none;
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.copilot-input::placeholder {
+  color: var(--color-ink-faint);
+}
+
+.copilot-send {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: #ffffff;
+  cursor: pointer;
+  background: var(--color-simulation);
+  border: 0;
+  border-radius: 10px;
+  transition: opacity 0.15s, filter 0.15s, transform 0.1s;
+}
+
+.copilot-send:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.copilot-send:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.copilot-send:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.copilot-hint {
+  margin: 6px 2px 0;
+  font-size: 10.5px;
+  color: var(--color-ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copilot-dots i {
+    animation: none;
+  }
+
+  .copilot-sample-go,
+  .copilot-details summary::before {
+    transition: none;
+  }
+}
+
+/* The header's Copilot button. */
+.twin-header-copilot {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-simulation) 18%, var(--color-card));
+  border: 1px solid color-mix(in srgb, var(--color-simulation) 45%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.twin-header-copilot:hover,
+.twin-header-copilot[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--color-simulation) 30%, var(--color-card));
+}

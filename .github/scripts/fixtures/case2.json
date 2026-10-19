@@ -1,0 +1,1 @@
+{"Results": [{"Target": "app/lib.so", "Vulnerabilities": [{"VulnerabilityID": "CVE-2021-99999", "PkgName": "libfoo", "InstalledVersion": "1.0.0", "Severity": "HIGH", "Status": "fixed", "FixedVersion": "1.0.3"}]}]}

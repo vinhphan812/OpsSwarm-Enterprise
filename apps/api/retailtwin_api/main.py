@@ -244,6 +244,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "is_production": resolved.is_production,
             "store_id": resolved.store_id,
             "fixture_loaded": store.loaded,
+            "store_error": getattr(store, "error", None),
             "fixture_path": str(resolved.store_fixture_path),
             "live_twin_backend": resolved.live_twin_backend,
             "flagship_wired": app.state.flagship_controller.is_configured

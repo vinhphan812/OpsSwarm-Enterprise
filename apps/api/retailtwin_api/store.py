@@ -126,10 +126,14 @@ class LiveTwinStore:
             self._check()
 
     def _check(self) -> None:
+        import logging
+        logger = logging.getLogger(__name__)
         try:
             found = self.twin.get_store(self.store_id) is not None
+            logger.info(f"LiveTwinStore._check: store_id={self.store_id}, found={found}")
         except Exception as exc:
-            self.error = f"Live Twin is not available: {type(exc).__name__}"
+            logger.error(f"LiveTwinStore._check failed: {type(exc).__name__}: {exc}", exc_info=True)
+            self.error = f"Live Twin is not available: {type(exc).__name__}: {exc}"
             return
         self.loaded = found
         self.error = None if found else f"Store {self.store_id!r} is not in the Live Twin."

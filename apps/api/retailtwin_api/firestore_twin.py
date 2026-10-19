@@ -562,8 +562,16 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
     # ------------------------------------------------------------------
 
     def get_store(self, store_id: str) -> StoreDocument | None:
-        read = self._read_document(_doc_name(self._config, COLLECTION_STORE, store_id), "get_store")
-        return _parse_store_doc(read[0]) if read is not None else None
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"FirestoreLiveTwinRepository.get_store: store_id={store_id}")
+        try:
+            read = self._read_document(_doc_name(self._config, COLLECTION_STORE, store_id), "get_store")
+            logger.info(f"FirestoreLiveTwinRepository.get_store: read={read is not None}")
+            return _parse_store_doc(read[0]) if read is not None else None
+        except Exception as e:
+            logger.error(f"FirestoreLiveTwinRepository.get_store failed: {type(e).__name__}: {e}", exc_info=True)
+            raise
 
     def list_inventory(self, store_id: str) -> Sequence[InventoryDocument]:
         # Use the subcollection path: /stores/{store_id}/inventory

@@ -231,32 +231,13 @@ export function createApiDemoRunner(
       }
       if (!initialStatus) throw new Error("Failed to get initial status");
 
-      // Consume backend's idempotent start contract
-      // Check server state (status field) for coordinated retry handling
-      if (initialStatus.status === "STARTING") {
-        // Server is starting with retry - wait for it to complete
-        // Use timeout aligned with backend's max retry time (3 attempts * 4s = ~12s max)
-        const serverReadyStatus = await waitForServerReady(
-          client,
-          retryConfig,
-          timeoutConfig.identificationTimeoutMs,
-        );
-        if (serverReadyStatus.status === "ERROR") {
-          throw new Error(serverReadyStatus.error ?? "Server failed to start");
-        }
-        // Use the resolved status
-        initialStatus = serverReadyStatus;
-      }
-
-      const joined = initialStatus.phase === "RUNNING" && initialStatus.correlation_id ? initialStatus.correlation_id : null;
-      if (!joined) await client.flagshipReset();
-      const ours = joined ?? correlationIdOf();
+      // Set up error handling infrastructure FIRST so we can properly handle errors
       let identifiedYet = false;
       let feedServed = false;
       let stopped = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       /** How `POST /flagship/start` answered, once it has; a joined run sends none. */
-      let answer: { ok: true } | { ok: false; error: unknown } | null = joined ? { ok: true } : null;
+      let answer: { ok: true } | { ok: false; error: unknown } | null = null;
       /** Track when start identification times out. */
       let identificationTimeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -281,6 +262,34 @@ export function createApiDemoRunner(
           ));
         }
       }, timeoutConfig.identificationTimeoutMs);
+
+      // Consume backend's idempotent start contract
+      // Check server state (status field) for coordinated retry handling
+      // Now identified is set up, so errors can be properly handled
+      if (initialStatus.status === "STARTING") {
+        // Server is starting with retry - wait for it to complete
+        // Use timeout aligned with backend's max retry time (3 attempts * 4s = ~12s max)
+        // Clear the identification timeout since waitForServerReady has its own timeout
+        clearTimeout(identificationTimeout);
+        try {
+          const serverReadyStatus = await waitForServerReady(
+            client,
+            retryConfig,
+            timeoutConfig.identificationTimeoutMs,
+          );
+          if (serverReadyStatus.status === "ERROR") {
+            throw new Error(serverReadyStatus.error ?? "Server failed to start");
+          }
+          // Use the resolved status
+          initialStatus = serverReadyStatus;
+        } catch (error) {
+          throw error;
+        }
+      }
+
+      const joined = initialStatus.phase === "RUNNING" && initialStatus.correlation_id ? initialStatus.correlation_id : null;
+      if (!joined) await client.flagshipReset();
+      const ours = joined ?? correlationIdOf();
 
       const append = (entries: ActivityEntry[]) => entries.forEach((entry) => useRunStore.getState().append(entry));
 
@@ -386,7 +395,14 @@ export function createApiDemoRunner(
       // A run that fails before it is identified rejects `start()`; nobody waits on `done` then.
       done.catch(() => {});
 
-      await identified;
+      try {
+        await identified;
+      } catch (error) {
+        // Clean up timeouts before re-throwing
+        clearTimeout(timer);
+        clearTimeout(identificationTimeout);
+        throw error;
+      }
       return {
         correlationId: ours,
         done,
