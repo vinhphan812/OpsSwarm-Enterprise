@@ -27,7 +27,7 @@ export type RevenueTotals = {
   transactions: number;
   average_basket: number;
   /** 0..1 */
-  margin_rate?: number;
+  margin_rate?: number | null;
   avgBasket?: number;
   units?: number;
 };
@@ -67,12 +67,12 @@ export type RevenueSummary = RevenueTotals & {
   currency: string;
   items_sold: number;
   /** Estimated sales lost while a product was out of stock on the shelf. */
-  lost_to_stockout?: number;
-  previous?: RevenueTotals;
+  lost_to_stockout?: number | null;
+  previous?: RevenueTotals | null;
   bucket_size: BucketSize;
   buckets: RevenueBucket[];
-  categories?: CategoryRevenue[];
-  top_skus?: SkuRevenue[];
+  categories?: CategoryRevenue[] | null;
+  top_skus?: SkuRevenue[] | null;
   /** Low sellers that still hold shelf space. */
-  slow_skus?: SkuRevenue[];
+  slow_skus?: SkuRevenue[] | null;
 };
