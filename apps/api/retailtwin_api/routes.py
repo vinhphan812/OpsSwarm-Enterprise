@@ -163,6 +163,7 @@ def health(
             app_env=request.app.state.settings.app_env,
             store_id=store.store_id,
             fixture_loaded=False,
+            store_error=getattr(store, "error", None),
             version=__version__,
             git_sha=git_sha,
         )
