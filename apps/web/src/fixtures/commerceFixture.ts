@@ -33,6 +33,7 @@ export function emptyRevenue(storeId: string, period: RevenuePeriod, now = new D
     start: start.toISOString(),
     end: new Date(now.getTime()).toISOString(),
     currency: "USD",
+    items_sold: 0,
     lost_to_stockout: 0,
     previous: ZERO_TOTALS,
     bucket_size: period === REVENUE_PERIOD.Today ? BUCKET_SIZE.Hour : BUCKET_SIZE.Day,

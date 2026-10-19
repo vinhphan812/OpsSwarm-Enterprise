@@ -65,6 +65,7 @@ export type RevenueSummary = RevenueTotals & {
   start: string;
   end: string;
   currency: string;
+  items_sold: number;
   /** Estimated sales lost while a product was out of stock on the shelf. */
   lost_to_stockout?: number;
   previous?: RevenueTotals;
