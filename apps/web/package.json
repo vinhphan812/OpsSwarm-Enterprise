@@ -38,7 +38,7 @@
     "@types/three": "0.170.0",
     "@vitejs/plugin-react": "4.3.4",
     "@vitest/coverage-v8": "^2.1.9",
-    "camera-controls": "^2.10.1",
+    "camera-controls": "^3.1.2",
     "jsdom": "25.0.1",
     "playwright": "1.63.0",
     "tailwindcss": "^4.3.3",
