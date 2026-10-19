@@ -28,7 +28,7 @@ export const useAgentFeedStore = create<AgentFeedStore>()((set) => ({
   attempt: 0,
   start: () => set((feed) => (feed.state === AGENT_FEED_STATE.Off ? { state: AGENT_FEED_STATE.Loading } : {})),
   succeed: (events) =>
-    set((feed) => ({ state: AGENT_FEED_STATE.Ready, failure: null, readAt: Date.now(), served: feed.served + events })),
+    set((feed) => ({ state: AGENT_FEED_STATE.Success, failure: null, readAt: Date.now(), served: feed.served + events })),
   fail: (failure) => set({ state: AGENT_FEED_STATE.Failed, failure }),
   retry: () => set((feed) => ({ attempt: feed.attempt + 1, state: AGENT_FEED_STATE.Loading })),
 }));

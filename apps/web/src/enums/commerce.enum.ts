@@ -33,3 +33,11 @@ export const PROMOTION_KIND = {
   Bundle: "bundle",
 } as const;
 export type PromotionKind = (typeof PROMOTION_KIND)[keyof typeof PROMOTION_KIND];
+
+/** Revenue time grain. */
+export const REVENUE_GRAIN = {
+  Hourly: "hourly",
+  Daily: "daily",
+} as const;
+export type RevenueGrain = (typeof REVENUE_GRAIN)[keyof typeof REVENUE_GRAIN];
+export const REVENUE_GRAINS: readonly RevenueGrain[] = Object.values(REVENUE_GRAIN);

@@ -23,7 +23,7 @@ describe("emptyRevenue", () => {
   });
 
   it("lists every store category", () => {
-    const categories = emptyRevenue("store-001", REVENUE_PERIOD.Month, now).categories.map((c) => c.category);
+    const categories = (emptyRevenue("store-001", REVENUE_PERIOD.Month, now).categories ?? []).map((c) => c.category);
     expect(categories).toEqual(Object.values(STOCK_KIND));
   });
 });

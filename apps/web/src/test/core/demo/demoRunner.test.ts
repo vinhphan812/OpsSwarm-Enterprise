@@ -550,8 +550,6 @@ describe("createApiDemoRunner STARTING status handling (idempotent start contrac
       createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, SHORT_TIMEOUT_CONFIG);
 
     const runPromise = runner(client).start();
-    // Catch to prevent unhandled rejection warning - the error is expected
-    runPromise.catch(() => {});
     await vi.advanceTimersByTimeAsync(POLL * 2);
     await expect(runPromise).rejects.toThrow("Server failed to start");
   });
@@ -572,11 +570,6 @@ describe("createApiDemoRunner STARTING status handling (idempotent start contrac
       createApiDemoRunner(client, POLL, () => "run-1", SHORT_RETRY_CONFIG, { identificationTimeoutMs: 200 });
 
     const runPromise = runner(client).start();
-    // Catch to prevent unhandled rejection warnings - errors are expected
-    // Note: there may be multiple rejections (waitForServerReady timeout + identification timeout)
-    // so we use a shared catch flag
-    let caught = false;
-    runPromise.catch(() => { if (!caught) { caught = true; } });
     // Wait for timeout
     await vi.advanceTimersByTimeAsync(300);
     await expect(runPromise).rejects.toThrow("Server failed to start within");

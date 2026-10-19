@@ -1,5 +1,5 @@
 import i18n from "@/i18n";
-import { ApiError, configuredBase, toApiError } from "@/core/api/client";
+import { ApiError, configuredBase, toApiErrorExported } from "@/core/api/client";
 import { isDemoMode } from "@/core/twin/demoMode";
 import { ASSISTANT_ERROR, ASSISTANT_MODE } from "@/enums/assistant.enum";
 import type { Assistant, AssistantFailure } from "@/types/assistant.type";
@@ -97,7 +97,7 @@ export function createApiAssistant(baseUrl: string = configuredBase, fetchImpl?:
       } catch {
         throw new AssistantError(failureOf(new ApiError(0, "network_error", i18n.t("errors.unreachable")), correlationId));
       }
-      if (!response.ok) throw new AssistantError(failureOf(await toApiError(response), correlationId));
+      if (!response.ok) throw new AssistantError(failureOf(await toApiErrorExported(response), correlationId));
       let raw: unknown;
       try {
         raw = await response.json();

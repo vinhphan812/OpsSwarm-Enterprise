@@ -18,3 +18,22 @@ export const ACTIVITY_VIEW = {
 } as const;
 export type ActivityView = (typeof ACTIVITY_VIEW)[keyof typeof ACTIVITY_VIEW];
 export const ACTIVITY_VIEWS: readonly ActivityView[] = Object.values(ACTIVITY_VIEW);
+
+/** Agent feed loading states. */
+export const AGENT_FEED_STATE = {
+  Off: "off",
+  Loading: "loading",
+  Failed: "failed",
+  Success: "success",
+} as const;
+export type AgentFeedState = (typeof AGENT_FEED_STATE)[keyof typeof AGENT_FEED_STATE];
+
+/** Timeline states. */
+export const TIMELINE_STATE = {
+  ReplayIdle: "replay-idle",
+  Disconnected: "disconnected",
+  ApiFailed: "api-failed",
+  Loading: "loading",
+  NoEvents: "no-events",
+} as const;
+export type TimelineState = (typeof TIMELINE_STATE)[keyof typeof TIMELINE_STATE];

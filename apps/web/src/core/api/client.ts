@@ -12,12 +12,16 @@ import type { CheckoutResponse } from "@/types/checkout.type";
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly correlationId: string | null;
+  readonly details: ErrorDetail[];
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, correlationId: string | null = null, details: ErrorDetail[] = []) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.correlationId = correlationId;
+    this.details = details;
   }
 }
 
@@ -106,6 +110,30 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message);
 }
 
-const configuredBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+export const configuredBase = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+/** Code for an invalid API response. */
+export const INVALID_RESPONSE = "invalid_response";
+
+export type ErrorDetail = {
+  field: string;
+  message: string;
+};
+
+export async function toApiErrorExported(response: Response): Promise<ApiError> {
+  let body: { message?: string; code?: string; details?: ErrorDetail[] } = {};
+  try {
+    body = await response.json();
+  } catch {
+    // ignore parse errors
+  }
+  return new ApiError(
+    response.status,
+    body.code ?? "request_failed",
+    body.message ?? `HTTP ${response.status}`,
+    null,
+    body.details ?? [],
+  );
+}
 
 export const defaultClient = createClient(configuredBase);

@@ -51,7 +51,7 @@ describe("useAgentFeed", () => {
     await act(() => vi.advanceTimersByTimeAsync(0));
 
     expect(useRunStore.getState().activity.map((entry) => entry.id)).toEqual(["a", "b", "c"]);
-    expect(useAgentFeedStore.getState()).toMatchObject({ state: AGENT_FEED_STATE.Ready, served: 3, failure: null });
+    expect(useAgentFeedStore.getState()).toMatchObject({ state: AGENT_FEED_STATE.Success, served: 3, failure: null });
 
     await act(() => vi.advanceTimersByTimeAsync(POLL));
     expect(vi.mocked(client.agentEvents).mock.calls.map(([since]) => since)).toEqual([null, "2", "2"]);
@@ -78,7 +78,7 @@ describe("useAgentFeed", () => {
 
     fail = false;
     await act(() => vi.advanceTimersByTimeAsync(POLL));
-    expect(useAgentFeedStore.getState()).toMatchObject({ state: AGENT_FEED_STATE.Ready, failure: null });
+    expect(useAgentFeedStore.getState()).toMatchObject({ state: AGENT_FEED_STATE.Success, failure: null });
   });
 
   it("reads nothing when off, on the demo and the dev twins", async () => {

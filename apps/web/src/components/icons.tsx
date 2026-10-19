@@ -162,3 +162,19 @@ export function PlayIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function ChatIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+export function SendIcon({ className }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden className={className} {...stroke}>
+      <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+    </svg>
+  );
+}

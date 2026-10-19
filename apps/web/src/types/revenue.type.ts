@@ -27,7 +27,32 @@ export type RevenueTotals = {
   transactions: number;
   average_basket: number;
   /** 0..1 */
-  margin_rate: number;
+  margin_rate?: number;
+  avgBasket?: number;
+  units?: number;
+};
+
+/** Single revenue bucket in API response. */
+export type RevenueResponseBucket = {
+  timestamp?: string;
+  revenue: number;
+  transactions?: number;
+  items_sold?: number;
+  start?: string;
+};
+
+/** API response for revenue endpoint. */
+export type RevenueResponse = {
+  store_id: string;
+  period: string;
+  currency: string;
+  start: string;
+  end: string;
+  total_revenue: number;
+  total_transactions: number;
+  avg_transaction_value: number;
+  total_items_sold: number;
+  buckets: RevenueResponseBucket[];
 };
 
 /**
@@ -37,13 +62,16 @@ export type RevenueTotals = {
 export type RevenueSummary = RevenueTotals & {
   store_id: string;
   period: RevenuePeriod;
+  start: string;
+  end: string;
+  currency: string;
   /** Estimated sales lost while a product was out of stock on the shelf. */
-  lost_to_stockout: number;
-  previous: RevenueTotals;
+  lost_to_stockout?: number;
+  previous?: RevenueTotals;
   bucket_size: BucketSize;
   buckets: RevenueBucket[];
-  categories: CategoryRevenue[];
-  top_skus: SkuRevenue[];
+  categories?: CategoryRevenue[];
+  top_skus?: SkuRevenue[];
   /** Low sellers that still hold shelf space. */
-  slow_skus: SkuRevenue[];
+  slow_skus?: SkuRevenue[];
 };

@@ -27,3 +27,14 @@ export const IMPACT_TOAST_MS = 8000;
 
 /** KPI rows the AI Impact toast shows, in served order; the card in the panel shows them all. */
 export const IMPACT_TOAST_ROWS = 3;
+
+/** Agent feed polling interval in ms. */
+export const AGENT_FEED_POLL_MS = 5000;
+/** Agent feed page size. */
+export const AGENT_FEED_PAGES = 5;
+/** Copilot max message length. */
+export const COPILOT_MAX_MESSAGE = 4000;
+/** Copilot panel width. */
+export const COPILOT_WIDTH = 360;
+/** Demo assistant delay between turns. */
+export const COPILOT_DEMO_DELAY_MS = 200;

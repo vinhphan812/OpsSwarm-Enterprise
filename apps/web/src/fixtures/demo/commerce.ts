@@ -64,7 +64,7 @@ function categoryOf(sku: string): string {
 const SALES = LANES.flatMap((lane) => demoTransactions(lane));
 
 /** Today's revenue and units per SKU, from the receipts. */
-const TODAY_BY_SKU = (() => {
+export const TODAY_BY_SKU = (() => {
   const bySku = new Map<string, { revenue: number; units: number }>();
   for (const sku of Object.keys(DEMO_PRICES)) bySku.set(sku, { revenue: 0, units: 0 });
   for (const sale of SALES) {
@@ -143,21 +143,30 @@ export function demoRevenue(period: RevenuePeriod): RevenueSummary {
           return { start: new Date(start).toISOString(), revenue: cents(revenue) };
         })
       : window.map((day) => ({ start: day.date.toISOString(), revenue: day.revenue }));
-
   return {
-    ...current,
     store_id: STORE_ID,
     period,
-    // Stockouts began a few days ago: the longer the window, the less of it they cover.
+    start: window[0].date.toISOString(),
+    end: window[window.length - 1].date.toISOString(),
+    currency: "USD",
+    revenue: current.revenue,
+    transactions: current.transactions,
+    average_basket: current.avgBasket ?? current.revenue / Math.max(1, current.transactions),
+    items_sold: current.units ?? 0,
+    margin_rate: MARGIN_RATE,
     lost_to_stockout: cents(lostPerDay * Math.min(span, 4)),
     previous: totals(before, MARGIN_RATE - 0.01),
     bucket_size: period === REVENUE_PERIOD.Today ? BUCKET_SIZE.Hour : BUCKET_SIZE.Day,
     buckets,
     categories: [...categories].map(([category, revenue]) => ({ category, revenue: cents(revenue) })),
     top_skus: [...skus].sort((a, b) => b.revenue - a.revenue).slice(0, 5),
-    // Lowest revenue per facing: the shelf space that earns least.
     slow_skus: [...skus].sort((a, b) => a.revenue / Math.max(1, a.facings) - b.revenue / Math.max(1, b.facings)).slice(0, 3),
   };
+}
+
+/** Get SKU sales data for a revenue period. */
+export function demoSkuSales(period: RevenuePeriod): SkuRevenue[] {
+  return demoRevenue(period).top_skus ?? [];
 }
 
 const PROMOTIONS: Promotion[] = [

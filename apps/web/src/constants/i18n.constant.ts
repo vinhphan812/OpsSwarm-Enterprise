@@ -3,3 +3,6 @@ export const LOCALE = "en-US";
 
 /** Currency money is shown in. */
 export const CURRENCY = "USD";
+
+/** Store timezone for revenue calculations. */
+export const STORE_TIME_ZONE = "America/New_York";

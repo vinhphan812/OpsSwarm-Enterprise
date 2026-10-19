@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { ActivityIcon, OfflineIcon } from "@/components/icons";
 import { ReadFailureCard } from "@/components/common/ReadStatus";
-import { timelineState } from "@/core/agent/timelineState";
+import { timelineState, type TimelineStateData } from "@/core/agent/timelineState";
 import { isApiTwin } from "@/core/twin/devSources";
 import { TIMELINE_STATE, type TimelineState } from "@/enums/agent.enum";
 import { useOnline } from "@/hooks/online.hook";
@@ -9,7 +9,7 @@ import { useAgentFeedStore } from "@/state/agentFeed.store";
 import { useTwinStore } from "@/state/twin.store";
 
 /** Where the timeline's feed stands, from the page, the connection and `GET /agent/events`. */
-export function useTimelineState(): TimelineState | null {
+export function useTimelineState(): TimelineStateData {
   const feed = useAgentFeedStore((state) => state.state);
   const online = useOnline();
   const stale = useTwinStore((state) => state.stale);

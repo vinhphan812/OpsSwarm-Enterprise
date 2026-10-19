@@ -69,7 +69,7 @@ function floorTo(instant: number, stepMs: number): number {
 function fillBuckets(response: RevenueResponse, stepMs: number): RevenueBucket[] {
   const served = new Map<number, number>();
   for (const [index, bucket] of response.buckets.entries()) {
-    const at = Date.parse(bucket.timestamp);
+    const at = Date.parse(bucket.timestamp ?? bucket.start ?? "");
     if (at !== floorTo(at, stepMs)) throw new ContractError(`buckets[${index}].timestamp`);
     served.set(at, (served.get(at) ?? 0) + bucket.revenue);
   }
@@ -103,13 +103,13 @@ export function toRevenueSummary(response: RevenueResponse, period: RevenuePerio
     transactions: response.total_transactions,
     average_basket: response.avg_transaction_value,
     items_sold: response.total_items_sold,
-    margin_rate: null,
-    lost_to_stockout: null,
-    previous: null,
+    margin_rate: undefined,
+    lost_to_stockout: undefined,
+    previous: undefined,
     bucket_size: hourly ? BUCKET_SIZE.Hour : BUCKET_SIZE.Day,
     buckets: fillBuckets(response, hourly ? HOUR_MS : DAY_MS),
-    categories: null,
-    top_skus: null,
-    slow_skus: null,
+    categories: undefined,
+    top_skus: undefined,
+    slow_skus: undefined,
   };
 }

@@ -15,7 +15,7 @@ export function RevenuePanel() {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<RevenuePeriod>(REVENUE_PERIOD.Today);
   const summary = useRevenue(period);
-  const { previous } = summary;
+  const { previous, margin_rate, lost_to_stockout, top_skus, slow_skus, categories } = summary;
 
   return (
     <div className="commerce">
@@ -33,26 +33,26 @@ export function RevenuePanel() {
           label={t("revenue.revenue")}
           value={summary.revenue}
           format={f.money}
-          change={relativeChange(summary.revenue, previous.revenue)}
+          change={previous ? relativeChange(summary.revenue, previous.revenue) : undefined}
         />
         <MetricTile
           label={t("revenue.transactions")}
           value={summary.transactions}
           format={f.count}
-          change={relativeChange(summary.transactions, previous.transactions)}
+          change={previous ? relativeChange(summary.transactions, previous.transactions) : undefined}
         />
         <MetricTile
           label={t("revenue.averageBasket")}
           value={summary.average_basket}
           format={f.money}
-          change={relativeChange(summary.average_basket, previous.average_basket)}
+          change={previous ? relativeChange(summary.average_basket, previous.average_basket) : undefined}
         />
-        <MetricTile label={t("revenue.marginRate")} value={summary.margin_rate} format={f.percent} />
+        <MetricTile label={t("revenue.marginRate")} value={margin_rate ?? 0} format={f.percent} />
         <MetricTile
           tone="alert"
           label={t("revenue.lostToStockout")}
           hint={t("revenue.lostHint")}
-          value={summary.lost_to_stockout}
+          value={lost_to_stockout ?? 0}
           format={f.money}
         />
       </div>
@@ -66,23 +66,23 @@ export function RevenuePanel() {
 
       <section>
         <h2 className="activity-section-title">{t("revenue.byCategory")}</h2>
-        <CategoryShare categories={summary.categories} />
+        <CategoryShare categories={categories ?? []} />
       </section>
 
       <section>
         <h2 className="activity-section-title">
           {t("revenue.topSkus")}
-          <span className="activity-count">{summary.top_skus.length}</span>
+          <span className="activity-count">{(top_skus ?? []).length}</span>
         </h2>
-        <SkuList skus={summary.top_skus} label={t("revenue.topSkus")} />
+        <SkuList skus={top_skus ?? []} label={t("revenue.topSkus")} />
       </section>
 
       <section>
         <h2 className="activity-section-title">
           {t("revenue.slowSkus")}
-          <span className="activity-count">{summary.slow_skus.length}</span>
+          <span className="activity-count">{(slow_skus ?? []).length}</span>
         </h2>
-        <SkuList skus={summary.slow_skus} label={t("revenue.slowSkus")} />
+        <SkuList skus={slow_skus ?? []} label={t("revenue.slowSkus")} />
       </section>
     </div>
   );

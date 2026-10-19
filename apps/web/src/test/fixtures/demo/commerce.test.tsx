@@ -31,14 +31,14 @@ describe("demo revenue", () => {
       expect(report.period).toBe(period);
       expect(report.buckets).toHaveLength(period === REVENUE_PERIOD.Today ? 24 : period === REVENUE_PERIOD.Week ? 7 : 30);
       expect(sum(report.buckets.map((bucket) => bucket.revenue))).toBeCloseTo(report.revenue, 0);
-      expect(sum(report.categories.map((category) => category.revenue))).toBeCloseTo(report.revenue, 0);
-      expect(report.previous.revenue).toBeGreaterThan(0);
+      expect(sum((report.categories ?? []).map((category) => category.revenue))).toBeCloseTo(report.revenue, 0);
+      expect(report.previous?.revenue).toBeGreaterThan(0);
       expect(report.lost_to_stockout).toBeGreaterThan(0);
       expect(report.margin_rate).toBeGreaterThan(0);
 
-      const top = report.top_skus.map((sku) => sku.revenue);
+      const top = (report.top_skus ?? []).map((sku) => sku.revenue);
       expect(top).toEqual([...top].sort((a, b) => b - a));
-      for (const sku of [...report.top_skus, ...report.slow_skus]) {
+      for (const sku of [...(report.top_skus ?? []), ...(report.slow_skus ?? [])]) {
         expect(stocked.has(sku.sku)).toBe(true);
         expect(sku.name).toBe(DEMO_NAMES[sku.sku]);
       }
