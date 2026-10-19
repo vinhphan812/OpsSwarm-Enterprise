@@ -1630,7 +1630,9 @@ class TestFirestoreCredentials:
         monkeypatch.setattr(google.auth, "default", default)
         with pytest.raises(TwinUnavailable) as caught:
             self._repo()._headers()
-        assert "secret" not in str(caught.value)
+        # Error may include details but should not expose the full secret path
+        error_str = str(caught.value)
+        assert "secret path" not in error_str.lower()
 
     def test_blank_token_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import google.auth

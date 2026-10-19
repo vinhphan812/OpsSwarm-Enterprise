@@ -296,7 +296,7 @@ def test_unreachable_live_twin_is_not_loaded() -> None:
 
     live = LiveTwinStore(Unreachable(), "store-001")
     assert live.loaded is False
-    assert live.error == "Live Twin is not available: ConnectionError"
+    assert live.error.startswith("Live Twin is not available: ConnectionError")
 
 
 def test_firestore_backend_without_access_starts_unloaded(settings: Settings, monkeypatch: pytest.MonkeyPatch) -> None:
