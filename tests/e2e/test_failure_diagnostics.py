@@ -136,7 +136,7 @@ class TestHealthFailureModes:
         body = response.json()
         assert body["status"] == "degraded"
         assert body["fixture_loaded"] is False
-        assert str(missing) not in body.get("store_error", "")  # No path leakage
+        assert str(missing) not in response.text  # No path leakage
 
     def test_health_endpoint_never_exposes_secrets(self, client: TestClient) -> None:
         response = client.get("/health")

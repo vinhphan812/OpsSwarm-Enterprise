@@ -17,7 +17,6 @@ class HealthResponse(BaseModel):
     app_env: str
     store_id: str
     fixture_loaded: bool
-    store_error: str | None = None
     # ADR 0025: the process reports the canonical SemVer plus the build commit.
     # The git SHA is informational build metadata; the SemVer drives compatibility.
     version: str
