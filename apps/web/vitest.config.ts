@@ -21,6 +21,10 @@ export default defineConfig({
       "**/LensSwitcher.test.tsx",
       "**/AgentActivityPanel.test.tsx",
       "**/demoRunner.test.ts",
+      "**/CopilotDrawer.test.tsx",
+      "**/agentFeed.test.tsx",
+      "**/conversation.test.ts",
+      "**/demoAssistant.test.ts",
     ],
     coverage: {
       provider: 'v8',

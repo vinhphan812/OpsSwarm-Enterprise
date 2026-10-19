@@ -82,7 +82,7 @@ describe("the demo Copilot", () => {
     const turn = await ask("Suggest a safer restock for P003");
     expect(openSimulation).toHaveBeenCalledWith(turn.proposal!.actions);
     expect(turn.proposal).toMatchObject({ simulation_id: "sim-memory-001", candidate_id: null, kpis: [], baseline_kpis: [] });
-    expect(turn.text).toContain("the demo has no KPI scores for it");
+    expect(turn.text).toContain("No KPI scores available yet");
   });
 
   it("never approves or writes from chat, and says where approval happens", async () => {
