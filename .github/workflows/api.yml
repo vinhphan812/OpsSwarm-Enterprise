@@ -211,7 +211,7 @@ jobs:
           cpu: 1
           timeout: 60
           concurrency: 80
-          env_vars: APP_ENV=production,LOG_LEVEL=INFO
+          env_vars: APP_ENV=production,LOG_LEVEL=INFO,LIVE_TWIN_BACKEND=firestore
           # secrets: STORE_FIXTURE_PATH=store-fixture:latest  # enable after Secret Manager setup
 
       - name: Verify production deployment
