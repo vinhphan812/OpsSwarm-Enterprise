@@ -1632,6 +1632,7 @@ class TestFirestoreCredentials:
             self._repo()._headers()
         # Error may include details but should not expose the full secret path
         error_str = str(caught.value)
+        # Error may include details but should not expose the full secret path
         assert "secret path" not in error_str.lower()
 
     def test_blank_token_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:

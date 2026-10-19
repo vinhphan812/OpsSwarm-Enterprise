@@ -854,6 +854,11 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
         import google.auth.transport.requests as google_requests
 
         with self._token_lock:
+            # Use injected runner if available (for local testing with gcloud)
+            if self._runner is not None:
+                if self._token is None:
+                    self._token = self._runner.run(["gcloud", "auth", "print-access-token", "--quiet"]).strip()
+                return self._token
             try:
                 if self._credentials is None:
                     import google.auth
@@ -869,9 +874,8 @@ class FirestoreLiveTwinRepository(LiveTwinRepository):
             except TwinUnavailable:
                 raise
             except Exception as exc:
-                import traceback
                 raise TwinUnavailable(
-                    f"Application Default Credentials are not available: {type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+                    f"Application Default Credentials are not available: {type(exc).__name__}"
                 ) from exc
 
 
