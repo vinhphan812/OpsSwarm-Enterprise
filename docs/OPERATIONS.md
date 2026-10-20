@@ -88,7 +88,7 @@ successful probe call.
 
 Monitor circuit state in Prometheus:
 
-```
+```text
 opsswarm_circuit_state_transitions{dependency="github:owner/repo",state="OPEN"}
 ```
 
@@ -148,6 +148,8 @@ docker run --read-only \
   -e OPSWARM_OPENCLAW_BIN=/path/to/openclaw \
   -p 8080:8080 \
   opsswarm:local
+```
+
 ```
 
 ### Environment variables

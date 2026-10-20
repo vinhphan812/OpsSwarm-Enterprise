@@ -37,7 +37,10 @@ import pytest
 
 # ── Project root ──────────────────────────────────────────────────────────────
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+# Repo root = tests/integration/<file> → parents[0]=tests/integration, parents[1]=tests, parents[2]=repo root.
+# In GitHub Actions the workspace is .../OpsSwarm-Enterprise/ and the repo is checked out under it,
+# so parents[2] resolves correctly to the repo root in both local and CI environments.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ── Artifact paths ────────────────────────────────────────────────────────────
 
