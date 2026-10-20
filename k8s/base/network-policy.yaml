@@ -1,0 +1,178 @@
+# k8s/network-policy.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — Kubernetes NetworkPolicy
+#
+# Enforces GitHub / OpenClaw / enterprise tool boundaries.
+#
+# This manifest implements two policies:
+#   1. Ingress policy: allows traffic only from named allowed namespaces and
+#      the ingress controller (NGINX, istio-ingress, cloud load balancers).
+#   2. Egress policy: allows only outbound traffic to:
+#       - GitHub API (api.github.com, tcp/443)
+#       - GitHub raw content (raw.githubusercontent.com, tcp/443)
+#       - OpenClaw runtime endpoint (configurable via OPENCLAW_EGRESS_HOST)
+#       - Kubernetes DNS (kube-dns, udp+tcp/53) — required for service discovery
+#       - Cloud metadata service (169.254.169.254, tcp/80) — required for GCP/AWS
+#         workload identity; omit if your cloud does not use metadata service
+#       - Metadata API (metadata.google.internal, tcp/988) — GCP only
+#
+# Prerequisites:
+#   - A NetworkPolicy-capable CNI plugin (Calico, Cilium, Weave, etc.).
+#     On managed K8s (GKE, EKS, AKS), NetworkPolicy is available with the
+#     appropriate network plugin addon.
+#   - Label the allowed ingress namespaces, e.g.:
+#       kubectl label namespace <ingress-ns> allow-opsswarm-ingress=true
+#
+# ⚠️  Known limitation: the egress block for GitHub API is CIDR-based.
+#   Replace 140.82.0.0/16 with your GitHub Enterprise Server IP ranges
+#   if you are using GitHub Enterprise Cloud (github.com) or Enterprise Server.
+#
+# Apply:  kubectl apply -f k8s/network-policy.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: opsswarm-network-policy
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: network-policy
+    app.kubernetes.io/version: "2.2.0"
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: opsswarm
+
+  # ── Ingress policy ────────────────────────────────────────────────────────
+  # Allow inbound traffic from:
+  #   1. Same namespace (not required but explicit)
+  #   2. Namespaces with label allow-opsswarm-ingress=true
+  #      (e.g. your ingress controller namespace, monitoring namespace)
+  #   3. IP ranges of cloud load balancers / ingress controllers
+  #      Replace the CIDR blocks below with your actual load balancer IP ranges.
+  ingress:
+    # Allow same-namespace traffic (e.g. a sidecar or ingress controller in the
+    # same namespace).  In most setups the ingress controller lives in its own
+    # namespace and is covered by the namespace selector below.
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow from ingress controller / monitoring namespaces.
+    # Label your ingress controller namespace:
+    #   kubectl label namespace <your-ingress-ns> allow-opsswarm-ingress=true
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              allow-opsswarm-ingress: "true"
+      ports:
+        - protocol: TCP
+          port: 8080
+    # Allow from known cloud load balancer IP ranges.
+    # Replace 0.0.0.0/0 with your actual load balancer CIDRs in production.
+    # GKE: use the pods CIDR of your cluster masterless/control plane range.
+    # AWS: your VPC CIDR or specific NLB subnet ranges.
+    # This broad 0.0.0.0/0 rule is intentionally permissive; restrict it in
+    # overlays/prod to your specific infrastructure CIDRs.
+    - from:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              # RFC 1918 private address space — never accept from public internet
+              # unless your load balancer is explicitly in public space.
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  # ── Egress policy ─────────────────────────────────────────────────────────
+  # Allow outbound traffic only to explicitly listed destinations.
+  # All other egress is denied (default-deny behavior).
+  egress:
+    # ── DNS ────────────────────────────────────────────────────────────────
+    # Kubernetes internal DNS (CoreDNS / kube-dns).  Required for all service
+    # discovery and internal cluster communication.
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # ── GitHub API ─────────────────────────────────────────────────────────
+    # OpsSwarm Enterprise reads and writes GitHub issues and pull requests.
+    # Allow HTTPS to api.github.com (TCP 443) and raw content (TCP 443).
+    # IP range for GitHub.com: 140.82.112.0/20 (as of 2024, verify periodically).
+    - to:
+        - ipBlock:
+            cidr: 140.82.112.0/22
+            # Exclude GitHub-hosted runners — OpsSwarm should never call back
+            # from inside a runner.  This is defence-in-depth; the runner's
+            # egress should already be firewalled by your CI infrastructure.
+            except:
+              - 192.30.252.0/22  # GitHub Actions runner IPs (verify at runner.yaml)
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # ── OpenClaw runtime ───────────────────────────────────────────────────
+    # OpsSwarm connects to the OpenClaw AI reasoning runtime.
+    # The default endpoint is localhost:8081 (for a local sidecar) or an
+    # internal Kubernetes service (e.g. openclaw.openclaw-system.svc.cluster.local).
+    # Replace the host/port below with your actual OpenClaw service endpoint.
+    # Set OPENCLAW_EGRESS_HOST env var or update the host below.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openclaw-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openclaw
+      ports:
+        - protocol: TCP
+          port: 8081
+    # Allow to localhost for sidecar pattern (OpenClaw running as sidecar).
+    - to:
+        - ipBlock:
+            cidr: 127.0.0.1/32
+      ports:
+        - protocol: TCP
+          port: 8081
+
+    # ── Cloud metadata service ──────────────────────────────────────────────
+    # Required for workload identity (GCP SA keyless auth, AWS IRSA).
+    # Without this, the pod cannot obtain short-lived credentials from the cloud.
+    # Omit this block entirely if you are not using cloud workload identity.
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 80
+    # GCP internal metadata API
+    - to:
+        - ipBlock:
+            cidr: 169.254.169.254/32
+      ports:
+        - protocol: TCP
+          port: 988
+
+    # ── HTTPS outbound for OpenClaw model providers ───────────────────────
+    # If OpenClaw calls external LLM APIs (e.g. OpenAI, Anthropic, Vertex AI),
+    # add their egress CIDRs here.  Consult the provider's IP ranges documentation.
+    # As a minimum, allow 443 outbound to the public internet for model providers:
+    # NOTE: Uncomment only if your OpenClaw runtime makes outbound model calls.
+    # Commenting out by default to keep the policy tight.
+    # - to:
+    #     - ipBlock:
+    #         cidr: 0.0.0.0/0
+    #   ports:
+    #     - protocol: TCP
+    #       port: 443

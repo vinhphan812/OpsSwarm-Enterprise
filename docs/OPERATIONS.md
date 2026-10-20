@@ -113,4 +113,68 @@ opsswarm_dependency_retry_exhausted_total{operation="GET:/repos/..."}
 
 # Ambiguous writes (writes whose outcome is unknown — check GitHub)
 opsswarm_execution_ambiguous_total
+
+## Container deployment
+
+OpsSwarm ships as an OCI image (`Dockerfile` at repo root). The image is built
+from the canonical wheel, runs as non-root (uid 10001), and supports a read-only
+root filesystem with explicit write targets.
+
+### Building the image
+
+```bash
+docker build -f Dockerfile -t opsswarm:local .
+```
+
+### Running with a read-only root filesystem
+
+```bash
+docker run --read-only \
+  --tmpfs /tmp:rw \
+  --tmpfs /var/run:rw \
+  -e OPSWARM_OPENCLAW_BIN=/path/to/openclaw \
+  -p 8080:8080 \
+  opsswarm:local
+```
+
+The pre-created `/app/runtime-data/` and `/var/lib/opsswarm/` directories inside the
+image are owned by `appuser` and survive on the read-only root. For persistent evidence
+store, bind a host volume:
+
+```bash
+docker run --read-only \
+  --tmpfs /tmp:rw --tmpfs /var/run:rw \
+  -v /data/opsswarm:/var/lib/opsswarm:rw \
+  -e OPSWARM_OPENCLAW_BIN=/path/to/openclaw \
+  -p 8080:8080 \
+  opsswarm:local
+```
+
+### Environment variables
+
+| Variable                  | Default | Description                                          |
+|---------------------------|---------|------------------------------------------------------|
+| `PORT`                    | `8080`  | Port uvicorn binds                                  |
+| `OPSWARM_OPENCLAW_BIN`    | empty   | Absolute path to OpenClaw binary (required at runtime) |
+
+### OpenClaw runtime
+
+OpenClaw is NOT embedded in the image layers. Set `OPSWARM_OPENCLAW_BIN` to the
+absolute path of the OpenClaw binary on the host (bind mount) or in a Kubernetes
+sidecar volume. This allows OpenClaw to be upgraded independently of the OpsSwarm
+image without rebuilding the container.
+
+### Health endpoint
+
+`GET /health` returns `{"ok": true, "version": "2.2.0", "architecture": "openclaw+github"}`.
+The Docker `HEALTHCHECK` instruction probes this endpoint every 30 s. For Kubernetes,
+use an HTTP `GET` readiness probe on port 8080 path `/health` with a 10 s timeout.
+
+### Graceful shutdown
+
+The container entrypoint uses `exec "$@"` so that SIGTERM sent by `docker stop` or
+`kubectl delete pod` reaches uvicorn directly (PID 1). Set
+`--graceful-shutdown-timeout` on uvicorn or configure the pod's
+`terminationGracePeriodSeconds` if in-flight requests need more than the
+default 30 s Kubernetes termination grace period.
 ```

@@ -1,0 +1,217 @@
+# docker-compose.yml — OpsSwarm Enterprise local / single-node deployment
+#
+# Usage:
+#   cp .env.example .env          # fill in GITHUB_TOKEN and OPSWARM_OPENCLAW_BIN
+#   docker compose up -d          # production profile
+#   docker compose --profile dev up -d   # dev profile (hot reload via bind-mounts)
+#
+# Image tag: set OPSWARM_IMAGE to override the default opsswarm/opsswarm:local.
+#   docker compose --env-file .env.local up -d
+#
+# ─── Profiles ──────────────────────────────────────────────────────────────────
+#
+#  default  — opsswarm only (run without --profile to use this)
+#  openclaw — spin up the OpenClaw runtime alongside OpsSwarm (side-by-side,
+#              not embedded in the OpsSwarm image).  Activate with:
+#              docker compose --profile openclaw up -d
+#
+# ─── Secrets (token injection) ─────────────────────────────────────────────────
+#
+#   GITHUB_TOKEN is never baked into the image.  Three options, in order of
+#   preference:
+#
+#   1. Docker secret (recommended for Docker Swarm / Compose in production):
+#        echo -n "ghp_..." | docker secret create opsswarm-github-token -
+#        (remove GITHUB_TOKEN from .env; compose reads from docker secrets)
+#
+#   2. Token file mounted from the host (default in this compose file):
+#        echo "ghp_..." > .github-token   # 0600 permissions required
+#        GITHUB_TOKEN_FILE=/run/secrets/opsswarm-github-token  (via .env)
+#
+#   3. Plain env var in .env (easiest for local dev; not recommended for prod):
+#        GITHUB_TOKEN=ghp_...
+#
+# ─── Persistent state ───────────────────────────────────────────────────────────
+#
+#   opsswarm-runtime-data  — /app/runtime-data (run metadata, checkpoints)
+#   opsswarm-evidence-store — /var/lib/opsswarm (evidence artefacts)
+#
+#   Both volumes are created on first `docker compose up` and survive restarts.
+#   To reset: docker compose down -v
+#
+x-common-env: &common-env
+  # Path to the OpenClaw binary on the host or inside an openclaw service container.
+  # This is NOT embedded in the OpsSwarm image; supply it at runtime.
+  OPSWARM_OPENCLAW_BIN: ${OPSWARM_OPENCLAW_BIN:-}
+
+  # Config file path inside the container.  Mount config/ via the override
+  # file or a named volume when not using the default config/production.yaml.
+  OPSWARM_CONFIG: ${OPSWARM_CONFIG:-config/production.yaml}
+
+  # OpenClaw timeout override (seconds).  Default: 600 (from production.yaml).
+  # OPSWARM_OPENCLAW_TIMEOUT: "600"
+
+  # OpsSwarm runtime data directory (relative to /app).  Do not change unless
+  # the runtime-data volume mount point is also changed.
+  OPSWARM_DATA_DIR: runtime-data
+
+  # ── GitHub token injection ──────────────────────────────────────────────────
+  # GITHUB_TOKEN_FILE — path inside the container where the GitHub PAT file is
+  # mounted.  OpsSwarm reads this file at startup and uses its contents as the
+  # GITHUB_TOKEN.  This avoids putting the raw token in environment variables.
+  #
+  # To use a plain env var instead of a file, set GITHUB_TOKEN directly in
+  # your .env and remove GITHUB_TOKEN_FILE here.
+  GITHUB_TOKEN_FILE: ${GITHUB_TOKEN_FILE:-/run/secrets/github-token}
+
+  # GITHUB_TOKEN — fallback when GITHUB_TOKEN_FILE is not set.  Prefer the
+  # token-file approach (see above) to avoid secrets in environment variables.
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+
+  # GitHub repository in owner/repo format (e.g. my-org/my-repo).
+  # Defaults to the repo field in config/production.yaml if not set.
+  # GITHUB_REPO: owner/repo
+
+x-optsswarm-healthcheck: &opsswarm-healthcheck
+  test: ["CMD", "python", "-c",
+         "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
+
+services:
+
+  # ─── OpsSwarm ───────────────────────────────────────────────────────────────
+  opsswarm:
+    image: ${OPSWARM_IMAGE:-opsswarm/opsswarm:local}
+    container_name: opsswarm
+    restart: unless-stopped
+
+    # Ports: host -> container
+    #   8080 — HTTP API (health, metrics, runs, webhooks)
+    ports:
+      - "${OPSWARM_PORT:-8080}:8080"
+
+    env_file:
+      - ${OPSWARM_ENV_FILE:-.env}
+
+    environment:
+      <<: *common-env
+
+    volumes:
+      # Persistent runtime state (run metadata, checkpoints).
+      # Survives restarts; remove with docker compose down -v to reset.
+      - opsswarm-runtime-data:/app/runtime-data
+
+      # Persistent evidence store (evidence artefacts written by OpsSwarm).
+      - opsswarm-evidence-store:/var/lib/opsswarm
+
+      # GitHub token file — mounted read-only inside the container.
+      # Host path is set via GITHUB_TOKEN_FILE_HOST in .env (see Secret injection above).
+      # chmod 0600 the host file; the container runs as uid 10001.
+      - type: bind
+        source: ${GITHUB_TOKEN_FILE_HOST:-.github-token}
+        target: /run/secrets/github-token
+        read_only: true
+        bind:
+          propagation: rprivate
+
+    networks:
+      - opsswarm-net
+
+    healthcheck:
+      <<: *opsswarm-healthcheck
+
+    # Resource limits — adjust to match your hardware.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    # Stop signal: SIGTERM → uvicorn graceful shutdown (matches Dockerfile ENTRYPOINT).
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+    # Dependency on OpenClaw is intentionally not declared.  OpsSwarm discovers
+    # the OpenClaw binary via OPSWARM_OPENCLAW_BIN (host path or sidecar volume).
+    # Uncomment the following and use --profile openclaw to run OpenClaw as a
+    # co-located sidecar service:
+    #
+    # depends_on:
+    #   openclaw:
+    #     condition: service_healthy
+    #
+    # profiles:
+    #   - default
+
+  # ─── OpenClaw (optional sidecar profile) ────────────────────────────────────
+  # Spin up alongside OpsSwarm when you do not have OpenClaw installed on the host.
+  # Activate with: docker compose --profile openclaw up -d
+  #
+  # Build the OpenClaw image first, or replace with a pre-built image tag:
+  #   docker build -f openclaw.Dockerfile -t openclaw:latest .
+  openclaw:
+    image: ${OPENCLAW_IMAGE:-openclaw:latest}
+    container_name: openclaw
+    restart: unless-stopped
+
+    profiles:
+      - openclaw
+
+    # OpenClaw serves its IPC socket on a host path so OpsSwarm can reach it.
+    # Set OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw in .env when using this.
+    volumes:
+      - openclaw-data:/opt/openclaw
+
+    networks:
+      - opsswarm-net
+
+    healthcheck:
+      test: ["CMD", "true"]   # OpenClaw has no HTTP health endpoint; rely on container exit
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        reservations:
+          cpus: "1.0"
+          memory: 2G
+
+    # Expose OpenClaw IPC port if needed for debugging.
+    # ports:
+    #   - "9090:9090"
+
+# ─── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  # Runtime state: run metadata, checkpoint files, orchestrator state.
+  # Mounted at /app/runtime-data inside the container.
+  opsswarm-runtime-data:
+    driver: local
+
+  # Evidence artefacts: evidence JSON files, attachments.
+  # Mounted at /var/lib/opsswarm inside the container.
+  opsswarm-evidence-store:
+    driver: local
+
+  # OpenClaw working directory (sidecar profile only).
+  openclaw-data:
+    driver: local
+
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  opsswarm-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16

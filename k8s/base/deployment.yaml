@@ -1,0 +1,313 @@
+# k8s/deployment.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — Kubernetes Deployment
+#
+# Architecture decisions (issue #73):
+#   replicas: 1          — single-replica until shared coordination (issue #70)
+#                          is enabled.  Scaling beyond 1 requires coordination
+#                          store (Redis or Firestore) to be configured first.
+#   securityContext:     — runAsNonRoot, runAsUser 10001 (matches Dockerfile)
+#   readOnlyRootFilesystem: false  — Dockerfile creates writable dirs explicitly;
+#                                    set true with tmpfs mounts for /tmp and /var/run
+#                                    in high-security environments.
+#   livenessProbe:       — /health endpoint (present in v2.2.0)
+#   readinessProbe:       — /health for now; upgrade to /ready once issue #30
+#                            (Prometheus metrics + real readiness) is resolved.
+#   resources:            — conservative defaults; tune based on observed p95.
+#
+# Apply:  kubectl apply -f k8s/deployment.yaml
+# Dry-run: kubectl apply --dry-run=server -f k8s/deployment.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opsswarm
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: application
+    app.kubernetes.io/version: "2.2.0"
+spec:
+  # ── Replica count ──────────────────────────────────────────────────────────
+  # ⚠️  Do NOT increase this above 1 until shared coordination (issue #70)
+  # is resolved and a distributed lock store (e.g. Firestore or Redis) is
+  # configured.  Without coordination, multiple replicas will process the
+  # same GitHub webhook events and create duplicate incidents.
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opsswarm
+
+  # Recreate strategy is safe for single-replica; swap to RollingUpdate
+  # once replicas > 1 with proper readiness gates.
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opsswarm
+        app.kubernetes.io/version: "2.2.0"
+      annotations:
+        # Prometheus scrape annotations — used by the Prometheus scrape config.
+        # Issue #30 adds a /metrics endpoint and a real readiness check.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        # kubernetes.io/change-cause: "upgrade to v2.2.1"  # uncomment to force a rolling restart
+    spec:
+      # ── Init containers ──────────────────────────────────────────────────
+      # Init container to wait for / validate OpenClaw binary availability.
+      # Remove this section if OPSWARM_OPENCLAW_BIN is set to a hostPath or
+      # if OpenClaw is injected via a sidecar.
+      initContainers:
+        - name: openclaw-check
+          image: busybox:1.36
+          command:
+            - /bin/sh
+            - -c
+            - |
+              # Verify the OpenClaw binary exists and is executable.
+              # If OPSWARM_OPENCLAW_BIN is empty (binary not mounted yet),
+              # the container exits 1 and blocks pod startup with a clear message.
+              OPENCLAW_PATH="${OPSWARM_OPENCLAW_BIN:-}"
+              if [ -z "$OPENCLAW_PATH" ]; then
+                echo "ERROR: OPSWARM_OPENCLAW_BIN is not set."
+                echo "ERROR: Mount the OpenClaw binary at the path configured in the ConfigMap"
+                echo "ERROR: (default: /usr/local/bin/openclaw) before deploying."
+                exit 1
+              fi
+              if [ ! -x "$OPENCLAW_PATH" ]; then
+                echo "ERROR: OpenClaw binary not found or not executable at: $OPENCLAW_PATH"
+                exit 1
+              fi
+              echo "OpenClaw binary verified at: $OPENCLAW_PATH"
+          env:
+            - name: OPSWARM_OPENCLAW_BIN
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_OPENCLAW_BIN
+          securityContext:
+            runAsNonRoot: false  # busybox runs as root to check file permissions
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+
+      # ── Application container ─────────────────────────────────────────────
+      containers:
+        - name: opsswarm
+          # Replace with your actual image reference.
+          # Canonical: ghcr.io/vinhphan812/opsswarm-openclaw-github:<tag>
+          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-openclaw-github:latest .
+          # The <tag> should be updated in overlays/dev and overlays/prod.
+          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # ── Security context ───────────────────────────────────────────────
+          securityContext:
+            # runAsNonRoot: true — container refuses to run as UID 0 (root).
+            # The Dockerfile USER directive sets the primary group to appgroup (10001).
+            runAsNonRoot: true
+            # runAsUser matches the Dockerfile useradd uid 10001.
+            runAsUser: 10001
+            runAsGroup: 10001
+            # fsGroup allows non-root writes to emptyDir volumes to be group-readable.
+            fsGroup: 10001
+            # readOnlyRootFilesystem: false — the Dockerfile explicitly creates
+            # writable directories (/var/lib/opsswarm, /app/runtime-data).  The
+            # container needs these for evidence persistence and run checkpoints.
+            # Set to true and add tmpfs mounts for /tmp and /var/run in strict
+            # high-security environments.
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Liveness probe ────────────────────────────────────────────────
+          # HTTP GET /health returns {"ok": true, "version": "2.2.0", ...}
+          # If this probe fails, Kubernetes restarts the pod.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Readiness probe ────────────────────────────────────────────────
+          # ⚠️  Currently points to /health (available in v2.2.0).
+          # Upgrade to /ready once issue #30 (Prometheus + real readiness) is
+          # resolved.  /ready should return 200 only when:
+          #   1. Auth config is loaded and valid.
+          #   2. GitHub client can reach api.github.com.
+          #   3. OpenClaw binary responds to a health check.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Environment variables ──────────────────────────────────────────
+          env:
+            # References ConfigMap values (non-sensitive).
+            - name: OPSWARM_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_CONFIG
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: APP_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: LOG_LEVEL
+            - name: EVIDENCE_STORE_BACKEND
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: EVIDENCE_STORE_BACKEND
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: PORT
+            - name: OPSWARM_OPENCLAW_BIN
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_OPENCLAW_BIN
+            - name: OPENCLAW_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPENCLAW_TIMEOUT_SECONDS
+
+            # References Secret values (sensitive).
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: GITHUB_TOKEN
+            - name: OPSWARM_OPENCLAW_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: OPSWARM_OPENCLAW_KEY
+
+          # ── Resource requests and limits ──────────────────────────────────
+          # These are conservative starting-point values.  Monitor actual
+          # usage and adjust to match observed p95/p99 under peak load.
+          #
+          # Guideline (OpsSwarm v2.2.0, single incident run):
+          #   CPU request 200m is sufficient for normal LLM call patterns.
+          #   CPU limit   1000m prevents a runaway loop from monopolising the node.
+          #   Memory      ~256Mi baseline; can spike to 512Mi with large evidence
+          #               payloads or deep task graphs.  Set limit to 1Gi for safety.
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Volume mounts ─────────────────────────────────────────────────
+          # The following volumes are defined in the volumes: section below.
+          # All mount paths are relative to the container root /app (WORKDIR).
+          volumeMounts:
+            # OpenClaw binary — must be present at OPSWARM_OPENCLAW_BIN path
+            # before the init container passes and the app starts.
+            - name: openclaw-bin
+              mountPath: /usr/local/bin/openclaw
+              readOnly: true
+
+            # Evidence persistence — survives container restarts (within the pod).
+            # For production, replace emptyDir with a PersistentVolumeClaim backed
+            # by a ReadWriteOnce storage class to survive pod rescheduling.
+            - name: evidence-store
+              mountPath: /var/lib/opsswarm
+
+            # Run checkpoints and orchestrator state — survives container restarts.
+            - name: runtime-data
+              mountPath: /app/runtime-data
+
+            # /tmp for any in-process temporary files.
+            # Use a tmpfs mount in overlays/prod for additional security:
+            #   emptyDir: { medium: Memory }
+            - name: tmp
+              mountPath: /tmp
+
+      # ── Volumes ────────────────────────────────────────────────────────────
+      volumes:
+        # OpenClaw binary volume.
+        #
+        # IMPORTANT: The openclaw-bin volume MUST have a concrete type configured
+        # before the pod can start.  The init container checks for the binary at
+        # OPSWARM_OPENCLAW_BIN before allowing the main container to start.
+        #
+        # Production options (pick one):
+        #   1. hostPath (dev/simple): mount from the node filesystem.
+        #      Add to overlays/dev or overlays/prod via a patch.
+        #   2. emptyDir (minimal dev): sufficient for testing without a real binary.
+        #      Add emptyDir{} via a patch in overlays/dev.
+        #   3. init container download: a pre-startup container that fetches the
+        #      binary from a trusted URL or decrypts it from a SealedSecret.
+        #      See docs/guides/CONTAINER_DEPLOYMENT.md.
+        - name: openclaw-bin
+          # ⚠️  No volumeSource configured by default.  Un-comment one of the
+          # options below or add via a Kustomize patch (see overlays/dev).
+          # hostPath:
+          #   path: /usr/local/bin/openclaw
+          #   type: FileOrCreate
+
+        # Evidence store — emptyDir is fine for single-replica (data is lost
+        # on pod deletion).  For production durability, use a PVC.
+        - name: evidence-store
+          emptyDir: {}
+
+        # Runtime data directory for run checkpoints.
+        - name: runtime-data
+          emptyDir: {}
+
+        # /tmp — use tmpfs in production for additional security.
+        - name: tmp
+          emptyDir: {}
+
+      # ── Pod scheduling ─────────────────────────────────────────────────────
+      # Affinity/anti-affinity can be added in overlays/prod for HA.
+      # Currently no node selectors or tolerations — runs on any node.
+
+      # ── Pod disruption ─────────────────────────────────────────────────────
+      # terminationGracePeriodSeconds: 60
+      #   Allows in-flight LLM calls to complete before SIGKILL (30 s default).
+      #   Override in overlays/prod if your OpenClaw agents need longer.
+      terminationGracePeriodSeconds: 60
