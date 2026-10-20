@@ -1,0 +1,35 @@
+# k8s/pdb.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — PodDisruptionBudget
+#
+# Architecture decisions (issue #73):
+#   minAvailable: 1  — ensures zero voluntary disruptions while replicas=1.
+#                      With replicas=1, this effectively blocks node drains and
+#                      other voluntary eviction operations.  This is intentional:
+#                      a single-replica deployment must not be disrupted during
+#                      cluster maintenance without explicit operator intervention.
+#
+#   ⚠️  Replica scaling gate (issue #70):
+#       Once shared coordination (Redis / Firestore) is enabled and replicas > 1,
+#       update this PDB to use maxUnavailable instead of minAvailable:
+#         maxUnavailable: 1    # allows one pod to be evicted during maintenance
+#       This allows rolling updates and node drains to proceed safely.
+#
+# Apply:  kubectl apply -f k8s/pdb.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: opsswarm-pdb
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: pdb
+    app.kubernetes.io/version: "2.2.0"
+spec:
+  # minAvailable: 1 — blocks all voluntary disruptions while replicas=1.
+  # No pod may be evicted voluntarily as long as only one replica exists.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opsswarm
