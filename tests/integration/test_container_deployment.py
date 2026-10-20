@@ -428,11 +428,14 @@ class TestKubernetes:
             pytest.skip("kubectl not available in this environment")
 
         # Check cluster connectivity first.
-        check = run(
-            ["kubectl", "cluster-info"],
-            check=False,
-            timeout=10,
-        )
+        try:
+            check = run(
+                ["kubectl", "cluster-info"],
+                check=False,
+                timeout=10,
+            )
+        except subprocess.TimeoutExpired:
+            pytest.skip("kubectl cluster-info timed out; cluster unreachable")
         if check.returncode != 0:
             pytest.skip("kubectl not connected to a cluster; skipping dry-run")
 
