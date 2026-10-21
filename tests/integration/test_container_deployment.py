@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -105,18 +106,8 @@ def grep_file(pattern: str, path: Path) -> list[str]:
 
 
 def is_tool_available(name: str) -> bool:
-    """Return True when *name* is on PATH."""
-    try:
-        subprocess.run(
-            ["which", name],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=5,
-        )
-        return True
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
+    """Return True when *name* resolves to an executable on PATH."""
+    return shutil.which(name) is not None
 
 
 def docker_available() -> bool:
@@ -194,12 +185,16 @@ class TestOCIDockerfile:
         assert not re.search(r'OPSWARM_OPENCLAW_BIN[=:]["\'].*openclaw', content), \
             "OpenClaw binary must not be embedded in image layers"
 
-    def test_dockerfile_version_file_copied(self):
-        """A.6  VERSION file is copied into the runtime stage."""
+    def test_dockerfile_copies_canonical_version_module(self):
+        """A.6  The build copies the canonical package version module, not dead VERSION data."""
         content = read(DOCKERFILE)
-        # VERSION must be copied so that opsswarm/__version__.py resolves correctly.
-        assert re.search(r"COPY\s+VERSION\s+VERSION", content), \
-            "Dockerfile must copy VERSION file into the runtime stage"
+        # OpsSwarm's authoritative version is opsswarm/__version__.py.  The image
+        # installs a wheel, so the runtime receives that module via the wheel rather
+        # than a redundant top-level VERSION file.
+        assert re.search(r"COPY\s+opsswarm\s+/app/opsswarm", content), \
+            "Dockerfile must copy the opsswarm package, including __version__.py"
+        assert re.search(r"uv\s+pip\s+install.*\.whl", content), \
+            "Runtime stage must install the built wheel containing __version__.py"
 
     def test_opsswarm_version_file_exists(self):
         """A.6  opsswarm/__version__.py exists and exports __version__."""
@@ -214,9 +209,13 @@ class TestOCIDockerfile:
         content = read(DOCKERFILE)
         # The runtime stage should create at least /var/lib/opsswarm or /app/runtime-data
         # and chown them to appuser:appgroup so the non-root user can write.
-        has_chown = re.search(r"chown\s+.*appuser.*\s+/var/lib/opsswarm", content)
-        has_chown |= re.search(r"chown\s+.*10001.*\s+/var/lib/opsswarm", content)
-        has_chown |= re.search(r"--chown=appuser:appgroup", content)
+        has_chown = any(
+            (
+                re.search(r"chown\s+.*appuser.*\s+/var/lib/opsswarm", content),
+                re.search(r"chown\s+.*10001.*\s+/var/lib/opsswarm", content),
+                re.search(r"--chown=appuser:appgroup", content),
+            )
+        )
         assert has_chown, \
             "Dockerfile must chown writable directories to appuser for read-only root fs"
 
@@ -261,17 +260,17 @@ class TestOCIReleaseWorkflow:
         assert "digest" in content.lower() or "sha256" in content.lower(), \
             "release.yml must record the image digest"
 
-    def test_trivy_fail_closed_in_security_workflow(self):
-        """A.7  security.yml uses Trivy at HIGH/CRITICAL with exit-code 1 (fail-closed)."""
-        if not SECURITY_WORKFLOW.is_file():
-            pytest.skip("security.yml not found")
+    def test_trivy_fail_closed_in_release_workflow(self):
+        """A.7  release.yml runs Trivy at HIGH/CRITICAL with exit-code 1 (fail-closed)."""
+        if not RELEASE_WORKFLOW.is_file():
+            pytest.skip("release.yml not found")
 
-        content = read(SECURITY_WORKFLOW)
+        content = read(RELEASE_WORKFLOW)
         assert "trivy" in content.lower(), \
-            "security.yml must run Trivy security scanning"
-        assert re.search(r"severity\s+HIGH.*CRITICAL|CRITICAL.*HIGH", content), \
+            "release.yml must run Trivy security scanning"
+        assert re.search(r"severity:\s*(?:CRITICAL,HIGH|HIGH,CRITICAL)", content), \
             "Trivy must scan for HIGH and CRITICAL severities"
-        assert "--exit-code 1" in content or "exit 1" in content, \
+        assert re.search(r"exit-code:\s*[\"']?1", content), \
             "Trivy must fail-closed (exit-code 1 on HIGH/CRITICAL)"
 
     def test_sbom_artifact_uploaded_in_release(self):

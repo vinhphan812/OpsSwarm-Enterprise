@@ -1,9 +1,9 @@
 # docker-compose.yml — OpsSwarm Enterprise local / single-node deployment
 #
 # Usage:
-#   cp .env.example .env          # fill in GITHUB_TOKEN and OPSWARM_OPENCLAW_BIN
+#   cp .env.compose.example .env  # optional: customise committed safe defaults
 #   docker compose up -d          # production profile
-#   docker compose --profile dev up -d   # dev profile (hot reload via bind-mounts)
+#   docker compose --profile openclaw up -d  # optional OpenClaw sidecar profile
 #
 # Image tag: set OPSWARM_IMAGE to override the default opsswarm/opsswarm:local.
 #   docker compose --env-file .env.local up -d
@@ -94,7 +94,11 @@ services:
       - "${OPSWARM_PORT:-8080}:8080"
 
     env_file:
-      - ${OPSWARM_ENV_FILE:-.env}
+      # This committed, credential-free baseline makes `docker compose config`
+      # self-contained in clean clones. Operators can replace it explicitly
+      # with `OPSWARM_ENV_FILE=.env` or `--env-file <path>` at deploy time.
+      - path: ${OPSWARM_ENV_FILE:-.env.compose.example}
+        required: true
 
     environment:
       <<: *common-env

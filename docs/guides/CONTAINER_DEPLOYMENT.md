@@ -348,127 +348,90 @@ groups:
 
 ---
 
-## Kubernetes
+## Kubernetes / Kustomize
 
-### Manifest (core objects only; see the separate K8s task for full manifests)
+The repository ships a deployable Kustomize layout, rather than requiring operators
+to copy the illustrative manifest above:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: opsswarm-env
-data:
-  PORT: "8080"
-  # OPSWARM_OPENCLAW_BIN is set in the Secret below
+- `k8s/base/` contains the namespace, ConfigMap, Deployment, Service, PDB, and
+  NetworkPolicy.
+- `k8s/overlays/dev/` and `k8s/overlays/prod/` apply environment-specific patches.
+- `k8s/base/secret.yaml` is a template with placeholders. Do not apply it with
+  real credentials committed to the repository.
 
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: opsswarm-secrets
-type: Opaque
-stringData:
-  OPSWARM_OPENCLAW_BIN: /opt/openclaw/openclaw   # path inside the init/sidecar container
-  GITHUB_TOKEN: ghp_...                          # GitHub PAT with repo scope
+### Prerequisites
 
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: opsswarm
-  labels:
-    app: opsswarm
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: opsswarm
-  template:
-    metadata:
-      labels:
-        app: opsswarm
-    spec:
-      # Security: run as non-root (matches Dockerfile USER directive)
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 10001
-        runAsGroup: 10001
-        fsGroup: 10001
-      containers:
-        - name: opsswarm
-          image: your-registry/opsswarm:v2.2.0
-          ports:
-            - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: opsswarm-env
-          env:
-            - name: OPSWARM_OPENCLAW_BIN
-              valueFrom:
-                secretKeyRef:
-                  name: opsswarm-secrets
-                  key: OPSWARM_OPENCLAW_BIN
-            - name: GITHUB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: opsswarm-secrets
-                  key: GITHUB_TOKEN
-          securityContext:
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          volumeMounts:
-            - name: opsswarm-data
-              mountPath: /var/lib/opsswarm
-            - name: openclaw-bin
-              mountPath: /opt/openclaw
-              readOnly: true
-          # Readiness probe: HTTP GET /health
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-          # Liveness probe: keep the pod alive
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
-          # Graceful termination: allow 60 s for in-flight requests
-          terminationGracePeriodSeconds: 60
-      volumes:
-        - name: opsswarm-data
-          persistentVolumeClaim:
-            claimName: opsswarm-data-pvc
-        - name: openclaw-bin
-          # Populate this volume with the OpenClaw binary (init container,
-          # sidecar, or pre-populated volume)
-          emptyDir: {}
+Install `kubectl` with Kustomize support and select the target cluster context:
+
+```bash
+kubectl version --client
+kubectl config current-context
 ```
 
-### OpenClaw sidecar pattern
+Create the runtime Secret out-of-band before applying an overlay. For a development
+cluster, create it from literals without recording them in shell history or source
+control:
 
-If OpenClaw must run in the same pod as OpsSwarm but with different resource limits,
-use an init container to extract the binary and a sidecar to run it:
-
-```yaml
-initContainers:
-  - name: openclaw-init
-    image: your-openclaw-image:v1.x.x
-    command: ["cp", "/openclaw", "/opt/openclaw/openclaw"]
-    volumeMounts:
-      - name: openclaw-bin
-        mountPath: /opt/openclaw
+```bash
+kubectl create namespace opsswarm --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n opsswarm create secret generic opsswarm-secrets \
+  --from-literal=GITHUB_TOKEN_FILE=/run/secrets/github-token \
+  --from-literal=OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+For production, use an approved secret manager, External Secrets, or Sealed Secrets
+rather than literal values. The GitHub token itself belongs in the secret manager;
+never put it in `k8s/` files or Kustomize patches.
+
+### Render, validate, and deploy
+
+Render first and inspect the exact resources that Kustomize will apply:
+
+```bash
+kubectl kustomize k8s/overlays/dev > /tmp/opsswarm-dev.yaml
+kubectl apply --dry-run=server -k k8s/overlays/dev
+```
+
+Apply the development overlay, wait for the rollout, and verify the health endpoint:
+
+```bash
+kubectl apply -k k8s/overlays/dev
+kubectl rollout status deployment/opsswarm -n opsswarm --timeout=120s
+kubectl get pods,service,pdb,networkpolicy -n opsswarm
+kubectl port-forward -n opsswarm service/opsswarm 8080:8080
+# In another terminal: curl http://127.0.0.1:8080/health
+```
+
+For production, pin the image tag or digest in `k8s/overlays/prod/kustomization.yaml`
+before deployment, then use the same render and rollout gates:
+
+```bash
+kubectl kustomize k8s/overlays/prod > /tmp/opsswarm-prod.yaml
+kubectl apply --dry-run=server -k k8s/overlays/prod
+kubectl apply -k k8s/overlays/prod
+kubectl rollout status deployment/opsswarm -n opsswarm --timeout=120s
+```
+
+If the readiness or health verification fails, stop promotion and roll back only after
+reviewing logs and events:
+
+```bash
+kubectl describe deployment/opsswarm -n opsswarm
+kubectl logs deployment/opsswarm -n opsswarm --all-containers --tail=200
+kubectl rollout undo deployment/opsswarm -n opsswarm
+kubectl rollout status deployment/opsswarm -n opsswarm --timeout=120s
+```
+
+### OpenClaw sidecar and persistent storage
+
+The base Deployment expects the OpenClaw binary at the value supplied by
+`OPSWARM_OPENCLAW_BIN`. Supply it through an approved sidecar, init container, or
+read-only mounted volume; do not embed it in the OpsSwarm image. Persistent evidence
+uses `/var/lib/opsswarm`; provision storage appropriate to the cluster before raising
+replica counts. Review the NetworkPolicy with the cluster networking team to confirm
+that DNS, GitHub API, OpenClaw, and Prometheus traffic are permitted for the chosen
+CNI.
 
 ---
 
