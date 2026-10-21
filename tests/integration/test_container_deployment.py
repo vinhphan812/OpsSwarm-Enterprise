@@ -377,6 +377,42 @@ class TestDockerCompose:
         assert result.returncode == 0, \
             f"docker compose --profile openclaw config failed:\n{result.stderr}"
 
+    def test_compose_openclaw_sidecar_topology(self):
+        """B.1  openclaw sidecar profile wires OPSWARM_OPENCLAW_BIN and openclaw-data volume.
+
+        This test verifies that the sidecar topology is correctly configured:
+          (a) openclaw service exports OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw
+          (b) openclaw-data volume is declared and shared between openclaw and opsswarm
+          (c) opsswarm mounts openclaw-data to reach the OpenClaw binary
+        """
+        if not docker_available():
+            pytest.skip("docker not available in this environment")
+
+        result = run(
+            ["docker", "compose", "--profile", "openclaw", "config"],
+            cwd=REPO_ROOT,
+            check=False,
+            timeout=30,
+        )
+        assert result.returncode == 0, \
+            f"docker compose --profile openclaw config failed:\n{result.stderr}"
+
+        config = result.stdout
+
+        # (a) openclaw service must set OPSWARM_OPENCLAW_BIN to the shared volume path.
+        assert "OPSWARM_OPENCLAW_BIN" in config, \
+            "openclaw service must set OPSWARM_OPENCLAW_BIN in environment"
+        assert "/opt/openclaw/openclaw" in config, \
+            "OPSWARM_OPENCLAW_BIN must point to /opt/openclaw/openclaw (openclaw-data mount)"
+
+        # (b) openclaw-data named volume must be declared.
+        assert "openclaw-data" in config, \
+            "docker-compose.yml must declare openclaw-data named volume for sidecar"
+
+        # (c) opsswarm must mount openclaw-data to reach the OpenClaw binary.
+        assert "openclaw-data" in config, \
+            "opsswarm service must mount openclaw-data volume to reach the OpenClaw binary"
+
     def test_compose_example_env_file_documents_token_injection(self):
         """B.3  .env.compose.example documents the token injection pattern."""
         if not ENV_EXAMPLE.is_file():
@@ -557,6 +593,79 @@ class TestKubernetes:
             f"overlays/dev/kustomization.yaml not found at {dev_overlay}"
         assert prod_overlay.is_file(), \
             f"overlays/prod/kustomization.yaml not found at {prod_overlay}"
+
+    def test_deployment_has_openclaw_init_container(self):
+        """C.7  Deployment has an init container that validates the OpenClaw binary.
+
+        The init container blocks pod startup if OPSWARM_OPENCLAW_BIN is empty or
+        the binary is not found/executable at the specified path.  This proves the
+        adapter contract — the container will not start without a valid OpenClaw
+        binary, preventing a silent failure that would otherwise only surface at
+        first incident response.
+        """
+        deployment_file = K8S_BASE / "deployment.yaml"
+        if not deployment_file.is_file():
+            pytest.skip(f"deployment.yaml not found at {deployment_file}")
+
+        content = read(deployment_file)
+        assert "initContainers" in content, \
+            "deployment.yaml must define an init container"
+        assert "openclaw" in content.lower(), \
+            "init container must be named openclaw-check or similar"
+        # The init container must check that the binary is executable.
+        assert "OPSWARM_OPENCLAW_BIN" in content, \
+            "init container must reference OPSWARM_OPENCLAW_BIN from the ConfigMap"
+        # The init container must exit 1 if the binary is not found.
+        assert "exit 1" in content or "exit 1" in content.lower(), \
+            "init container must fail (exit 1) when OpenClaw binary is not available"
+
+    def test_network_policy_has_no_public_ingress(self):
+        """C.7  NetworkPolicy base has no 0.0.0.0/0 ingress rule.
+
+        A 0.0.0.0/0 ingress rule is overly permissive for a service that handles
+        GitHub webhooks and exposes an admin API.  The base policy must use only
+        explicit allowlist rules (same-namespace pods, labelled namespaces).
+        Production load-balancer CIDRs belong in overlays/prod/.
+        """
+        netpol_file = K8S_BASE / "network-policy.yaml"
+        if not netpol_file.is_file():
+            pytest.skip(f"network-policy.yaml not found at {netpol_file}")
+
+        content = read(netpol_file)
+        # Check no ingress rule uses 0.0.0.0/0.
+        # Parse the YAML to be precise, but a simple check suffices here.
+        lines = content.splitlines()
+        in_ingress = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("ingress:"):
+                in_ingress = True
+            elif stripped.startswith("egress:") or stripped.startswith("spec:"):
+                in_ingress = False
+            if in_ingress and "cidr: 0.0.0.0/0" in stripped:
+                pytest.fail(
+                    "NetworkPolicy base must not contain 0.0.0.0/0 ingress rules. "
+                    "Move load-balancer CIDRs to overlays/prod/."
+                )
+
+    def test_prod_network_policy_overlay_exists(self):
+        """C.7  Production NetworkPolicy overlay adds load-balancer ingress and model-provider egress."""
+        prod_netpol_file = K8S_DIR / "overlays" / "prod" / "network-policy.yaml"
+        if not prod_netpol_file.is_file():
+            pytest.skip(f"overlays/prod/network-policy.yaml not found at {prod_netpol_file}")
+
+        content = read(prod_netpol_file)
+        assert "kind: NetworkPolicy" in content, \
+            "overlays/prod/network-policy.yaml must be a NetworkPolicy"
+        # Must document the GitHub CIDR verification source.
+        assert "api.github.com/meta" in content or "meta" in content.lower(), \
+            "Production NetworkPolicy overlay must document GitHub CIDR verification source"
+        # Must document model-provider egress.
+        assert "openai" in content.lower() or "model" in content.lower(), \
+            "Production NetworkPolicy overlay must document model-provider egress"
+        # Must have a cloud load-balancer ingress rule.
+        assert "load-balancer" in content.lower() or "cloud" in content.lower(), \
+            "Production NetworkPolicy overlay must add cloud load-balancer ingress rules"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

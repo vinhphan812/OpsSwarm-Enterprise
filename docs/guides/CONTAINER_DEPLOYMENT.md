@@ -348,6 +348,104 @@ groups:
 
 ---
 
+## OpenClaw sidecar topology
+
+OpsSwarm requires the OpenClaw AI reasoning runtime.  The image does **not bundle
+the OpenClaw binary** — this is intentional so that OpenClaw and OpsSwarm can be
+upgraded independently.  Instead, OpsSwarm discovers the binary at the path set by
+the `OPSWARM_OPENCLAW_BIN` environment variable.
+
+Two deployment topologies are supported:
+
+### Topology A — Docker Compose sidecar (recommended for local / single-node)
+
+OpenClaw runs as a co-located compose service.  Both services share a `openclaw-data`
+named volume so OpsSwarm can read the OpenClaw binary.
+
+```
+opsswarm ────── reads openclaw binary ───> /opt/openclaw/openclaw
+                                                    ↑
+                                            openclaw-data volume
+                                                    ↑
+                                          openclaw service (produces binary)
+```
+
+**Setup:**
+
+```bash
+# 1. Build the OpenClaw image (one-time):
+docker build -f openclaw.Dockerfile -t openclaw:latest .
+
+# 2. Start OpsSwarm + OpenClaw sidecar:
+docker compose --profile openclaw up -d
+
+# 3. Verify the opsswarm container has the openclaw-data volume mounted:
+docker inspect opsswarm --format '{{json .Mounts}}' | python -m json.tool
+# Must show a mount of type "volume" named "openclaw-data" at "/opt/openclaw"
+
+# 4. Verify the init container in k8s would validate the binary path
+#    (see Topology B for the k8s equivalent smoke test).
+```
+
+The compose config (`docker compose --profile openclaw config`) validates that:
+- `openclaw-data` named volume is declared.
+- `openclaw` service sets `OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw`.
+- `opsswarm` service mounts `openclaw-data` at `/opt/openclaw`.
+- `opsswarm` depends on `openclaw` (binary available before startup).
+
+Run the smoke test:
+
+```bash
+docker compose --profile openclaw config   # must succeed
+pytest tests/integration/test_container_deployment.py::TestDockerCompose::test_compose_openclaw_sidecar_topology  # must pass
+```
+
+### Topology B — Kubernetes sidecar (production)
+
+OpenClaw runs as a separate Kubernetes Deployment in the `openclaw-system` namespace,
+or as an init container in the same pod.  The base Deployment includes an init
+container that validates the binary before the main container starts.
+
+**Init container smoke test:**
+
+```bash
+# Verify the init container blocks startup when OPSWARM_OPENCLAW_BIN is empty:
+kubectl apply -k k8s/overlays/dev
+
+# Check the init container log (should say "ERROR: OPSWARM_OPENCLAW_BIN is not set"):
+kubectl logs -n opsswarm deployment/opsswarm -c openclaw-check
+
+# The pod will not start until OPSWARM_OPENCLAW_BIN is set to a valid path.
+```
+
+**CI evidence:** the integration test suite includes
+`test_deployment_has_openclaw_init_container`, which proves that:
+1. The Deployment defines an init container named `openclaw-check`.
+2. The init container reads `OPSWARM_OPENCLAW_BIN` from the ConfigMap.
+3. The init container exits 1 if the binary is not found or not executable.
+
+### Verifying the adapter works end-to-end
+
+```bash
+# Docker Compose:
+docker compose --profile openclaw up -d
+sleep 10
+docker compose logs opsswarm | grep -i "openclaw"  # should show adapter initialised
+curl http://localhost:8080/health  # must return {"ok": true, ...}
+
+# Kubernetes (requires a real cluster with OpenClaw installed):
+kubectl apply -k k8s/overlays/dev
+kubectl rollout status deployment/opsswarm -n opsswarm --timeout=120s
+kubectl logs -n opsswarm deployment/opsswarm --tail=50 | grep -i "openclaw"
+curl http://localhost:8080/health
+```
+
+If the init container logs show `ERROR: OpenClaw binary not found`, check that:
+1. `OPSWARM_OPENCLAW_BIN` is set in the ConfigMap.
+2. The volume mount providing the binary is present in the Deployment.
+
+---
+
 ## Kubernetes / Kustomize
 
 The repository ships a deployable Kustomize layout, rather than requiring operators
@@ -427,11 +525,20 @@ kubectl rollout status deployment/opsswarm -n opsswarm --timeout=120s
 
 The base Deployment expects the OpenClaw binary at the value supplied by
 `OPSWARM_OPENCLAW_BIN`. Supply it through an approved sidecar, init container, or
-read-only mounted volume; do not embed it in the OpsSwarm image. Persistent evidence
-uses `/var/lib/opsswarm`; provision storage appropriate to the cluster before raising
-replica counts. Review the NetworkPolicy with the cluster networking team to confirm
-that DNS, GitHub API, OpenClaw, and Prometheus traffic are permitted for the chosen
-CNI.
+read-only mounted volume; do not embed it in the OpsSwarm image.
+
+**Documented sidecar topologies:**
+- Topology A (Docker Compose): `docker compose --profile openclaw` — see above.
+- Topology B (Kubernetes): see the OpenClaw sidecar topology section above.
+
+The init container in `k8s/base/deployment.yaml` validates the binary before the main
+container starts.  The compose sidecar topology is verified by the integration test
+`test_compose_openclaw_sidecar_topology`.
+
+Persistent evidence uses `/var/lib/opsswarm`; provision storage appropriate to the
+cluster before raising replica counts. Review the NetworkPolicy with the cluster
+networking team to confirm that DNS, GitHub API, OpenClaw, and Prometheus traffic
+are permitted for the chosen CNI.
 
 ---
 

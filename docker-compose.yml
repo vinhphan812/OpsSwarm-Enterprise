@@ -40,8 +40,25 @@
 #   To reset: docker compose down -v
 #
 x-common-env: &common-env
-  # Path to the OpenClaw binary on the host or inside an openclaw service container.
-  # This is NOT embedded in the OpsSwarm image; supply it at runtime.
+  # Path to the OpenClaw binary inside the container.
+  #
+  # Supported deployment topologies:
+  #
+  #   (a) Sidecar (default for compose --profile openclaw):
+  #       OpenClaw is started as a co-located compose service and the binary is
+  #       made available at /opt/openclaw/openclaw via the openclaw-data named
+  #       volume.  Set OPSWARM_OPENCLAW_BIN to this path in the sidecar profile.
+  #
+  #   (b) Host mount (single-service compose without --profile):
+  #       Mount the host OpenClaw binary at any container path and set
+  #       OPSWARM_OPENCLAW_BIN to that path in your .env.
+  #
+  #   (c) Kubernetes sidecar:
+  #       Mount the OpenClaw binary via an emptyDir or hostPath volume.
+  #       See k8s/base/deployment.yaml and docs/guides/CONTAINER_DEPLOYMENT.md.
+  #
+  # The init container in k8s/base/deployment.yaml validates that the binary
+  # exists and is executable before the main container starts.
   OPSWARM_OPENCLAW_BIN: ${OPSWARM_OPENCLAW_BIN:-}
 
   # Config file path inside the container.  Mount config/ via the override
@@ -141,24 +158,39 @@ services:
     stop_signal: SIGTERM
     stop_grace_period: 30s
 
-    # Dependency on OpenClaw is intentionally not declared.  OpsSwarm discovers
-    # the OpenClaw binary via OPSWARM_OPENCLAW_BIN (host path or sidecar volume).
-    # Uncomment the following and use --profile openclaw to run OpenClaw as a
-    # co-located sidecar service:
+    # Dependency on OpenClaw: the opsswarm container requires the OpenClaw binary
+    # to be available before it can start the OpenClaw adapter.
     #
-    # depends_on:
-    #   openclaw:
-    #     condition: service_healthy
+    # The sidecar topology uses Docker Compose's natural service-startup ordering:
+    # openclaw is defined BEFORE opsswarm in this file, so Compose starts openclaw
+    # first.  This is sufficient because the openclaw-data volume exists and the
+    # binary is immediately available when the openclaw service starts.
     #
-    # profiles:
-    #   - default
+    # For a hard ordering guarantee (opsswarm waits for openclaw to be healthy),
+    # use `condition: service_healthy` instead.  Add a curl-based health check to
+    # the openclaw service first.  See docker-compose.override.yml for an example.
 
-  # ─── OpenClaw (optional sidecar profile) ────────────────────────────────────
+  # ─── OpenClaw (sidecar profile) ───────────────────────────────────────────
   # Spin up alongside OpsSwarm when you do not have OpenClaw installed on the host.
   # Activate with: docker compose --profile openclaw up -d
   #
-  # Build the OpenClaw image first, or replace with a pre-built image tag:
-  #   docker build -f openclaw.Dockerfile -t openclaw:latest .
+  # Topology:
+  #   openclaw service:   writes /opt/openclaw/openclaw binary to the openclaw-data
+  #                       named volume (your OpenClaw distribution directory mounted
+  #                       here from the host or pre-built into a custom image).
+  #   opsswarm service:   reads the binary from openclaw-data at /opt/openclaw/openclaw
+  #                       (mapped via OPSWARM_OPENCLAW_BIN env var below).
+  #
+  # Prerequisites:
+  #   1. Build the OpenClaw image, or replace OPENCLAW_IMAGE with a pre-built tag:
+  #        docker build -f openclaw.Dockerfile -t openclaw:latest .
+  #   2. Mount your OpenClaw distribution directory as openclaw-data.
+  #      The volume must contain the openclaw binary at /opt/openclaw/openclaw.
+  #
+  # Usage:
+  #   echo "OPENCLAW_IMAGE=openclaw:latest" >> .env
+  #   echo "OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw" >> .env
+  #   docker compose --profile openclaw up -d
   openclaw:
     image: ${OPENCLAW_IMAGE:-openclaw:latest}
     container_name: openclaw
@@ -167,8 +199,14 @@ services:
     profiles:
       - openclaw
 
-    # OpenClaw serves its IPC socket on a host path so OpsSwarm can reach it.
-    # Set OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw in .env when using this.
+    # Set OPSWARM_OPENCLAW_BIN to the path where the opsswarm service will read
+    # the binary.  opsswarm-service reads this env var at startup.
+    environment:
+      - OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw
+
+    # openclaw-data: a named volume that the openclaw service populates with the
+    # OpenClaw binary.  Mount the host OpenClaw installation directory here.
+    # The opsswarm service reads from the same volume at the same mount path.
     volumes:
       - openclaw-data:/opt/openclaw
 

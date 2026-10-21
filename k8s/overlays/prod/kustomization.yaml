@@ -15,7 +15,9 @@
 # Security notes:
 #   - readOnlyRootFilesystem: consider setting true in deployment.yaml and
 #     using tmpfs for /tmp, /var/run in this overlay.
-#   - NetworkPolicy: ensure your CNI supports it (Calico, Cilium, Weave).
+#   - NetworkPolicy: k8s/overlays/prod/network-policy.yaml adds cloud LB
+#     ingress and model-provider egress rules.  Review and un-comment the
+#     specific provider CIDRs before deploying.
 #   - AppArmor / seccomp: additional hardening can be added via a pod security
 #     policy or Pod Security Standards (PSS) in the namespace.
 #
@@ -33,6 +35,7 @@ namespace: opsswarm
 
 resources:
   - ../../base
+  - ./network-policy.yaml
 
 # ── Patches ─────────────────────────────────────────────────────────────────
 patches:
