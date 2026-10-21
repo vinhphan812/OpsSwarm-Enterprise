@@ -82,11 +82,13 @@ CREATE TABLE runs (
 -- Per-issue index (fast lookup for start_issue)
 CREATE INDEX idx_runs_issue ON runs (issue_number);
 
--- Run leadership lease
+-- Run leadership lease and durable fencing token
 CREATE TABLE run_leases (
     run_id      TEXT        NOT NULL PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
     owner_id    TEXT        NOT NULL,           -- process-unique instance ID
+    epoch       BIGINT      NOT NULL DEFAULT 1, -- monotonically increasing fencing token
     expires_at  TIMESTAMPTZ NOT NULL,
+    CONSTRAINT  run_leases_epoch_positive CHECK (epoch > 0),
     CONSTRAINT  no_expired_leases CHECK (expires_at > NOW())
 );
 
@@ -153,36 +155,75 @@ WHERE  run_id = $run_id
 
 ---
 
-## Lease Ownership / Expiry / Takeover
+## Lease Ownership, Epoch Fencing, Expiry, and Takeover
+
+### Epoch fencing contract
+
+A lease is not sufficient protection against a delayed former leader. Every `run_leases` row
+therefore carries a durable, strictly increasing **epoch** (a fencing token). PostgreSQL is
+the authority for both lease expiry and the next epoch; application-host clocks are never used
+to decide ownership.
+
+- The first successful owner of a run receives epoch `1`. A renewal by the same `owner_id`
+  preserves that epoch. Every successful takeover by a different owner increments it in the
+  same row-locking transaction that changes `owner_id`.
+- The acquisition transaction returns `(owner_id, epoch, expires_at)`. The holder must retain
+  that epoch and present it in every protected mutation. Losing a renewal, observing a higher
+  epoch, or receiving a zero-row update is terminal for that holder's mutable work: it must
+  stop dispatching and reload state; it must not retry the write under its stale epoch.
+- The protected write paths are: (1) command dispatch and its `command_outcomes` transition,
+  including any remediation action; (2) GitHub issue/comment/remediation writes and their
+  evidence append; (3) webhook-driven run-state and idempotency transitions; (4) checkpoint
+  and run-state CAS updates. Read-only investigation and `/health` are not leadership writes.
+- Each protected transaction locks or conditionally joins the current `run_leases` row and
+  requires `owner_id = $owner_id`, `epoch = $epoch`, and `expires_at > NOW()` before mutating
+  `runs`, `evidence`, `checkpoints`, or delivery/command state. A mismatch returns a defined
+  `StaleEpochError` and commits no protected mutation. External GitHub calls are preceded by
+  that transaction/validation, recorded with the epoch and idempotency key, then reconciled by
+  the durable first-wins command outcome; no external call is asserted safe merely because an
+  in-memory lease looked valid.
+
+The ordering guarantee is therefore database-enforced: after epoch `N+1` has been granted for
+a run, a holder carrying any epoch `< N+1` cannot commit a protected database write. Epochs
+fence durable OpsSwarm writes; they cannot retract an HTTP request that a stale holder sent
+before it learned it was fenced. Idempotency keys, command outcomes, and reconciliation limit
+that residual external-side-effect window.
 
 ### Lease Lifecycle
 
-Each HA process holds a **process-unique instance ID** (UUID generated at startup, stored in an env var or temp file). A process acquires a **run-level lease** before performing any state-mutating operation:
+Each HA process holds a **process-unique instance ID** (UUID generated at startup, stored in an env var or temp file). A process acquires a **run-level lease** before performing any protected mutation:
 
 ```
 ACQUIRE_LEASE(run_id, ttl=30s):
-  INSERT INTO run_leases (run_id, owner_id, expires_at)
-  VALUES ($run_id, $my_instance_id, NOW() + INTERVAL '30 seconds')
-  ON CONFLICT (run_id) DO UPDATE
-  SET owner_id = EXCLUDED.owner_id,
-      expires_at = EXCLUDED.expires_at
-  WHERE run_leases.owner_id = EXCLUDED.owner_id
-     OR run_leases.expires_at < NOW();
-  -- Returns: (acquired: bool, current_owner: str)
+  BEGIN;
+  SELECT owner_id, epoch, expires_at
+  FROM run_leases WHERE run_id = $run_id FOR UPDATE;
+  -- if absent: INSERT (..., owner_id=$me, epoch=1, expires_at=NOW()+30s)
+  -- if current owner is $me: renew expiry, preserving epoch
+  -- if expired: UPDATE owner_id=$me, epoch=epoch+1, expires_at=NOW()+30s
+  -- otherwise: return not acquired with the current owner and epoch
+  COMMIT;
+  -- Returns: (acquired, owner_id, epoch, expires_at)
 ```
 
-A standby process attempting to acquire an expired lease succeeds (its own `INSERT` overwrites the stale row). The standby then loads the run's state from `runs.run_data` and resumes from the latest checkpoint.
+A standby process attempting to acquire an expired lease succeeds only in that locked
+transaction. It receives a new epoch, then loads the run state from `runs.run_data` and
+resumes from the latest checkpoint.
 
 ### Lease Heartbeat
 
-The process actively working on a run refreshes the lease every **10 seconds** by re-issuing `ACQUIRE_LEASE` with the same `owner_id`. If a process dies, its leases expire after their TTL and are eligible for takeover by any standby.
+The process actively working on a run refreshes the lease every **10 seconds** by re-issuing
+`ACQUIRE_LEASE` with the same `owner_id` and epoch. If a process dies, its leases expire after
+their 30-second TTL and are eligible for takeover by a standby. Failure to renew is a fencing
+signal, not permission to continue from cached ownership.
 
 ### Leader Election for Standby Promotion
 
 There is no global leader election. Each run is owned independently:
 
 - **Active process:** Continuously renews its lease on runs it is actively working on.
-- **Standby process:** Polls `run_leases` every 5 seconds for expired leases, acquires them, and resumes.
+- **Standby process:** Polls `run_leases` every 5 seconds for expired leases, claims them under
+  `FOR UPDATE`, receives a new epoch, and resumes only after loading the durable state.
 
 The standby only takes over runs whose `runs.state` is non-terminal (not in `TERMINAL_STATES = {FAILED, ABORTED, PLAN_RCA_RESOLVED}`). Terminal runs are never leased.
 
@@ -190,7 +231,7 @@ The standby only takes over runs whose `runs.state` is non-terminal (not in `TER
 
 `start_issue` uses `SELECT FOR UPDATE` on the issue-number row to prevent two processes from simultaneously creating duplicate `RunRecord` entries:
 
-```python
+```sql
 -- Pessimistic lock on the issue number
 BEGIN;
 SELECT * FROM runs WHERE issue_number = $n FOR UPDATE;
@@ -198,6 +239,27 @@ SELECT * FROM runs WHERE issue_number = $n FOR UPDATE;
 -- If no row: INSERT new run, COMMIT
 COMMIT;
 ```
+
+---
+
+## Split-Brain Mitigation and Residual Risk
+
+Active/passive routing is an operational control, not proof that a former primary is dead. The
+fencing contract protects durable mutations after a newer owner is granted; it complements,
+but does not replace, failure diagnosis and GitHub idempotency.
+
+| Scenario | Required mitigation | Residual risk / limit |
+|---|---|---|
+| Network partition isolates the primary from PostgreSQL but not necessarily from GitHub | The primary must fail readiness when it cannot reach PostgreSQL and must stop protected work when lease renewal fails. A standby takes over only after PostgreSQL reports expiry; all its protected writes use its new epoch. | A primary can still make an external GitHub request during the interval between losing DB access and observing renewal failure. Fencing cannot revoke that request; command/idempotency records and reconciliation detect/contain it. |
+| Primary is paused or GC-stalled past TTL | PostgreSQL time expires the lease; standby takes it over under `FOR UPDATE` and increments epoch. On resumption, the old process's next protected write receives `StaleEpochError` and it stops. | A paused process may have an already-started external call; no automatic mechanism can prove it did not reach GitHub. |
+| Clock skew between application hosts | All expiry comparisons and epoch increments use PostgreSQL `NOW()` inside transactions. Hosts do not compare local wall clocks to decide takeover. Epoch validation, not local time, fences stale durable writes. | Clock skew can affect local scheduling/observability and cause delayed heartbeats, but cannot make a lower epoch valid. PostgreSQL availability and correct database time remain assumptions. |
+| Manual force-release of a lease | Only an authorised runbook operator may force release after confirming the prior instance is terminated or isolated from both PostgreSQL and GitHub. The operation must be audited, increment the epoch on the next takeover, and the old instance must remain fenced by conditional writes. | Force-releasing a still-live, externally connected primary intentionally creates the largest external side-effect risk. Manual failover is not safe automatic failover; do not use it merely to shorten TTL. |
+
+**Honest boundary:** this ADR does not provide quorum-based membership, STONITH, consensus,
+a transactional outbox, or exactly-once delivery to GitHub. It does not claim automatic
+failover or active/active safety. Manual failover remains a controlled, human-approved
+procedure; the deployment is safe for durable state only to the extent that PostgreSQL remains
+the single writable authority and the fencing checks are implemented on every protected path.
 
 ---
 
@@ -309,36 +371,91 @@ A background task prunes expired rows (`DELETE FROM rate_limit_buckets WHERE win
 
 ---
 
-## Fail-Closed Readiness
+## Readiness and Lifecycle Boundary
 
-The FastAPI `/health` and `/ready` endpoints change behavior when HA is enabled:
+This ADR owns only the **HA coordination gate**. It does not define a second lifecycle,
+drain state machine, or competing `/ready` endpoint contract. The canonical process-local
+lifecycle owner is `opsswarm.runtime.get_readiness()` / `ReadinessManager`, as decided in
+ADR-032 (task `t_644e3a9b`); `opsswarm.api` remains a wiring consumer.
 
-```python
-@router.get("/health")
-async def health():
-    """Liveness probe — returns 200 if the process is alive."""
-    return {"status": "ok"}
+The canonical contract remains: `/health` is liveness; `/ready` returns 200 only after startup
+preflight and while the process is not draining, otherwise 503; drain rejects new mutable
+admissions while accepted work settles. When HA is enabled, the canonical manager must compose
+that local gate with an HA coordination dependency: PostgreSQL reachability plus verification
+that the process may safely admit the relevant mutable work. A failed dependency produces the
+canonical 503 outcome; this ADR does not prescribe a competing response shape or treat an empty
+set of run leases as readiness on its own. GitHub HMAC validation remains independent of runtime
+API authorisation.
 
-@router.get("/ready")
-async def ready():
-    """Readiness probe — fail-closed until Postgres is reachable and this process
-    can verify it holds (or can acquire) its instance lease."""
-    try:
-        # 1. Verify Postgres connection
-        await pg.fetchval("SELECT 1")
+---
 
-        # 2. Verify this instance's leases are valid
-        rows = await pg.fetch(
-            "SELECT run_id FROM run_leases WHERE owner_id = $1 AND expires_at > NOW()",
-            INSTANCE_ID
-        )
-        return {"status": "ready", "active_leases": len(rows)}
+## PostgreSQL Deployment and Failover Preconditions
 
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"not ready: {e}")
-```
+Before any production HA claim, the deployment must use a concrete PostgreSQL topology. The
+initial approved topology is **one managed PostgreSQL 14+ service with a separate primary and
+hot standby replica in different failure domains**, exposed through the provider's writer
+endpoint. An in-cluster PostgreSQL StatefulSet is excluded from the initial claim unless a later
+ADR supplies equivalent replication, promotion, backup, and operational evidence.
 
-If Postgres is unreachable, the readiness probe returns **503** and the load balancer health check fails. This prevents the load balancer from routing traffic to a process that cannot coordinate safely.
+- WAL archiving and point-in-time recovery must be enabled. The writer must use synchronous
+  replication/commit acknowledgement to at least one designated synchronous standby for
+  coordination writes; asynchronous replication is not sufficient for the stated failover
+  guarantee. A planned database failover must promote the designated writer only after the old
+  writer is fenced by the provider.
+- Each OpsSwarm process uses a bounded connection pool with a distinct `application_name`,
+  connection timeout, health check, and pool reset on database promotion. Connections surviving
+  a promotion must be discarded and reacquired; the application must not reuse a transaction or
+  cached lease result from the former writer.
+- Transaction row locks (`SELECT ... FOR UPDATE`) and revision/epoch checks are the sole
+  correctness mechanism. PostgreSQL advisory locks, if used for optional process coordination,
+  are session-scoped acceleration only: they must never grant leadership, survive a pool reset,
+  or replace the durable `run_leases` row and fencing checks.
+- The database remains the only writer for the coordination schema. Direct `DELETE` or owner
+  reassignment is prohibited outside the audited manual-failover procedure; manual release must
+  be followed by normal epoch-incrementing acquisition, never a hand-written epoch rollback.
+
+These requirements are contracts, not evidence that the deployment exists today. Until the
+checklist below is complete, HA remains Proposed and `ha.enabled` is not an accepted production
+claim.
+
+---
+
+## Evidence Required to Move to Accepted
+
+ADR-031 remains **Proposed** until the Phase 1–6 implementation and the following evidence are
+reviewed and retained with Issue #70. Phase 7 supplies the runbook and canary/rollback evidence,
+but does not substitute for the implementation gates.
+
+- [ ] **Phase 1 — persistence/schema** (`t_854091a9`): migration and rollback proof includes
+  `run_leases.epoch`, constraints, and a durable monotonic takeover transaction.
+- [ ] **Phase 2 — Postgres run store/CAS** (`t_676eff3d`): every run-state mutation validates
+  owner and epoch alongside revision CAS; stale-epoch tests prove zero rows mutate.
+- [ ] **Phase 3 — lease management** (`t_ac930e53`): heartbeat/takeover tests cover epoch
+  increment, paused-leader fencing, and the four split-brain scenarios in this ADR.
+- [ ] **Phase 4 — CAS enforcement** (`t_35dfc9b3`): command dispatch, comment/remediation
+  writes, webhook-driven transitions, checkpoints, and evidence writes all use the protected
+  epoch-validation contract.
+- [ ] **Phase 5 — HA integration tests** (`t_5968c86a`): two-process tests demonstrate no
+  stale-epoch durable write after takeover, deterministic command outcomes, and evidence-chain
+  continuity through takeover.
+- [ ] **Phase 6 — readiness/rate-limit integration** (`t_a3cff117`): tests show PostgreSQL
+  loss fails the canonical readiness gate closed, composes with `ReadinessManager`/ADR-032
+  without a second drain owner, and leaves `/health` as liveness.
+- [ ] **Phase 7 — operations/runbook** (`t_8b5c83c8`): an approved runbook, rollback exercise,
+  and a recorded canary procedure reference the chosen managed-Postgres topology and its
+  synchronous-replication configuration.
+- [ ] **Deployment evidence:** topology/configuration record identifies writer and synchronous
+  standby, WAL archive/PITR settings, `synchronous_commit` expectation, connection-pool limits,
+  and advisory-lock policy; secrets are redacted.
+- [ ] **Failover drill transcript:** dated staging (or production-approved) transcript identifies
+  old/new database writer and app instances, injects a primary/app failure, records promotion,
+  connection-pool reset, lease epoch before/after, and bounded standby resumption.
+- [ ] **Evidence-chain continuity report:** before/during/after drill export for at least one
+  non-terminal run shows sequence/order, signatures, checkpoint resume point, no duplicate
+  protected event, and successful independent SHA-256 chain verification.
+- [ ] **Readiness fail-closed observation:** captured `/ready` 503 while PostgreSQL is
+  unavailable or coordination validation fails, plus recovery to the canonical ready state after
+  it is restored; it must also show no new mutable admission during local drain.
 
 ---
 
@@ -431,12 +548,16 @@ Action: Deliver the same X-GitHub-Delivery ID to both P1 and P2 simultaneously.
 Expected: Exactly one RunRecord created; one evidence log entry appended.
 ```
 
-### Test 2: Primary Crash + Standby Takeover
+### Test 2: Primary Crash + Standby Takeover with Fencing
 
 ```
-Setup: P1 actively working on a run in INVESTIGATING state.
-Action: Kill P1 hard (SIGKILL).
-Expected: P2 acquires the lease within 30s and resumes the run from the latest checkpoint.
+Setup: P1 actively works on a run in INVESTIGATING state at epoch N; P2 is connected to the
+same Postgres.
+Action: Pause or hard-kill P1, wait for the TTL, and let P2 acquire the lease at epoch N+1.
+Then resume P1 and make it attempt a protected command, evidence, checkpoint, and webhook-state
+write using epoch N.
+Expected: P2 resumes from the latest checkpoint; each P1 mutation returns StaleEpochError with
+zero rows committed; the evidence chain remains continuous and no command executes twice.
 ```
 
 ### Test 3: Concurrent Command Execution
@@ -485,6 +606,23 @@ Expected: Filesystem store used; no Postgres tables written.
 
 ---
 
+## Consequences
+
+**Benefits:** PostgreSQL-issued epochs turn a lease into a durable fencing contract, so a former
+leader cannot write protected OpsSwarm state after a successor is granted. The deployment and
+acceptance-evidence requirements make the HA claim testable rather than aspirational.
+
+**Costs and trade-offs:** every protected mutation now needs a transaction that validates the
+lease epoch, and HA depends on an operationally mature managed PostgreSQL service with
+synchronous replication. Availability is deliberately reduced during coordination uncertainty:
+the canonical readiness gate fails closed rather than admitting mutable work without proof of
+safe coordination.
+
+**Non-goals:** this is not active/active processing, automatic failover, exactly-once external
+side effects, or a replacement for the runtime-owned drain lifecycle.
+
+---
+
 ## Alternatives Considered
 
 || Option | Description | Rejection Rationale |
@@ -506,8 +644,8 @@ Implementation is divided into bounded phases. Each phase is a separate Kanban c
 3. **Phase 3 — HaEvidenceStore migration**: Migrate JSONL evidence to Postgres; update `append()`, `list()`, `verify()` to use Postgres; backward-compatible JSONL read fallback.
 4. **Phase 4 — Lease management + takeover**: `run_leases` table; instance ID generation; heartbeat thread; standby polling loop.
 5. **Phase 5 — Shared rate limiting**: `rate_limit_buckets` table; replace `SimpleRateLimiter` with `PgRateLimiter`; config flag.
-6. **Phase 6 — Fail-closed readiness**: Update `/health` and `/ready` probes; integration test suite (the 6 tests above).
-7. **Phase 7 — Ops runbook + canary rollout**: Runbook documentation; gradual rollout with `ha.enabled` feature flag; rollback procedure validation.
+6. **Phase 6 — Fail-closed readiness**: Compose the HA coordination dependency with the canonical `ReadinessManager` / ADR-032 lifecycle gate; update integration tests without adding a lifecycle owner.
+7. **Phase 7 — Ops runbook + canary rollout**: Runbook documentation; managed-Postgres topology evidence, failover drill, and gradual rollout with `ha.enabled` feature flag; validate rollback procedure.
 
 Each phase is independently deployable and reversible via the feature flag `ha.enabled`.
 
