@@ -25,12 +25,20 @@
 #   resources:           — conservative defaults; tune based on observed p95.
 #
 # OpenClaw binary delivery:
-#   The OpenClaw binary is NOT embedded in the OpsSwarm image.  Operators must
-#   ensure it is available at the path referenced by OPSWARM_OPENCLAW_BIN in the
-#   ConfigMap (default: /usr/local/bin/openclaw).  Strategies:
-#     Dev:     bind-mount from the host node (see overlays/dev/kustomization.yaml).
-#     Prod:    pre-install on the node, inject via init/sidecar, or mount a
-#              ReadOnlyMany PVC containing the binary.
+#   The OpenClaw binary is NOT embedded in the OpsSwarm image.  An init container
+#   validates the binary's presence and executability before the main container
+#   starts (see initContainers.openclaw-bin below).
+#
+#   Volume source strategy (in order of preference):
+#     Dev:     bind-mount from the host node (hostPath) — see overlays/dev/.
+#     Prod:    ReadOnlyMany PVC or ConfigMap containing the binary.
+#     Minimal: emptyDir — binary not present; main container runs but OpenClaw
+#              calls will fail at incident-response time.  Suitable for local dev
+#              where OpenClaw is not yet installed.
+#
+#   The base manifest uses emptyDir as the safe default so the manifest is
+#   always applicable.  Operators MUST override with the appropriate volume source
+#   for their environment before production use.
 #
 # Apply:  kubectl apply -k k8s/overlays/dev   # dev (uses hostPath)
 #         kubectl apply -k k8s/overlays/prod  # production
@@ -83,6 +91,64 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
+
+      # ── Init containers ──────────────────────────────────────────────────────
+      # openclaw-bin: validates that the OpenClaw binary is present and executable
+      # at the path set by OPSWARM_OPENCLAW_BIN (default: /usr/local/bin/openclaw).
+      # Blocks the main container if the binary is absent so the pod fails-fast
+      # rather than silently degrading at incident-response time.
+      #
+      # ⚠️  The base manifest uses an emptyDir for the openclaw-bin volume.  This
+      # allows the manifest to be applied without error, but the binary check will
+      # fail because emptyDir contains nothing.  Operators MUST override this with
+      # a hostPath (dev) or ReadOnlyMany PVC (prod) in their overlay; see
+      # overlays/dev/kustomization.yaml for a working dev example.
+      initContainers:
+        - name: openclaw-bin
+          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          imagePullPolicy: IfNotPresent
+          # Use a lightweight shell image to keep the init container slim.
+          # The actual binary check below is shell-only; no Python needed.
+          command:
+            - /bin/sh
+            - -c
+            - |
+              bin="${OPSWARM_OPENCLAW_BIN:-/usr/local/bin/openclaw}"
+              if [ -z "$bin" ]; then
+                echo "ERROR: OPSWARM_OPENCLAW_BIN is not set — cannot check binary"
+                exit 1
+              fi
+              if [ ! -f "$bin" ]; then
+                echo "ERROR: OpenClaw binary not found at $bin"
+                echo "NOTE: The base manifest uses emptyDir for openclaw-bin volume."
+                echo "      Override with hostPath (dev) or ReadOnlyMany PVC (prod)."
+                exit 1
+              fi
+              if [ ! -x "$bin" ]; then
+                echo "ERROR: OpenClaw binary at $bin is not executable"
+                exit 1
+              fi
+              echo "OpenClaw binary validated at $bin"
+          env:
+            - name: OPSWARM_OPENCLAW_BIN
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_OPENCLAW_BIN
+          securityContext:
+            runAsNonRoot: false
+            runAsUser: 0
+            # The init container runs as root to read any host-path binary.
+            # It exits before the main container starts; this is intentional.
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: openclaw-bin
+              mountPath: /usr/local/bin/openclaw
+              # readOnly is unnecessary — we are only checking the file, not writing.
+              # Set readOnly: true when the underlying volume is ReadOnlyMany.
 
       # ── Application container ─────────────────────────────────────────────
       containers:
@@ -256,6 +322,15 @@ spec:
 
       # ── Volumes ────────────────────────────────────────────────────────────
       volumes:
+        # OpenClaw binary volume.
+        # ⚠️  Base uses emptyDir (ephemeral).  The binary is absent, so the
+        # init container will fail and the pod will not become ready.
+        # Operators MUST override this in their overlay:
+        #   Dev:  hostPath (see overlays/dev/kustomization.yaml).
+        #   Prod: ReadOnlyMany PVC or ConfigMap containing the openclaw binary.
+        - name: openclaw-bin
+          emptyDir: {}
+
         # Evidence store — NOT durable with emptyDir (data lost on pod deletion).
         # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
         # The opsswarm-evidence PVC (defined in kustomization.yaml) provides
