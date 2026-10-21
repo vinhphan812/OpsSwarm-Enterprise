@@ -34,7 +34,8 @@ from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
-from .runtime import check_draining, readiness
+from .runtime import check_draining
+from .runtime import get_readiness
 from .webhook import verify_signature
 
 logger = logging.getLogger(__name__)
@@ -140,12 +141,12 @@ async def _startup_auth_check():
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
-    await readiness.startup_complete()
+    await get_readiness().startup_complete()
 
 
 @app.on_event("shutdown")
 async def _shutdown_drain():
-    await readiness.initiate_drain()
+    await get_readiness().initiate_drain()
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +162,7 @@ async def health():
 @app.get("/ready")
 async def ready():
     """Readiness endpoint. 200 if OK, else 503."""
-    if not readiness.ready:
+    if not get_readiness().ready:
         raise HTTPException(
             status_code=503,
             detail="Startup incomplete or service is draining",
@@ -274,7 +275,9 @@ async def github_webhook(
     data = await request.json()
     if x_github_event == "issues" and data.get("action") == "opened":
         number = int(data["issue"]["number"])
-        await readiness.start_background_dispatch(engine.start_issue(number, x_github_delivery))
+        await get_readiness().start_background_dispatch(
+            engine.start_issue(number, x_github_delivery)
+        )
         return {"accepted": True, "issue": number}
     if x_github_event == "issue_comment" and data.get("action") == "created":
         number = int(data["issue"]["number"])

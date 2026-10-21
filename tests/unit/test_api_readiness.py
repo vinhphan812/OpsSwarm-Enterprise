@@ -14,19 +14,22 @@ from opsswarm.runtime import ReadinessManager
 @pytest.fixture(autouse=True)
 def reset_readiness():
     """Keep the application singleton isolated across test modules."""
-    import opsswarm.runtime as runtime
-
-    manager = ReadinessManager()
-    runtime.readiness = manager
-    # api imports the singleton by name, so keep its bound reference aligned
-    # when that module is already loaded by the shared test configuration.
     import sys
 
-    api_module = sys.modules.get("opsswarm.api")
-    if api_module is not None:
-        api_module.readiness = manager
+    import opsswarm.runtime as runtime
+
+    def _install(manager: ReadinessManager) -> None:
+        runtime.readiness = manager
+        # api resolves the manager through runtime.get_readiness(), so replacing
+        # the module attribute is sufficient. Keep the legacy module-level
+        # attribute in sync for any consumer that still reads it directly.
+        api_module = sys.modules.get("opsswarm.api")
+        if api_module is not None and hasattr(api_module, "readiness"):
+            api_module.readiness = manager
+
+    _install(ReadinessManager())
     yield
-    runtime.readiness = ReadinessManager()
+    _install(ReadinessManager())
 
 
 @pytest.fixture

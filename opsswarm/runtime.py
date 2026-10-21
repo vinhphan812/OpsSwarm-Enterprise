@@ -91,15 +91,26 @@ class ReadinessManager:
 readiness = ReadinessManager()
 
 
+def get_readiness() -> ReadinessManager:
+    """Return the process-wide readiness manager.
+
+    Consumers must resolve the manager through this accessor instead of
+    binding ``runtime.readiness`` at import time. The test-suite replaces the
+    module attribute to isolate state; a by-value import would keep a stale
+    reference and silently bypass the active manager.
+    """
+    return readiness
+
+
 def check_draining(func: F) -> F:
     """Reject new mutable dispatches after drain starts and track accepted work."""
 
     @wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
-        await readiness.begin_dispatch()
+        await get_readiness().begin_dispatch()
         try:
             return await func(*args, **kwargs)
         finally:
-            await readiness.end_dispatch()
+            await get_readiness().end_dispatch()
 
     return wrapper  # type: ignore[return-value]
