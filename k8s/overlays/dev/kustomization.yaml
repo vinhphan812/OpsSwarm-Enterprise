@@ -7,7 +7,8 @@
 #   - APP_ENV: development
 #   - LOG_LEVEL: DEBUG
 #   - Service type: NodePort (for local access without load balancer)
-#   - openclaw-bin volume: hostPath for local binary
+#   - evidence/runtime-data: emptyDir for clusters without dynamic StorageClass.
+#     For clusters with dynamic PVC provisioning, remove the volume patches below.
 #   - secret: generated from local .env values via kustomize secretGenerator
 #
 # Usage:
@@ -60,14 +61,30 @@ patches:
       kind: Service
       name: opsswarm
 
-  # Add hostPath for the OpenClaw binary in local dev.
-  # The base deployment has hostPath commented out; this patch adds it.
+  # Use emptyDir for evidence and runtime-data in local dev (no cluster storage needed).
+  # Remove these two patches if your cluster has dynamic StorageClass provisioning.
+  # Note: Kustomize replaces (not removes) the persistentVolumeClaim key, so both
+  # emptyDir and persistentVolumeClaim appear in the rendered YAML.  Kubernetes
+  # uses emptyDir when set; persistentVolumeClaim is ignored.  This is safe for
+  # local dev where durability is not required.
+  # Volume index 0 = evidence-store, index 1 = runtime-data (see deployment volumes:).
   - patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/0/persistentVolumeClaim
+        value: {}
       - op: add
-        path: /spec/template/spec/volumes/0/hostPath
-        value:
-          path: /usr/local/bin/openclaw
-          type: FileOrCreate
+        path: /spec/template/spec/volumes/0/emptyDir
+        value: {}
+    target:
+      kind: Deployment
+      name: opsswarm
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/volumes/1/persistentVolumeClaim
+        value: {}
+      - op: add
+        path: /spec/template/spec/volumes/1/emptyDir
+        value: {}
     target:
       kind: Deployment
       name: opsswarm

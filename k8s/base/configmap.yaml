@@ -43,18 +43,24 @@ data:
   # Port uvicorn binds inside the container (matches Dockerfile EXPOSE 8080).
   PORT: "8080"
 
-  # ── OpenClaw runtime ──────────────────────────────────────────────────────
+  # ── OpenClaw runtime ─────────────────────────────────────────────────────
   # Absolute path to the OpenClaw binary.  OpsSwarm reads this from the
   # environment at startup; it is NOT embedded in the image layers so that
   # OpenClaw can be upgraded independently of the OpsSwarm image.
   #
-  # Options:
-  #   1. Host path volume mount (simplest, development):
-  #        hostPath: { path: /usr/local/bin/openclaw }
-  #   2. Kubernetes init container or sidecar that downloads/extracts the
-  #      binary, then expose via emptyDir or persistent volume.
-  #   3. An init container that copies from a Kubernetes Secret containing
-  #      the base64-encoded binary (suitable for sealed-secrets workflows).
+  # ⚠️  The base manifest does NOT include an init container or volume mount for
+  # the binary.  Operators MUST ensure the binary is available at this path:
+  #
+  # Dev (overlays/dev): bind-mount from the host node filesystem.
+  #   Ensure /usr/local/bin/openclaw exists on every node running the pod, or
+  #   override this value to point to a hostPath volume.
+  #
+  # Prod options (pick one):
+  #   1. Pre-install openclaw on each node and reference it via hostPath.
+  #   2. Init container that fetches/extracts the binary from a trusted source.
+  #   3. ReadOnlyMany PVC containing the binary, mounted at this path.
+  #   4. Override this value in your production overlay to match your chosen
+  #      delivery strategy.
   #
   # The deployment manifest mounts this path as a read-only volume at
   # /usr/local/bin/openclaw and sets OPSWARM_OPENCLAW_BIN to that path.

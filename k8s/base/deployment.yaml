@@ -7,16 +7,34 @@
 #                          is enabled.  Scaling beyond 1 requires coordination
 #                          store (Redis or Firestore) to be configured first.
 #   securityContext:     — runAsNonRoot, runAsUser 10001 (matches Dockerfile)
+#                          fsGroup 10001 at POD level (not container level).
 #   readOnlyRootFilesystem: false  — Dockerfile creates writable dirs explicitly;
 #                                    set true with tmpfs mounts for /tmp and /var/run
 #                                    in high-security environments.
-#   livenessProbe:       — /health endpoint (present in v2.2.0)
-#   readinessProbe:       — /health for now; upgrade to /ready once issue #30
-#                            (Prometheus metrics + real readiness) is resolved.
-#   resources:            — conservative defaults; tune based on observed p95.
+#   livenessProbe:       — /health endpoint (present in v2.2.0).
+#                          NOTE: /health is a LIVENESS probe only.  It confirms
+#                          the app process is alive but does NOT verify that
+#                          auth config is loaded, GitHub API is reachable, or
+#                          OpenClaw binary responds.  Do NOT mark the service
+#                          as production-ready based solely on this signal.
+#                          A real readiness gate (via /ready) is tracked in
+#                          issue #30 (Prometheus + real readiness signals).
+#   readinessProbe:      — OMITTED.  See the detailed note in the spec below.
+#                          /health is not a readiness signal; do NOT re-add until
+#                          issue #30 provides a real /ready endpoint.
+#   resources:           — conservative defaults; tune based on observed p95.
 #
-# Apply:  kubectl apply -f k8s/deployment.yaml
-# Dry-run: kubectl apply --dry-run=server -f k8s/deployment.yaml
+# OpenClaw binary delivery:
+#   The OpenClaw binary is NOT embedded in the OpsSwarm image.  Operators must
+#   ensure it is available at the path referenced by OPSWARM_OPENCLAW_BIN in the
+#   ConfigMap (default: /usr/local/bin/openclaw).  Strategies:
+#     Dev:     bind-mount from the host node (see overlays/dev/kustomization.yaml).
+#     Prod:    pre-install on the node, inject via init/sidecar, or mount a
+#              ReadOnlyMany PVC containing the binary.
+#
+# Apply:  kubectl apply -k k8s/overlays/dev   # dev (uses hostPath)
+#         kubectl apply -k k8s/overlays/prod  # production
+# Dry-run: kubectl kustomize k8s/overlays/dev && kubectl apply --dry-run=server -k k8s/overlays/dev
 # ─────────────────────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -57,52 +75,14 @@ spec:
         prometheus.io/path: "/metrics"
         # kubernetes.io/change-cause: "upgrade to v2.2.1"  # uncomment to force a rolling restart
     spec:
-      # ── Init containers ──────────────────────────────────────────────────
-      # Init container to wait for / validate OpenClaw binary availability.
-      # Remove this section if OPSWARM_OPENCLAW_BIN is set to a hostPath or
-      # if OpenClaw is injected via a sidecar.
-      initContainers:
-        - name: openclaw-check
-          image: busybox:1.36
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Verify the OpenClaw binary exists and is executable.
-              # If OPSWARM_OPENCLAW_BIN is empty (binary not mounted yet),
-              # the container exits 1 and blocks pod startup with a clear message.
-              OPENCLAW_PATH="${OPSWARM_OPENCLAW_BIN:-}"
-              if [ -z "$OPENCLAW_PATH" ]; then
-                echo "ERROR: OPSWARM_OPENCLAW_BIN is not set."
-                echo "ERROR: Mount the OpenClaw binary at the path configured in the ConfigMap"
-                echo "ERROR: (default: /usr/local/bin/openclaw) before deploying."
-                exit 1
-              fi
-              if [ ! -x "$OPENCLAW_PATH" ]; then
-                echo "ERROR: OpenClaw binary not found or not executable at: $OPENCLAW_PATH"
-                exit 1
-              fi
-              echo "OpenClaw binary verified at: $OPENCLAW_PATH"
-          env:
-            - name: OPSWARM_OPENCLAW_BIN
-              valueFrom:
-                configMapKeyRef:
-                  name: opsswarm-config
-                  key: OPSWARM_OPENCLAW_BIN
-          securityContext:
-            runAsNonRoot: false  # busybox runs as root to check file permissions
-            readOnlyRootFilesystem: true
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop:
-                - ALL
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 100m
-              memory: 32Mi
+      # ── Pod-level security context ──────────────────────────────────────────
+      # fsGroup must be at pod level (not container level) so that all containers
+      # in the pod honour the supplemental group for volume access.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
 
       # ── Application container ─────────────────────────────────────────────
       containers:
@@ -119,7 +99,7 @@ spec:
               containerPort: 8080
               protocol: TCP
 
-          # ── Security context ───────────────────────────────────────────────
+          # ── Container-level security context ──────────────────────────────────
           securityContext:
             # runAsNonRoot: true — container refuses to run as UID 0 (root).
             # The Dockerfile USER directive sets the primary group to appgroup (10001).
@@ -127,8 +107,6 @@ spec:
             # runAsUser matches the Dockerfile useradd uid 10001.
             runAsUser: 10001
             runAsGroup: 10001
-            # fsGroup allows non-root writes to emptyDir volumes to be group-readable.
-            fsGroup: 10001
             # readOnlyRootFilesystem: false — the Dockerfile explicitly creates
             # writable directories (/var/lib/opsswarm, /app/runtime-data).  The
             # container needs these for evidence persistence and run checkpoints.
@@ -142,9 +120,14 @@ spec:
               drop:
                 - ALL
 
-          # ── Liveness probe ────────────────────────────────────────────────
+          # ── Liveness probe ──────────────────────────────────────────────────
           # HTTP GET /health returns {"ok": true, "version": "2.2.0", ...}
-          # If this probe fails, Kubernetes restarts the pod.
+          # NOTE: /health is a LIVENESS probe ONLY.  It confirms the uvicorn
+          # process is alive but does NOT verify auth config, GitHub API reachability,
+          # or OpenClaw binary availability.  A failed liveness probe causes
+          # Kubernetes to restart the pod — useful for crash loops but NOT a
+          # signal of production readiness.  Do NOT expose the Service as "ready"
+          # based solely on this probe succeeding.
           livenessProbe:
             httpGet:
               path: /health
@@ -156,21 +139,26 @@ spec:
             successThreshold: 1
 
           # ── Readiness probe ────────────────────────────────────────────────
-          # ⚠️  Currently points to /health (available in v2.2.0).
-          # Upgrade to /ready once issue #30 (Prometheus + real readiness) is
-          # resolved.  /ready should return 200 only when:
-          #   1. Auth config is loaded and valid.
-          #   2. GitHub client can reach api.github.com.
+          # OMITTED until /ready endpoint is implemented (issue #30).
+          #
+          # /health is NOT a readiness signal because it does not verify:
+          #   1. Auth configuration is loaded and valid.
+          #   2. GitHub API (api.github.com) is reachable.
           #   3. OpenClaw binary responds to a health check.
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            failureThreshold: 3
-            successThreshold: 1
+          #
+          # Until issue #30 provides a real /ready endpoint that covers the above,
+          # pods are admitted as "ready" as soon as the container starts, regardless
+          # of whether they can process incidents.  Monitor liveness restarts and
+          # the opsswarm-health metric to detect unhealthy pods.
+          #
+          # When /ready is available, add a readinessProbe similar to:
+          #   readinessProbe:
+          #     httpGet:
+          #       path: /ready
+          #       port: http
+          #     initialDelaySeconds: 5
+          #     periodSeconds: 10
+          #     failureThreshold: 3
 
           # ── Environment variables ──────────────────────────────────────────
           env:
@@ -241,22 +229,22 @@ spec:
               memory: 1Gi
 
           # ── Volume mounts ─────────────────────────────────────────────────
-          # The following volumes are defined in the volumes: section below.
-          # All mount paths are relative to the container root /app (WORKDIR).
           volumeMounts:
-            # OpenClaw binary — must be present at OPSWARM_OPENCLAW_BIN path
-            # before the init container passes and the app starts.
-            - name: openclaw-bin
-              mountPath: /usr/local/bin/openclaw
-              readOnly: true
-
-            # Evidence persistence — survives container restarts (within the pod).
-            # For production, replace emptyDir with a PersistentVolumeClaim backed
-            # by a ReadWriteOnce storage class to survive pod rescheduling.
+            # Evidence persistence — survives container restarts within the pod.
+            # ⚠️  emptyDir is NOT durable — data is lost on pod deletion.
+            # For production, replace with a PersistentVolumeClaim:
+            #   persistentVolumeClaim:
+            #     claimName: opsswarm-evidence
+            # See the PersistentVolumeClaim defined in kustomization.yaml and the
+            # storage documentation in docs/guides/CONTAINER_DEPLOYMENT.md.
             - name: evidence-store
               mountPath: /var/lib/opsswarm
 
             # Run checkpoints and orchestrator state — survives container restarts.
+            # ⚠️  NOT durable with emptyDir — data is lost on pod deletion.
+            # For production, replace with a PersistentVolumeClaim:
+            #   persistentVolumeClaim:
+            #     claimName: opsswarm-runtime-data
             - name: runtime-data
               mountPath: /app/runtime-data
 
@@ -268,35 +256,22 @@ spec:
 
       # ── Volumes ────────────────────────────────────────────────────────────
       volumes:
-        # OpenClaw binary volume.
-        #
-        # IMPORTANT: The openclaw-bin volume MUST have a concrete type configured
-        # before the pod can start.  The init container checks for the binary at
-        # OPSWARM_OPENCLAW_BIN before allowing the main container to start.
-        #
-        # Production options (pick one):
-        #   1. hostPath (dev/simple): mount from the node filesystem.
-        #      Add to overlays/dev or overlays/prod via a patch.
-        #   2. emptyDir (minimal dev): sufficient for testing without a real binary.
-        #      Add emptyDir{} via a patch in overlays/dev.
-        #   3. init container download: a pre-startup container that fetches the
-        #      binary from a trusted URL or decrypts it from a SealedSecret.
-        #      See docs/guides/CONTAINER_DEPLOYMENT.md.
-        - name: openclaw-bin
-          # ⚠️  No volumeSource configured by default.  Un-comment one of the
-          # options below or add via a Kustomize patch (see overlays/dev).
-          # hostPath:
-          #   path: /usr/local/bin/openclaw
-          #   type: FileOrCreate
-
-        # Evidence store — emptyDir is fine for single-replica (data is lost
-        # on pod deletion).  For production durability, use a PVC.
+        # Evidence store — NOT durable with emptyDir (data lost on pod deletion).
+        # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
+        # The opsswarm-evidence PVC (defined in kustomization.yaml) provides
+        # ReadWriteOnce access via the default StorageClass.  For multi-replica
+        # access (once issue #70 is resolved), use a ReadWriteMany storage
+        # backend (NFS, CloudStorage, etc.) and update the PVC spec accordingly.
         - name: evidence-store
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: opsswarm-evidence
 
         # Runtime data directory for run checkpoints.
+        # ⚠️  NOT durable with emptyDir — data lost on pod deletion.
+        # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
         - name: runtime-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: opsswarm-runtime-data
 
         # /tmp — use tmpfs in production for additional security.
         - name: tmp

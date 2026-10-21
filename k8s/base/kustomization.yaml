@@ -35,6 +35,7 @@ resources:
   - service.yaml
   - pdb.yaml
   - network-policy.yaml
+  - pvc.yaml  # PersistentVolumeClaims for evidence and runtime-data
 
 # ── Labels applied to all resources ─────────────────────────────────────────
 labels:
