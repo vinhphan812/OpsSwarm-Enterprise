@@ -75,8 +75,12 @@ class TestDuplicateWebhookDelivery:
 
         all_runs = store.load_all()
         assert len(all_runs) == 2
-        assert "delivery-123" in all_runs[0].idempotency_keys
-        assert "delivery-456" in all_runs[1].idempotency_keys
+        # load_all() returns runs in filesystem (glob) order, which is
+        # non-deterministic across platforms. Use run_id-based lookup
+        # instead of index-based assertions.
+        ids_in_runs = {r.run_id: r.idempotency_keys for r in all_runs}
+        assert ids_in_runs["RUN-GH-1-abc123"] == {"delivery-123"}
+        assert ids_in_runs["RUN-GH-1-def456"] == {"delivery-456"}
 
     def test_concurrent_delivery_processing_serializes(self, temp_data_dir):
         """Concurrent duplicate deliveries should serialize via lock, producing one run."""
