@@ -75,8 +75,10 @@ class TestDuplicateWebhookDelivery:
 
         all_runs = store.load_all()
         assert len(all_runs) == 2
-        assert "delivery-123" in all_runs[0].idempotency_keys
-        assert "delivery-456" in all_runs[1].idempotency_keys
+        # Look up runs by run_id since load_all() order is not guaranteed
+        run_by_id = {r.run_id: r for r in all_runs}
+        assert "delivery-123" in run_by_id["RUN-GH-1-abc123"].idempotency_keys
+        assert "delivery-456" in run_by_id["RUN-GH-1-def456"].idempotency_keys
 
     def test_concurrent_delivery_processing_serializes(self, temp_data_dir):
         """Concurrent duplicate deliveries should serialize via lock, producing one run."""
