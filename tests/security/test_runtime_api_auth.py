@@ -47,7 +47,10 @@ def _auth_header(token: str) -> dict:
 @pytest.fixture(autouse=True)
 def _env_secret():
     """Ensure OPSWARM_RUNTIME_SECRET is set for all tests; reload auth config."""
+    import asyncio
+
     import opsswarm.auth as auth_module
+    import opsswarm.runtime as runtime_module
 
     old = os.environ.get("OPSWARM_RUNTIME_SECRET")
     os.environ["OPSWARM_RUNTIME_SECRET"] = _TEST_SECRET
@@ -56,6 +59,9 @@ def _env_secret():
     # Reset shared state
     auth_module.reset_replay_store()
     auth_module._monitoring_limiter._hits.clear()
+    # Mirror production startup: mark the process ready so @check_draining does not
+    # block tests that exercise the mutation endpoints.
+    asyncio.run(runtime_module.readiness.startup_complete())
     yield
     if old is None:
         os.environ.pop("OPSWARM_RUNTIME_SECRET", None)

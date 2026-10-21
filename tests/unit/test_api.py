@@ -59,11 +59,17 @@ def _auth_header(token: str) -> dict:
 
 @pytest.fixture(autouse=True)
 def _env_secret():
+    import asyncio
+
     import opsswarm.auth as auth_module
+    import opsswarm.runtime as runtime_module
 
     old = os.environ.get("OPSWARM_RUNTIME_SECRET")
     os.environ["OPSWARM_RUNTIME_SECRET"] = "test-secret"  # noqa: B105
     auth_module.reload_auth_config()
+    # Mirror production startup: mark the process ready so @check_draining does not
+    # block tests that exercise the mutation endpoints.
+    asyncio.run(runtime_module.readiness.startup_complete())
     yield
     if old is None:
         os.environ.pop("OPSWARM_RUNTIME_SECRET", None)
