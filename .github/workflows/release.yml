@@ -335,9 +335,15 @@ jobs:
           IMAGE_TAG: opsswarm-release:${{ steps.release_ref.outputs.tag }}
         run: |
           set -euo pipefail
-          digest=$(docker inspect --format='{{.RepoDigests}}' "$IMAGE_TAG" | tr ',' '\n' | head -1)
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
-          echo "full_digest=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_TAG")" >> "$GITHUB_OUTPUT"
+          # Use .Id — always available for any locally-loaded image (sha256:...).
+          # .RepoDigests is registry-only and is empty after a plain `load: true`.
+          full_digest=$(docker inspect --format='{{.Id}}' "$IMAGE_TAG")
+          # Fail fast if digest is absent or malformed — evidence must be verifiable.
+          if [[ -z "$full_digest" ]] || [[ ! "$full_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "ERROR: failed to capture a valid sha256 image digest. Got: '$full_digest'" >&2
+            exit 1
+          fi
+          echo "full_digest=$full_digest" >> "$GITHUB_OUTPUT"
           # Also write to a file so it can be attached to the release body.
           echo "$full_digest" > artifacts/release/IMAGE_DIGEST.txt
 

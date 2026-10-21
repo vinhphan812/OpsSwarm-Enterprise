@@ -39,13 +39,7 @@ RUN uv pip install --no-cache --upgrade setuptools wheel pip build
 # syft/Trivy can produce an accurate SBOM and vulnerability report.
 COPY requirements.lock /app/requirements.lock
 RUN uv pip install --no-cache -r /app/requirements.lock || \
-    uv pip install --no-cache \
-        "fastapi>=0.115,<1" \
-        "uvicorn[standard]>=0.30,<1" \
-        "httpx>=0.27,<1" \
-        "pydantic>=2.8,<3" \
-        "pydantic-settings>=2.4,<3" \
-        "PyYAML>=6.0,<7"
+    { echo "ERROR: failed to install from requirements.lock — dependency graph is not reproducible"; exit 1; }
 
 # Copy source and build the wheel in-place (editable install not needed in the wheel).
 COPY pyproject.toml /app/pyproject.toml
