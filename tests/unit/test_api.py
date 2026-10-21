@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import time
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -292,3 +292,131 @@ class TestMetricsEndpoint:
         token = _generate_bearer("opsswarm:read", "test-secret", "GET", "/metrics", timestamp=now)
         response = client.get("/metrics", headers=_auth_header(token))
         assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# /ready endpoint — HA coordination readiness probe (ADR-030 § Readiness Probe)
+# ---------------------------------------------------------------------------
+
+
+class TestReadyEndpoint:
+    """Tests for the /ready readiness probe.
+
+    Phase 7 acceptance criteria: /ready returns 200 unconditionally when
+    ha.enabled = false (backward-compatible). When ha.enabled = true, it
+    returns 503 fail-closed until Postgres is reachable and this instance
+    has verified its leases.
+    """
+
+    def test_ready_legacy_mode_ha_disabled(self, client):
+        """When ha.enabled = false (default), /ready returns 200 with legacy mode.
+
+        This is the backward-compatible default. No Postgres connection is needed.
+        """
+        # get_ha is imported inside the /ready function from opsswarm.config
+        with patch("opsswarm.config.get_ha", return_value={"enabled": False}):
+            response = client.get("/ready")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["mode"] == "legacy"
+
+    def _ha_ready(self, client, ha_cfg: dict, mock_ha_db: MagicMock | None = None) -> "TestClient.response":
+        """Helper: inject mock ha_db into sys.modules and call /ready.
+
+        Pass mock_ha_db=None to simulate the module not being importable
+        (raises ImportError when ha.enabled=true).
+        """
+        import sys
+        # Store real module if already loaded
+        real_ha_db = sys.modules.get("opsswarm.ha_db")
+        try:
+            if mock_ha_db is None:
+                # Simulate the module not being importable
+                sys.modules["opsswarm.ha_db"] = None
+            else:
+                sys.modules["opsswarm.ha_db"] = mock_ha_db
+            with patch("opsswarm.config.get_ha", return_value=ha_cfg):
+                return client.get("/ready")
+        finally:
+            if real_ha_db is not None:
+                sys.modules["opsswarm.ha_db"] = real_ha_db
+            else:
+                sys.modules.pop("opsswarm.ha_db", None)
+
+    def test_ready_ha_mode_postgres_healthy_with_leases(self, client):
+        """When ha.enabled = true and Postgres is reachable with leases, /ready returns 200."""
+        mock_ha_db = MagicMock()
+        mock_ha_db.check_postgres_health = AsyncMock(return_value=True)
+        mock_ha_db.check_instance_leases = AsyncMock(return_value=(True, 3))
+
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["mode"] == "ha"
+        assert data["active_leases"] == 3
+
+    def test_ready_ha_mode_postgres_healthy_no_leases(self, client):
+        """When ha.enabled = true and Postgres is reachable but no active leases, /ready returns 200."""
+        mock_ha_db = MagicMock()
+        mock_ha_db.check_postgres_health = AsyncMock(return_value=True)
+        mock_ha_db.check_instance_leases = AsyncMock(return_value=(False, 0))
+
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["mode"] == "ha"
+        assert data["active_leases"] == 0
+
+    def test_ready_ha_mode_postgres_unreachable(self, client):
+        """When ha.enabled = true but Postgres is unreachable, /ready returns 503 fail-closed."""
+        mock_ha_db = MagicMock()
+        mock_ha_db.check_postgres_health = AsyncMock(return_value=False)
+
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db)
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "not ready"
+        assert "postgres" in data["detail"]["reason"].lower()
+
+    def test_ready_ha_mode_postgres_raises_exception(self, client):
+        """When ha.enabled = true but Postgres health check raises, /ready returns 503."""
+        mock_ha_db = MagicMock()
+        mock_ha_db.check_postgres_health = AsyncMock(side_effect=RuntimeError("connection refused"))
+
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db)
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "not ready"
+        assert "postgres unavailable" in data["detail"]["reason"]
+
+    def test_ready_ha_mode_lease_check_raises(self, client):
+        """When ha.enabled = true but lease check raises, /ready returns 503."""
+        mock_ha_db = MagicMock()
+        mock_ha_db.check_postgres_health = AsyncMock(return_value=True)
+        mock_ha_db.check_instance_leases = AsyncMock(side_effect=RuntimeError("deadlock detected"))
+
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db)
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "not ready"
+        assert "lease check failed" in data["detail"]["reason"]
+
+    def test_ready_ha_mode_ha_db_module_unavailable(self, client):
+        """When ha.enabled = true but ha_db module can't be imported, /ready returns 503.
+
+        This covers the except ImportError branch in /ready (api.py lines 179-180).
+        """
+        response = self._ha_ready(client, {"enabled": True}, mock_ha_db=None)
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["detail"]["status"] == "not ready"
+        assert "ha_db module unavailable" in data["detail"]["reason"]

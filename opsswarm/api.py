@@ -23,7 +23,7 @@ from .auth import (
     write_scope,
 )
 from .commands import parse_command
-from .config import get_github, get_monitoring, load_config
+from .config import get_github, get_ha, get_monitoring, load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import (
     GitHubClient,
@@ -135,10 +135,27 @@ app.add_middleware(CorrelationMiddleware)
 @app.on_event("startup")
 async def _startup_auth_check():
     from .logging_config import setup_logging
+    from .auth import start_rate_limit_pruner
 
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
+    # Start background rate limit pruner if enabled (ADR-030)
+    start_rate_limit_pruner()
+
+
+@app.on_event("shutdown")
+async def _shutdown_cleanup():
+    from .auth import stop_rate_limit_pruner
+
+    # Stop background rate limit pruner
+    stop_rate_limit_pruner()
+
+    # Close HA database connections (only if HA is enabled)
+    ha_cfg = get_ha(cfg)
+    if ha_cfg.get("enabled"):
+        from .ha_db import close_db_pool
+        await close_db_pool()
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +166,71 @@ async def _startup_auth_check():
 @app.get("/health")
 async def health():
     return {"ok": True, "version": __version__, "architecture": "openclaw+github"}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness probe — fail-closed until Postgres is reachable and this process
+    can verify it holds (or can acquire) its instance lease.
+
+    Returns 503 when:
+    - ha.enabled = true AND Postgres is unreachable
+    - ha.enabled = true AND Postgres is reachable but instance cannot verify its leases
+
+    Returns 200 when:
+    - ha.enabled = false (backward-compatible mode)
+    - ha.enabled = true AND Postgres is reachable AND instance has valid leases
+    """
+    from .config import get_ha
+
+    ha_cfg = get_ha(cfg)
+
+    # If HA is disabled, return ready (backward-compatible behavior)
+    if not ha_cfg.get("enabled"):
+        return {"status": "ready", "mode": "legacy"}
+
+    # HA enabled: ha_db is only imported when HA is active.
+    # This avoids a hard psycopg dependency in legacy (ha.enabled=false) mode.
+    try:
+        from . import ha_db  # noqa: F401
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"ha_db module unavailable: {exc}"},
+        ) from exc
+
+    # HA enabled: verify Postgres connection
+    try:
+        postgres_ok = await ha_db.check_postgres_health()
+    except Exception as e:
+        logger.warning("Postgres health check failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"postgres unavailable: {e}"}
+        )
+    
+    if not postgres_ok:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": "postgres connection failed"}
+        )
+    
+    # Verify this instance's leases are valid
+    try:
+        has_leases, lease_count = await ha_db.check_instance_leases()
+    except Exception as e:
+        logger.warning("Lease check failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"lease check failed: {e}"}
+        )
+    
+    # Return ready status
+    return {
+        "status": "ready",
+        "mode": "ha",
+        "active_leases": lease_count,
+    }
 
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])
@@ -332,7 +414,8 @@ async def monitoring_event(request: Request):
         # Fallback: client IP (proxy-aware)
         rate_key = source_ip
 
-    allowed, retry_after = check_monitoring_rate_limit(rate_key)
+    # Use async rate limiter to support PostgreSQL-backed rate limiting
+    allowed, retry_after = await auth_module.check_monitoring_rate_limit_async(rate_key)
     if not allowed:
         raise HTTPException(
             status_code=429,
