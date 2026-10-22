@@ -28,7 +28,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [016](ADR-016_twophase_plan.md) | Two-Phase Plan: Plan_Remediation vs Plan_RCA | Accepted | #43 ADR canonical naming; TERMINAL_STATES corrected; tests updated |
 | [028](ADR-028_TRANSPORT_BOUNDARY_FOR_GITHUB_CLIENT.md) | Transport Boundary for GitHubClient (SSRF Mitigation) | Accepted | #57 py/partial-ssrf CodeQL alert; base_url allowlist, redirect lock-down, repo validation |
 | [029](ADR-029_LOG_INJECTION_PREVENTION.md) | Control-Character Sanitiser for Structured Log Injection Prevention | Accepted | #58 py/log-injection CodeQL alerts #3/#4; _strip_control_chars in errors.py; route github_client._req log data through sanitize_for_log |
-| [031](ADR-031_HA_COORDINATION.md) | High-Availability Multi-Process Coordination | Proposed | #70 PostgreSQL-backed coordination; lease ownership/expiry/takeover; CAS revision model; fail-closed readiness; 7-phase implementation plan |
+| [031](ADR-031_HA_COORDINATION.md) | High-Availability Multi-Process Coordination | Proposed | #70 PostgreSQL-backed coordination (deployment assumption, not repo evidence); epoch fencing; operator-authorised failover; intent/outcome reconciliation for external GitHub writes; acceptance-test contract with RPO/RTO targets; 7-phase implementation plan |
 
 ## ADR Lifecycle Statuses
 
