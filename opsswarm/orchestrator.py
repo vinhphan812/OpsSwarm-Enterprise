@@ -7,7 +7,7 @@ import uuid
 from typing import Any
 
 from . import skill_logic as S
-from .config import get_budget, get_concurrency, get_tool_allowlist, get_openclaw
+from .config import get_budget, get_concurrency, get_tool_allowlist, get_openclaw, get_store
 from .tool_allowlist import ToolAllowlist
 from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log, sanitize_for_log_key
 from .evidence import EvidenceStore
@@ -23,7 +23,7 @@ from .models import CommandOutcome  # Import for Issue #9 fix
 from .policy import PolicyEngine
 from .metrics import metrics
 from .reconciliation import ReconciliationManager
-from .store import RunStore
+from .store import RunStore, FileStore, HaRunStore
 from .validators import validate_task_graph, TaskGraphError
 
 logger = logging.getLogger(__name__)
@@ -145,7 +145,12 @@ class Orchestrator:
         self.cfg = cfg;
         self.github = github;
         self.oc = openclaw;
-        self.store = RunStore(data_dir);
+        store_cfg = get_store(cfg)
+        backend = store_cfg.get("backend", "filesystem")
+        if backend == "postgres":
+            self.store = HaRunStore(cfg)
+        else:
+            self.store = FileStore(data_dir, persistence_config=cfg.get("persistence", {}))
         self.ev = EvidenceStore(data_dir);
         self.policy = PolicyEngine(cfg)
         self.reconciliation = ReconciliationManager(data_dir)
