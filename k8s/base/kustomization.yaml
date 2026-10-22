@@ -46,10 +46,17 @@ labels:
     # Include in Deployments' pod template labels so selectors match.
     includeSelectors: true
 
-# ── Images ─────────────────────────────────────────────────────────────────
-# Replace :latest with a specific image tag in overlays/dev or overlays/prod.
-# Canonical tag format: v{version} (e.g. v2.2.0).
+# ── Images ─────────────────────────────────────────────────────────────────────
+# The image is published to ghcr.io/vinhphan812/opsswarm-enterprise by the
+# release workflow (.github/workflows/release.yml), which pushes both a
+# `latest` tag and a commit-pinned `<sha7>` tag and records the immutable
+# manifest digest.
+#
+# For reproducible deployments, pin by digest instead of by tag:
+#   images:
+#     - name: ghcr.io/vinhphan812/opsswarm-enterprise
+#       digest: sha256:<64 hex chars>
 images:
-  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
     newTag: latest
     # digest: sha256:abc123...  # pin by digest for reproducible deployments

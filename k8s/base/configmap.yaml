@@ -23,10 +23,26 @@ data:
   # container and is copied from the image at build time.
   OPSWARM_CONFIG: /app/config/production.yaml
 
-  # ── App environment ───────────────────────────────────────────────────────
+  # The ONE writable state root inside the container.
+  #
+  # RunStore writes ${OPSWARM_DATA_DIR}/runs/*.json and EvidenceStore writes
+  # ${OPSWARM_DATA_DIR}/evidence/*.jsonl.  The deployment mounts a single
+  # PersistentVolumeClaim at exactly this path, so all persistent state lives
+  # on one durable, single-writer volume.
+  #
+  # ⚠️  Must match the mountPath of the opsswarm-state volume in deployment.yaml.
+  OPSWARM_DATA_DIR: /var/lib/opsswarm
+
+  # ── App environment ────────────────────────────────────────────────────────
   # development | production
   # Set to "production" in overlays/prod to enable fail-closed auth checks.
   APP_ENV: development
+
+  # ── GitHub repository ──────────────────────────────────────────────────────
+  # GitHub repository in owner/repo format.  config/production.yaml resolves
+  # `repo: ${GITHUB_REPO}` at load time; the application fails closed at
+  # import if it is not a valid owner/repo pair.
+  GITHUB_REPO: vinhphan812/OpsSwarm-Enterprise
 
   # ── Logging ───────────────────────────────────────────────────────────────
   # CRITICAL | ERROR | WARNING | INFO | DEBUG

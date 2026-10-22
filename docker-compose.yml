@@ -68,9 +68,25 @@ x-common-env: &common-env
   # OpenClaw timeout override (seconds).  Default: 600 (from production.yaml).
   # OPSWARM_OPENCLAW_TIMEOUT: "600"
 
-  # OpsSwarm runtime data directory (relative to /app).  Do not change unless
-  # the runtime-data volume mount point is also changed.
-  OPSWARM_DATA_DIR: runtime-data
+  # OpsSwarm runtime data directory (absolute path inside the container).
+  #
+  # This is the ONE writable state root.  RunStore writes
+  # ${OPSWARM_DATA_DIR}/runs/*.json and EvidenceStore writes
+  # ${OPSWARM_DATA_DIR}/evidence/*.jsonl, so the durable volume mounted at
+  # /var/lib/opsswarm (opsswarm-runtime-data below) is the only state mount.
+  #
+  # The previous revision set this to the relative path "runtime-data", which
+  # resolved to /app/runtime-data inside the container — a directory that was
+  # NOT backed by any volume, while the opsswarm-evidence-store volume mounted
+  # at /var/lib/opsswarm stayed empty.  Both stores must sit under the single
+  # durable mount; see docs/audits/ISSUE-73_DEPLOYMENT_PROFILE_SPEC.md §3.2.
+  OPSWARM_DATA_DIR: /var/lib/opsswarm
+
+  # ── GitHub repository ─────────────────────────────────────────────────────
+  # GitHub repository in owner/repo format.  config/production.yaml resolves
+  # `repo: ${GITHUB_REPO}` at load time; the application fails closed at
+  # import if it is not a valid owner/repo pair.
+  GITHUB_REPO: ${GITHUB_REPO:-vinhphan812/OpsSwarm-Enterprise}
 
   # ── GitHub token injection ──────────────────────────────────────────────────
   # GITHUB_TOKEN_FILE — path inside the container where the GitHub PAT file is
@@ -121,12 +137,18 @@ services:
       <<: *common-env
 
     volumes:
-      # Persistent runtime state (run metadata, checkpoints).
-      # Survives restarts; remove with docker compose down -v to reset.
-      - opsswarm-runtime-data:/app/runtime-data
-
-      # Persistent evidence store (evidence artefacts written by OpsSwarm).
-      - opsswarm-evidence-store:/var/lib/opsswarm
+      # Persistent state — the ONE writable state root.
+      #
+      # OPSWARM_DATA_DIR=/var/lib/opsswarm, so this single volume holds both
+      #   ${OPSWARM_DATA_DIR}/runs/     (RunStore checkpoints)
+      #   ${OPSWARM_DATA_DIR}/evidence/ (EvidenceStore artefacts)
+      #
+      # The previous revision mounted two separate volumes (/app/runtime-data
+      # and /var/lib/opsswarm) while OPSWARM_DATA_DIR pointed at the relative
+      # path "runtime-data".  Neither store ended up on a durable mount it
+      # declared, and the evidence volume stayed empty.  One volume, one
+      # mount point, one env var — no ambiguity.
+      - opsswarm-runtime-data:/var/lib/opsswarm
 
       # GitHub token file — mounted read-only inside the container.
       # Host path is set via GITHUB_TOKEN_FILE_HOST in .env (see Secret injection above).
@@ -235,14 +257,12 @@ services:
 
 # ─── Named volumes ──────────────────────────────────────────────────────────────
 volumes:
-  # Runtime state: run metadata, checkpoint files, orchestrator state.
-  # Mounted at /app/runtime-data inside the container.
+  # Persistent state volume — run metadata, checkpoints, and evidence.
+  #
+  # Mounted at /var/lib/opsswarm, which is OPSWARM_DATA_DIR.  Contains:
+  #   runs/     — RunStore checkpoint files
+  #   evidence/ — EvidenceStore JSONL artefacts
   opsswarm-runtime-data:
-    driver: local
-
-  # Evidence artefacts: evidence JSON files, attachments.
-  # Mounted at /var/lib/opsswarm inside the container.
-  opsswarm-evidence-store:
     driver: local
 
   # OpenClaw working directory (sidecar profile only).

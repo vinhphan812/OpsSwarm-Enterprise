@@ -42,12 +42,13 @@ RUN uv pip install --no-cache -r /app/requirements.lock || \
     { echo "ERROR: failed to install from requirements.lock — dependency graph is not reproducible"; exit 1; }
 
 # Copy source and build the wheel in-place (editable install not needed in the wheel).
+#
+# Only files that exist in the repository are copied.  The previous revision
+# also copied `VERSION`, `apps/`, `services/` and `data/`, none of which exist
+# in the tree, so `docker build` failed with "file not found" and no image
+# could ever be produced or pushed to a registry.
 COPY pyproject.toml /app/pyproject.toml
-COPY VERSION /app/VERSION
 COPY opsswarm /app/opsswarm
-COPY apps /app/apps
-COPY services /app/services
-COPY data /app/data
 COPY config /app/config
 COPY scripts /app/scripts
 
@@ -71,13 +72,18 @@ RUN groupadd --gid 10001 --non-unique appgroup \
 WORKDIR /app
 
 # Create the state directories that OpsSwarm requires at runtime.
-# /var/lib/opsswarm       — EvidenceStore (file backend) for persistent evidence
-# /app/runtime-data/runs  — RunStore for orchestrator checkpoint persistence
-# /app/runtime-data/evidence — EvidenceStore evidence directory
+#
+# /var/lib/opsswarm  — the ONE writable state root.  OPSWARM_DATA_DIR points
+#                      here, so RunStore writes /var/lib/opsswarm/runs/*.json
+#                      and EvidenceStore writes /var/lib/opsswarm/evidence/*.jsonl.
+#                      Both subdirectories live under the same durable volume so
+#                      a single mount satisfies the whole state contract.
+# /tmp                — scratch space for atomic-write temp files.
+#
 # All owned by appuser so the non-root container can write them on a
 # read-only root filesystem (bind-mount or tmpfs at runtime if needed).
-RUN mkdir -p /var/lib/opsswarm /app/runtime-data/runs /app/runtime-data/evidence \
-    && chown -R appuser:appgroup /var/lib/opsswarm /app/runtime-data
+RUN mkdir -p /var/lib/opsswarm/runs /var/lib/opsswarm/evidence /tmp \
+    && chown -R appuser:appgroup /var/lib/opsswarm
 
 # Copy the wheel from the builder stage.
 COPY --from=builder /dist/*.whl /app/

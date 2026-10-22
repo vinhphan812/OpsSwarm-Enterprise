@@ -105,7 +105,11 @@ spec:
       # overlays/dev/kustomization.yaml for a working dev example.
       initContainers:
         - name: openclaw-bin
-          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          # The init container only needs a POSIX shell to run the validation
+          # script, so it reuses the OpsSwarm image itself.  Using a separate
+          # image reference that was never published to ghcr.io made the pod
+          # unschedulable (ImagePullBackOff) on a clean cluster.
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
           imagePullPolicy: IfNotPresent
           # Use a lightweight shell image to keep the init container slim.
           # The actual binary check below is shell-only; no Python needed.
@@ -153,11 +157,10 @@ spec:
       # ── Application container ─────────────────────────────────────────────
       containers:
         - name: opsswarm
-          # Replace with your actual image reference.
-          # Canonical: ghcr.io/vinhphan812/opsswarm-openclaw-github:<tag>
-          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-openclaw-github:latest .
+          # Canonical: ghcr.io/vinhphan812/opsswarm-enterprise:<tag>
+          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-enterprise:latest .
           # The <tag> should be updated in overlays/dev and overlays/prod.
-          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
           imagePullPolicy: IfNotPresent
 
           ports:
@@ -205,26 +208,25 @@ spec:
             successThreshold: 1
 
           # ── Readiness probe ────────────────────────────────────────────────
-          # OMITTED until /ready endpoint is implemented (issue #30).
+          # GET /ready returns 200 only when the application has completed its
+          # startup checks (logging, auth configuration, config load, and
+          # writable OPSWARM_DATA_DIR) and is accepting work.  It returns 503
+          # while STARTING, while DRAINING (after SIGTERM), and after a failed
+          # startup.
           #
-          # /health is NOT a readiness signal because it does not verify:
-          #   1. Auth configuration is loaded and valid.
-          #   2. GitHub API (api.github.com) is reachable.
-          #   3. OpenClaw binary responds to a health check.
-          #
-          # Until issue #30 provides a real /ready endpoint that covers the above,
-          # pods are admitted as "ready" as soon as the container starts, regardless
-          # of whether they can process incidents.  Monitor liveness restarts and
-          # the opsswarm-health metric to detect unhealthy pods.
-          #
-          # When /ready is available, add a readinessProbe similar to:
-          #   readinessProbe:
-          #     httpGet:
-          #       path: /ready
-          #       port: http
-          #     initialDelaySeconds: 5
-          #     periodSeconds: 10
-          #     failureThreshold: 3
+          # This endpoint was implemented in the /ready + graceful-drain work
+          # (Issue #73).  The previous revision omitted the readiness probe
+          # entirely because /ready did not exist yet, which meant pods were
+          # admitted as ready as soon as the container started.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
 
           # ── Environment variables ──────────────────────────────────────────
           env:
@@ -234,11 +236,21 @@ spec:
                 configMapKeyRef:
                   name: opsswarm-config
                   key: OPSWARM_CONFIG
+            - name: OPSWARM_DATA_DIR
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_DATA_DIR
             - name: APP_ENV
               valueFrom:
                 configMapKeyRef:
                   name: opsswarm-config
                   key: APP_ENV
+            - name: GITHUB_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: GITHUB_REPO
             - name: LOG_LEVEL
               valueFrom:
                 configMapKeyRef:
@@ -296,23 +308,18 @@ spec:
 
           # ── Volume mounts ─────────────────────────────────────────────────
           volumeMounts:
-            # Evidence persistence — survives container restarts within the pod.
-            # ⚠️  emptyDir is NOT durable — data is lost on pod deletion.
-            # For production, replace with a PersistentVolumeClaim:
-            #   persistentVolumeClaim:
-            #     claimName: opsswarm-evidence
-            # See the PersistentVolumeClaim defined in kustomization.yaml and the
-            # storage documentation in docs/guides/CONTAINER_DEPLOYMENT.md.
-            - name: evidence-store
+            # Persistent state — the ONE writable state root.
+            #
+            # OPSWARM_DATA_DIR=/var/lib/opsswarm, so this single mount holds
+            #   ${OPSWARM_DATA_DIR}/runs/     (RunStore checkpoints)
+            #   ${OPSWARM_DATA_DIR}/evidence/ (EvidenceStore artefacts)
+            #
+            # The previous revision mounted two separate volumes and set no
+            # OPSWARM_DATA_DIR, so the app fell back to the relative default
+            # "runtime-data" (/app/runtime-data) — a path with no volume behind
+            # it, while the /var/lib/opsswarm mount stayed empty.
+            - name: opsswarm-state
               mountPath: /var/lib/opsswarm
-
-            # Run checkpoints and orchestrator state — survives container restarts.
-            # ⚠️  NOT durable with emptyDir — data is lost on pod deletion.
-            # For production, replace with a PersistentVolumeClaim:
-            #   persistentVolumeClaim:
-            #     claimName: opsswarm-runtime-data
-            - name: runtime-data
-              mountPath: /app/runtime-data
 
             # /tmp for any in-process temporary files.
             # Use a tmpfs mount in overlays/prod for additional security:
@@ -331,22 +338,15 @@ spec:
         - name: openclaw-bin
           emptyDir: {}
 
-        # Evidence store — NOT durable with emptyDir (data lost on pod deletion).
+        # Persistent state — run checkpoints and evidence.
         # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
-        # The opsswarm-evidence PVC (defined in kustomization.yaml) provides
-        # ReadWriteOnce access via the default StorageClass.  For multi-replica
-        # access (once issue #70 is resolved), use a ReadWriteMany storage
-        # backend (NFS, CloudStorage, etc.) and update the PVC spec accordingly.
-        - name: evidence-store
+        # The opsswarm-state PVC (defined in pvc.yaml) provides ReadWriteOnce
+        # access via the default StorageClass.  For multi-replica access
+        # (once issue #70 is resolved), use a ReadWriteMany storage backend
+        # (NFS, CloudStorage, etc.) and update the PVC spec accordingly.
+        - name: opsswarm-state
           persistentVolumeClaim:
-            claimName: opsswarm-evidence
-
-        # Runtime data directory for run checkpoints.
-        # ⚠️  NOT durable with emptyDir — data lost on pod deletion.
-        # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
-        - name: runtime-data
-          persistentVolumeClaim:
-            claimName: opsswarm-runtime-data
+            claimName: opsswarm-state
 
         # /tmp — use tmpfs in production for additional security.
         - name: tmp

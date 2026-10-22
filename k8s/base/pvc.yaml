@@ -1,22 +1,30 @@
 # k8s/base/pvc.yaml
 # ─────────────────────────────────────────────────────────────────────────────
-# OpsSwarm Enterprise — PersistentVolumeClaims for evidence and runtime data
+# OpsSwarm Enterprise — PersistentVolumeClaim for persistent state
 #
-# These PVCs provide durable storage for evidence files and run checkpoints.
-# Data stored here survives pod restarts and rescheduling.
+# ONE claim covers all persistent state.  OPSWARM_DATA_DIR=/var/lib/opsswarm
+# is the single writable state root, and the deployment mounts this claim
+# there.  It holds:
 #
-# IMPORTANT: These are base PVCs with ReadWriteOnce access mode.
+#   runs/     — RunStore checkpoint files (one small JSON per run)
+#   evidence/ — EvidenceStore JSONL artefacts (append-only, fsync'd)
+#
+# The previous revision declared two claims (opsswarm-evidence and
+# opsswarm-runtime-data) while the application wrote both stores under a
+# single OPSWARM_DATA_DIR.  Splitting the claim while the app used one
+# directory meant one of the two mounts was never actually written.
+#
+# IMPORTANT: ReadWriteOnce access mode is deliberate.
 #   - For single-replica deployments: RWO is sufficient.
 #   - For multi-replica (once issue #70 is resolved): change accessModes to
 #     ReadWriteMany (requires NFS, CloudStorage, or a compatible CSI driver).
 #
 # Storage sizing guidance (v2.2.0):
-#   evidence: 1Gi default.  Each incident run generates ~10-100 KB of evidence
-#              JSONL.  1 Gi supports ~10,000-100,000 runs before rotation.
-#   runtime-data: 256Mi default.  Run checkpoints are small (~1-10 KB each).
+#   Each incident run generates ~10-100 KB of evidence JSONL and a few KB of
+#   checkpoint state.  1Gi supports ~10,000-100,000 runs before rotation.
 #
 # The PVC is NOT deleted when the Deployment is deleted (retain reclaimPolicy).
-# To delete: kubectl delete pvc opsswarm-evidence opsswarm-runtime-data -n opsswarm
+# To delete: kubectl delete pvc opsswarm-state -n opsswarm
 #
 # Apply:  kubectl apply -f k8s/base/pvc.yaml
 # ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +32,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: opsswarm-evidence
+  name: opsswarm-state
   namespace: opsswarm
   labels:
     app.kubernetes.io/name: opsswarm
@@ -44,21 +52,3 @@ spec:
   # storageClassName: "standard"    # GKE pd-standard
   # storageClassName: "gp2"         # EKS gp2
   # storageClassName: "managed-premium"  # AKS managed-premium
-
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: opsswarm-runtime-data
-  namespace: opsswarm
-  labels:
-    app.kubernetes.io/name: opsswarm
-    app.kubernetes.io/component: storage
-    app.kubernetes.io/version: "2.2.0"
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 256Mi
-  # storageClassName: ""  # use the cluster's default StorageClass

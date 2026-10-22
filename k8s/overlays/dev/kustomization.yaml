@@ -61,9 +61,11 @@ patches:
       kind: Service
       name: opsswarm
 
-  # Use emptyDir for evidence and runtime-data in local dev (no cluster storage needed).
-  # Remove these two patches if your cluster has dynamic StorageClass provisioning.
-  # Volume index: 0=openclaw-bin, 1=evidence-store, 2=runtime-data, 3=tmp.
+  # Use emptyDir for the persistent state volume in local dev (no cluster
+  # storage needed).  Remove this patch if your cluster has dynamic
+  # StorageClass provisioning.
+  #
+  # Volume index: 0=openclaw-bin, 1=opsswarm-state, 2=tmp.
   # Note: use `op: remove` to delete the persistentVolumeClaim key rather than
   # replacing it with an empty object, to avoid rendering a null key in YAML.
   #
@@ -83,23 +85,14 @@ patches:
       kind: Deployment
       name: opsswarm
 
-  # evidence-store: emptyDir (local dev — durability not required)
+  # opsswarm-state: emptyDir (local dev — durability not required).
+  # OPSWARM_DATA_DIR=/var/lib/opsswarm is mounted here, so both
+  # ${OPSWARM_DATA_DIR}/runs and ${OPSWARM_DATA_DIR}/evidence land in it.
   - patch: |-
       - op: remove
         path: /spec/template/spec/volumes/1/persistentVolumeClaim
       - op: add
         path: /spec/template/spec/volumes/1/emptyDir
-        value: {}
-    target:
-      kind: Deployment
-      name: opsswarm
-
-  # runtime-data: emptyDir (local dev — durability not required)
-  - patch: |-
-      - op: remove
-        path: /spec/template/spec/volumes/2/persistentVolumeClaim
-      - op: add
-        path: /spec/template/spec/volumes/2/emptyDir
         value: {}
     target:
       kind: Deployment
@@ -121,8 +114,10 @@ secretGenerator:
       - OPSWARM_OPENCLAW_KEY=REPLACE_WITH_DEV_OPENCLAW_KEY
     type: Opaque
 
-# ── Images ────────────────────────────────────────────────────────────────────
+# ── Images ─────────────────────────────────────────────────────────────────────
+# `dev` tracks the latest pushed image from the delivery branch.  Pin by digest
+# (see k8s/base/kustomization.yaml) for reproducible deployments.
 images:
-  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
     newTag: dev
-    newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
+    newName: ghcr.io/vinhphan812/opsswarm-enterprise

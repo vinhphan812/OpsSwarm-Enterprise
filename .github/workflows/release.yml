@@ -16,6 +16,8 @@ permissions:
   actions: read
   id-token: write
   attestations: write
+  # Required to push the OCI image to ghcr.io/vinhphan812/opsswarm-enterprise.
+  packages: write
 
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
@@ -72,6 +74,8 @@ jobs:
             exit 1
           }
           echo "sha=$actual_sha" >> "$GITHUB_OUTPUT"
+          # Short (7-hex) commit id used as the commit-pinned image tag.
+          echo "sha7=${actual_sha:0:7}" >> "$GITHUB_OUTPUT"
           python - <<'PY'
           import os
           import pathlib
@@ -310,50 +314,120 @@ jobs:
             artifacts/release/sbom.cdx.json
 
       # ─── Container image (issue #73) ────────────────────────────────────────
+      #
+      # The image is PUSHED to a registry.  The previous revision used
+      # `load: true` (local daemon only) and recorded `docker inspect .Id`,
+      # which is the local image ID — not an immutable registry manifest
+      # digest.  Nothing could be pulled from that evidence by any other
+      # machine, so it did not constitute a delivery.
+      #
+      # Tags pushed:
+      #   ghcr.io/vinhphan812/opsswarm-enterprise:latest
+      #   ghcr.io/vinhphan812/opsswarm-enterprise:<sha7>   (commit-pinned)
+      # The immutable manifest digest is captured from the registry itself
+      # (crane manifest) and written to artifacts/release/IMAGE_DIGEST.txt.
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d3b53c60f864b11ee2f0cd543bfae1e76d28e6d # v3.9.0
 
-      - name: Build OCI image for OpsSwarm Enterprise
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c2fb # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push OCI image to GitHub Container Registry
         id: build_image
         uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v6.12.0
         with:
           context: .
           file: ./Dockerfile
-          load: true
+          # push: true — the image MUST reach the registry.  `load: true` only
+          # writes to the runner's local daemon and produces no pullable
+          # artifact.
+          push: true
           tags: |
-            opsswarm-release:${{ steps.release_ref.outputs.tag }}
+            ghcr.io/vinhphan812/opsswarm-enterprise:latest
+            ghcr.io/vinhphan812/opsswarm-enterprise:${{ steps.checked_tag.outputs.sha7 }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
           sbom: true
 
-      - name: Record image digest
+      - name: Install crane for registry manifest inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.20.3"
+          curl -fsSL -o /tmp/crane.tar.gz \
+            "https://github.com/google/go-containerregistry/releases/download/v${version}/go-containerregistry_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
+          crane version
+
+      - name: Capture the immutable registry manifest digest
         id: image_digest
         shell: bash
         env:
-          IMAGE_TAG: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          IMAGE_REPO: ghcr.io/vinhphan812/opsswarm-enterprise
+          IMAGE_SHA7: ${{ steps.checked_tag.outputs.sha7 }}
         run: |
           set -euo pipefail
-          # Use .Id — always available for any locally-loaded image (sha256:...).
-          # .RepoDigests is registry-only and is empty after a plain `load: true`.
-          full_digest=$(docker inspect --format='{{.Id}}' "$IMAGE_TAG")
-          # Fail fast if digest is absent or malformed — evidence must be verifiable.
-          if [[ -z "$full_digest" ]] || [[ ! "$full_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "ERROR: failed to capture a valid sha256 image digest. Got: '$full_digest'" >&2
+          # Read the manifest digest back from the REGISTRY.  This is the
+          # immutable content address of the pushed image and is what any
+          # other machine pulls by.  The local image ID (docker inspect .Id)
+          # is NOT acceptable evidence — it is daemon-local and meaningless
+          # outside this runner.
+          pinned_ref="${IMAGE_REPO}:${IMAGE_SHA7}"
+          manifest=$(crane manifest "$pinned_ref")
+          digest=$(crane digest "$pinned_ref")
+          echo "=== crane manifest ${pinned_ref} ==="
+          echo "$manifest"
+          echo "=== crane digest ${pinned_ref} ==="
+          echo "$digest"
+          # The digest must be a well-formed sha256 content address.
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "ERROR: registry returned a malformed digest: '$digest'" >&2
             exit 1
           fi
-          echo "full_digest=$full_digest" >> "$GITHUB_OUTPUT"
-          # Also write to a file so it can be attached to the release body.
-          echo "$full_digest" > artifacts/release/IMAGE_DIGEST.txt
+          # Both the pinned tag and `latest` must resolve to the same manifest
+          # digest; otherwise the evidence would be ambiguous.
+          latest_digest=$(crane digest "${IMAGE_REPO}:latest")
+          if [[ "$latest_digest" != "$digest" ]]; then
+            echo "ERROR: latest ($latest_digest) and pinned ($digest) digests differ" >&2
+            exit 1
+          fi
+          echo "full_digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REPO}@${digest}" >> "$GITHUB_OUTPUT"
+          # Persist as release evidence.
+          printf '%s\n' "$digest" > artifacts/release/IMAGE_DIGEST.txt
+          printf '%s\n' "${IMAGE_REPO}@${digest}" > artifacts/release/IMAGE_REF.txt
+          printf '%s\n' "$manifest" > artifacts/release/IMAGE_MANIFEST.json
+
+      - name: Verify the pushed image is pullable by digest on a clean daemon
+        shell: bash
+        env:
+          IMAGE_REF: ${{ steps.image_digest.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          # Remove any local copy so the pull genuinely exercises the registry.
+          docker image rm --force "$IMAGE_REF" >/dev/null 2>&1 || true
+          docker pull "$IMAGE_REF"
+          # The pulled image's RepoDigests must contain the recorded digest.
+          repo_digests=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REF")
+          echo "RepoDigests: $repo_digests"
+          case "$repo_digests" in
+            *@sha256:*) : ;;
+            *) echo "ERROR: pulled image has no registry digest: $repo_digests" >&2; exit 1 ;;
+          esac
+          docker run --rm --entrypoint /bin/sh "$IMAGE_REF" -c 'id -u; echo rootless-ok'
 
       - name: Generate SPDX SBOM from container image
         uses: anchore/sbom-action@bb502a77cf8aa87824c7c1c21e6f3bc4ce39cfe3 # v0.17.0
         with:
-          image: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          image: ${{ steps.image_digest.outputs.image_ref }}
           format: spdx-json
           output-file: artifacts/release/sbom.spdx.json
-          image-url: ghcr.io/${{ github.repository }}:${{ steps.release_ref.outputs.tag }}
           image-checks: ""
 
       - name: Validate SBOM is well-formed SPDX JSON
@@ -365,7 +439,7 @@ jobs:
       - name: Vulnerability scan with Trivy (fail-closed at CRITICAL)
         uses: aquasecurity/trivy-action@5c14972d7ab9fcbfa23ea40e6d2e1fb0a98f3d # 0.24.0
         with:
-          image-ref: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          image-ref: ${{ steps.image_digest.outputs.image_ref }}
           format: sarif
           output: artifacts/release/trivy.sarif
           severity: CRITICAL,HIGH
@@ -379,6 +453,8 @@ jobs:
           path: |
             artifacts/release/sbom.spdx.json
             artifacts/release/IMAGE_DIGEST.txt
+            artifacts/release/IMAGE_REF.txt
+            artifacts/release/IMAGE_MANIFEST.json
             artifacts/release/trivy.sarif
           if-no-files-found: error
           retention-days: 90

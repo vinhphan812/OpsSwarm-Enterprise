@@ -81,8 +81,10 @@ patches:
       kind: Deployment
       name: opsswarm
 
-# ── Images ────────────────────────────────────────────────────────────────────
+# ── Images ─────────────────────────────────────────────────────────────────────
+# Pinned to the release version tag (no :latest in production).  Prefer pinning
+# by digest for byte-for-byte reproducible rollouts.
 images:
-  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
     newTag: "2.2.0"
-    newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
+    newName: ghcr.io/vinhphan812/opsswarm-enterprise
