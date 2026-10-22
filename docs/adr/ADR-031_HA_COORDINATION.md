@@ -1,7 +1,7 @@
 # ADR-031: High-Availability Multi-Process Coordination
 
-**Status:** Proposed  
-**Created:** 2026-10-21  
+**Status:** Proposed
+**Created:** 2026-10-21
 **Related:** Issue #70
 
 ---
