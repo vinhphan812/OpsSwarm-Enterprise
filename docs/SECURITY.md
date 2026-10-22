@@ -229,3 +229,17 @@ GitHub's security alert record.
 
 License inventory is evidence for review, not an implicit approval. Unknown, unclassified, or potentially incompatible
 licenses require release-owner or legal adjudication before a release policy can allow them.
+
+## Container & Kubernetes Security Context & Supply Chain (Issue #73)
+
+### Security Context Boundaries
+- **Non-Root Execution:** Containers run as non-root user/group (UID/GID `10001`).
+- **Read-Only Root Filesystem:** Configured with `readOnlyRootFilesystem: true` (`read_only: true` in Compose) to prevent root-level modification of container layers.
+- **Privilege Escalation & Capabilities:** `allowPrivilegeEscalation: false`, dropped Linux capabilities (`cap_drop: [ALL]`), and runtime-default seccomp profile.
+- **Single-Writer Storage:** Durable runtime state and evidence are restricted to a single-writer PersistentVolumeClaim mounted at `/var/lib/opsswarm`.
+
+### Supply-Chain Security
+- **Pinned Base Images:** Base images use pinned digests in both builder and runtime stages.
+- **Dependency Locking:** Python dependencies are installed strictly via `requirements.lock` with hash verification.
+- **Vulnerability & SBOM Validation:** Release pipelines generate CycloneDX/SPDX SBOMs and enforce fail-closed Trivy scans for HIGH/CRITICAL vulnerabilities.
+- **OIDC Provenance:** Published image digests are signed and verified using GitHub OIDC build provenance attestation (`gh attestation verify`).

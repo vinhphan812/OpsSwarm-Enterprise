@@ -394,6 +394,7 @@ The following invariants are normative for the current architecture:
 - Issue #9 — persistence, idempotency, concurrency, and restart recovery hardening
 - Issue #10 — architecture documentation with Mermaid diagrams
 - Issue #11 — end-to-end lifecycle and recovery-flow documentation
+- Issue #73 — single-replica container and Kubernetes deployment profile, security context boundaries (`readOnlyRootFilesystem`, non-root UID 10001, single-writer PVC contract), and supply-chain verification steps
 
 Any future architecture-significant change should update this document, the corresponding flow diagram, tests/fitness
 gates, and an ADR when the project ADR process is established.

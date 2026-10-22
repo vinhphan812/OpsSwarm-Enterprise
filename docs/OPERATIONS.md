@@ -114,3 +114,12 @@ opsswarm_dependency_retry_exhausted_total{operation="GET:/repos/..."}
 # Ambiguous writes (writes whose outcome is unknown — check GitHub)
 opsswarm_execution_ambiguous_total
 ```
+
+## Single-Replica Kubernetes & Container Operations (Issue #73)
+
+### Operational Constraints
+- **Single Replica Mandate:** Production deployments must run exactly 1 replica (`replicas: 1`) using the `Recreate` deployment strategy. Scaling beyond 1 replica is blocked until Issue #70 (distributed state coordination) is delivered.
+- **Durable Storage (`/var/lib/opsswarm`):** The application state and audit evidence are file-backed. A single-writer PersistentVolumeClaim (PVC) must be mounted at `/var/lib/opsswarm`.
+- **Security Context:** Containers run unprivileged as non-root (UID/GID 10001) with `readOnlyRootFilesystem: true`, dropped capabilities (`cap_drop: [ALL]`), and `allowPrivilegeEscalation: false`.
+- **Health Probes:** Liveness and startup probes point to `GET /health` (`200 OK`).
+- **Graceful Termination:** Configure `terminationGracePeriodSeconds` (e.g. 45s) to allow in-flight operations and persistence flushes during rollouts or restarts.

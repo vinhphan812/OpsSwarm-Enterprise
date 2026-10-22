@@ -90,3 +90,27 @@ uvicorn opsswarm.api:app --host 0.0.0.0 --port 8088
 ```
 
 `GET /health` should return `ok: true`.
+
+## 5. Container & Kubernetes Deployment (Issue #73)
+
+### OCI Container Image
+OpsSwarm can be deployed as an immutable OCI container image built with hash-locked dependencies (`requirements.lock`) and a pinned Python 3.11 base image digest.
+
+- **Non-root Execution:** Runs as a non-root user/group (UID/GID `10001`).
+- **Read-Only Root Filesystem:** Runs with `readOnlyRootFilesystem: true`.
+- **Durable State:** Requires a single-writer persistent volume mounted at `/var/lib/opsswarm` (`OPSWARM_DATA_DIR`).
+
+### Kubernetes Deployment Profile
+The production Kubernetes deployment profile enforces the single-replica safety contract and container hardening standards:
+
+- **Single Replica & Recreate Strategy:** `replicas: 1` and `strategy: Recreate` (multi-replica scaling requires Issue #70 distributed state coordination).
+- **Security Context:** `runAsNonRoot: true`, `runAsUser: 10001`, `runAsGroup: 10001`, `allowPrivilegeEscalation: false`, dropped Linux capabilities (`cap_drop: [ALL]`), and runtime-default seccomp profile.
+- **Storage:** PersistentVolumeClaim (PVC) with single-writer access mode mounted at `/var/lib/opsswarm`.
+- **Probes:** `startupProbe` and `livenessProbe` configured against `GET /health`.
+- **Secrets & Config:** ConfigMaps for non-secret settings; Kubernetes Secrets or external secret store integration for `GITHUB_TOKEN`, `GITHUB_WEBHOOK_SECRET`, and `OPSWARM_RUNTIME_SECRET`.
+
+### Supply-Chain Verification
+Released images are verified via:
+1. **SBOM Generation:** CycloneDX/SPDX SBOM generated from the built container image.
+2. **Vulnerability Scanning:** Fail-closed Trivy scans checking for HIGH/CRITICAL vulnerabilities.
+3. **Digest Pinning & Attestation:** Signed image digests with GitHub OIDC build provenance attestation (`gh attestation verify`).
