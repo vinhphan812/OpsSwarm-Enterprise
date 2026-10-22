@@ -13,12 +13,22 @@ runtime-data/
 .hermes*
 
 .gitnexus
-dist*
-build
+dist*/
+build*/
 .ruff_cache
-artifacts/
+artifacts/*
+!artifacts/.gitkeep
 *.egg-info/
 .coverage
 _diag_*.py
 .tmp-pr*.md
 .locked-runtime/
+.worktrees/
+
+# One-off investigation scripts that were previously committed at the repo
+# root. Anchored to the root so the tracked checks under scripts/ are
+# unaffected (scripts/check_mypy_strict.py, scripts/check_ruff_full.py).
+/check_*.py
+/debug_*.py
+/find_*.py
+/parse_*.py
