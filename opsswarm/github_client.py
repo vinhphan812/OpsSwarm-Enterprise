@@ -8,8 +8,42 @@ from typing import Any
 import httpx
 
 from .errors import sanitize_for_log
+from .metrics import metrics
+from .resilience import (
+    CircuitBreaker,
+    DependencyError,
+    DependencyUnavailable,
+    InvalidDependencyResponse,
+    RateLimited,
+    RetryPolicy,
+    classify_http_error,
+    classify_transport_error,
+    normalize_operation,
+)
 
 logger = logging.getLogger(__name__)
+
+def _header_float(r: Any, name: str) -> float | None:
+    headers = getattr(r, "headers", None)
+    if headers is None:
+        return None
+    getter = getattr(headers, "get", None)
+    if getter is None:
+        return None
+    try:
+        val = getter(name)
+        return float(val) if val is not None else None
+    except Exception:
+        return None
+
+
+# Per-dependency circuit breaker for GitHub API calls
+_github_circuit = CircuitBreaker("github")
+
+# Methods whose semantics are demonstrably side-effect free. Only these may
+# ever be retried automatically — every other method may have taken effect and
+# is therefore never replayed.
+_IDEMPOTENT_METHODS: frozenset[str] = frozenset({"GET", "HEAD"})
 
 # ADR-028 (superseded by Issue #72): max_keepalive_connections=1 and max_connections=2
 # keep the transport scoped to a single logical channel, preventing connection-pooling abuse.
@@ -310,6 +344,8 @@ class GitHubClient:
         self.repo = repo
         self.base_url = base_url
         self.allowed_origins = allowed_origins
+        self.retry_policy = RetryPolicy()
+        self.circuit = _github_circuit
 
         # ---- resolve TLS verify setting ----
         if verify is False and profile not in _DEV_PROFILES:
@@ -342,32 +378,149 @@ class GitHubClient:
         )
 
     async def _req(self, method: str, path: str, **kwargs) -> Any:
-        try:
-            r = await self.client.request(method, path, **kwargs)
-            r.raise_for_status()
-            return r.json() if r.content else None
-        except httpx.HTTPStatusError as e:
-            # HTTP error bodies can contain internal paths, tokens, or implementation details.
-            # Log the full response for operators; raise a sanitized PermissionError so callers
-            # can handle it uniformly without leaking internals to GitHub comments.
-            logger.error(
-                "GitHub API HTTP error: status=%s path=%s detail=%s",
-                e.response.status_code,
-                sanitize_for_log(path),
-                sanitize_for_log(e.response.text[:500]),
-            )
-            raise PermissionError(
-                f"GitHub API returned {e.response.status_code} for {method} {path}"
-            ) from None
-        except PermissionError:
-            raise  # already sanitized
-        except Exception as e:
-            logger.exception(
-                "GitHub API unexpected error: method=%s path=%s",
-                sanitize_for_log(method),
-                sanitize_for_log(path),
-            )
-            raise PermissionError(f"GitHub API request failed for {method} {path}") from None
+        """Perform a GitHub API request with typed dependency-failure handling.
+
+        Semantics (Issue #75):
+
+        * Only demonstrably idempotent reads (``GET`` / ``HEAD``) are retried,
+          and only for a bounded number of attempts with jittered backoff.
+          Potentially side-effecting writes are **never** replayed
+          automatically.
+        * A write that fails at transport level *after* the request may have
+          been delivered raises :class:`AmbiguousWriteOutcome` (unknown
+          outcome → reconcile).  A write that is rejected with a known HTTP
+          result (``429``/``409``/…) raises the matching typed error — the
+          outcome is known, so it is not ambiguous.
+        * ``403`` is retryable only when GitHub itself proved throttling
+          (rate-limit headers / secondary-rate-limit message).  An ordinary
+          forbidden/permission ``403`` is terminal.
+        * Only genuine dependency failures (timeout, 5xx, lost transport)
+          move the circuit breaker — ordinary ``4xx`` responses never do.
+        * Invalid or malformed responses — including redirects — are terminal.
+        * Surfaced errors never contain a raw host, URL or internal httpx
+          message.
+        """
+        method_upper = method.upper()
+        operation = normalize_operation(method_upper, path)
+        is_idempotent = method_upper in _IDEMPOTENT_METHODS
+        policy = self.retry_policy
+
+        # Fail fast while the dependency circuit is open.
+        await self.circuit.acquire(operation=operation)
+
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                r = await self.client.request(method, path, **kwargs)
+
+                status = getattr(r, "status_code", None)
+                if isinstance(status, int) and 300 <= status < 400:
+                    # Redirects are never followed (ADR-028) and stay blocked.
+                    raise InvalidDependencyResponse(
+                        f"GitHub API returned a redirect ({status}) for {method_upper} {path}",
+                        status_code=status,
+                        operation=operation,
+                    )
+
+                r.raise_for_status()
+
+            except httpx.HTTPStatusError as e:
+                error = classify_http_error(
+                    e.response, method=method_upper, path=path, operation=operation
+                )
+                logger.error(
+                    "GitHub API HTTP error: status=%s path=%s detail=%s",
+                    getattr(e.response, "status_code", "unknown"),
+                    sanitize_for_log(path),
+                    sanitize_for_log(str(getattr(e.response, "text", ""))[:500]),
+                )
+                if isinstance(error, RateLimited):
+                    metrics.record_rate_limited()
+                if error.counts_toward_circuit:
+                    await self.circuit.record_failure()
+
+                if is_idempotent and error.retryable and attempt < policy.max_attempts:
+                    delay = policy.delay_for(attempt, retry_after=error.retry_after)
+                    logger.warning(
+                        "GitHub API retryable error (attempt %d/%d): op=%s status=%s. "
+                        "Retrying in %.2fs",
+                        attempt,
+                        policy.max_attempts,
+                        operation,
+                        error.status_code,
+                        delay,
+                    )
+                    await policy.sleep(delay)
+                    continue
+
+                if is_idempotent and error.retryable and attempt >= policy.max_attempts:
+                    metrics.record_dependency_retry_exhausted(operation)
+
+                raise error from None
+
+            except httpx.TransportError as exc:
+                # Covers connect/read/write timeouts and lost connections.
+                error = classify_transport_error(
+                    exc,
+                    method=method_upper,
+                    path=path,
+                    operation=operation,
+                    is_write=not is_idempotent,
+                )
+                if error.counts_toward_circuit:
+                    await self.circuit.record_failure()
+
+                if is_idempotent and error.retryable and attempt < policy.max_attempts:
+                    delay = policy.delay_for(attempt)
+                    logger.warning(
+                        "GitHub API transport error (attempt %d/%d): op=%s. Retrying in %.2fs",
+                        attempt,
+                        policy.max_attempts,
+                        operation,
+                        delay,
+                    )
+                    await policy.sleep(delay)
+                    continue
+
+                if is_idempotent and error.retryable and attempt >= policy.max_attempts:
+                    metrics.record_dependency_retry_exhausted(operation)
+
+                raise error from None
+
+            except DependencyError:
+                raise  # already a typed, sanitised failure
+
+            except Exception as e:
+                logger.exception(
+                    "GitHub API unexpected error: method=%s path=%s",
+                    sanitize_for_log(method),
+                    sanitize_for_log(path),
+                )
+                # Unexpected errors are not auto-retried and are not treated as
+                # confirmed dependency outages.
+                error = DependencyUnavailable(
+                    f"GitHub API request failed for {method} {path}", operation=operation
+                )
+                error.retryable = False
+                raise error from None
+
+            # ── success ─────────────────────────────────────────────────────
+            await self.circuit.record_success()
+
+            remaining = _header_float(r, "x-ratelimit-remaining")
+            if remaining is not None:
+                metrics.set_github_api_remaining(remaining)
+
+            try:
+                return r.json() if r.content else None
+            except ValueError as e:
+                # Malformed body — terminal, never retried.
+                raise InvalidDependencyResponse(
+                    f"GitHub API returned a malformed response for {method_upper} {path}",
+                    operation=operation,
+                ) from e
+
 
     async def get_issue(self, number: int):
         return await self._req("GET", f"/repos/{self.repo}/issues/{number}")
