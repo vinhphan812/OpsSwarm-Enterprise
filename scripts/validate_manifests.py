@@ -397,8 +397,10 @@ def validate_pvc(pvc: dict[str, Any], context: str, profile: Profile) -> None:
             f"for the single-writer contract, got {access_modes!r}"
         )
 
-    requests = (spec.get("resources") or {}).get("requests") or {}
-    if not requests.get("storage"):
+    # NOTE: the local name avoids ``requests`` so that Bandit's B113 check
+    # (HTTP calls without a timeout) does not match this non-HTTP mapping.
+    resource_requests = (spec.get("resources") or {}).get("requests") or {}
+    if not resource_requests.get("storage"):
         raise ManifestValidationError(
             f"{context}: PersistentVolumeClaim must request an explicit storage size"
         )
