@@ -1,372 +1,173 @@
 # ADR-030: Container Delivery Acceptance Contract
 
 **Status:** Proposed
+
 **Created:** 2026-10-21
+
 **Review:** Required before closing Issue #73
-**Related:** Issue #73, Issue #70, Issue #30, PR #93
+
+**Related:** Issue #73, Issue #70, Issue #30
 
 ---
 
 ## Context
 
 PR #93 (`feat/73-container-delivery`) introduced OCI image, Docker Compose, and
-Kubernetes manifests for OpsSwarm Enterprise. Formal review at commit
-`e2de536afb56` identified five architectural gaps between the delivered artefacts
-and the claims made in the accompanying documentation:
+Kubernetes deployment artefacts. Review found that the artefacts and their
+production claims are not yet supported by the required delivery evidence or by a
+single canonical lifecycle implementation.
 
-1. **OCI publication** — the release workflow used `load: true` (local daemon) and
-   read `.RepoDigests[0]`; a locally loaded image has no registry digest.
-2. **OpenClaw trust boundary** — `OPSWARM_OPENCLAW_BIN` was documented as a
-   sidecar-supplied path without a defined volume source; the init check and the
-   mount path in the manifest had no correspondence.
-3. **Readiness semantics** — `/health` was promoted as the readiness probe despite
-   not checking GitHub credentials or OpenClaw availability.
-4. **K8s base manifest correctness** — `openclaw-bin` had no `volumeSource`;
-   `fsGroup` was placed at container level; `emptyDir` discards evidence on pod
-   replacement.
-5. **Issue #70 gate** — replicas were not explicitly bounded to 1, and no
-   documentation prevented HA claims before shared coordination is implemented.
+The material gaps are:
 
-This ADR establishes the authoritative contract that all container-delivery
-artefacts must satisfy before production-delivery claims are accepted. It does
-**not** modify production code, workflows, Dockerfile, Compose, or K8s manifests.
+1. A local Docker image ID or `RepoDigests` from `load: true` is not an OCI
+   registry manifest digest. Production delivery requires a registry-pushed
+   immutable manifest digest and evidence derived from that image.
+2. `OPSWARM_OPENCLAW_BIN` requires an explicit executable-volume boundary.
+   Existing `OpenClawClient` is a subprocess adapter, not an HTTP/RPC gateway
+   adapter.
+3. `/health` must remain liveness-only. Startup readiness, SIGTERM pre-drain,
+   mutable-ingress rejection, and background-dispatch tracking require one
+   process-local owner, rather than competing API lifecycle controllers.
+4. A production K8s deployment requires renderable and server-validated
+   manifests, PVC-backed state, correctly scoped security context, and restricted
+   network policy.
+5. OpsSwarm remains a single-instance service until Issue #70 supplies and
+   verifies shared transactional coordination.
+
+This ADR is a proposed acceptance contract. It does not claim that Issue #73 has
+been delivered. Acceptance requires both the PR #93 delivery evidence listed below
+and the canonical lifecycle implementation.
 
 ---
 
 ## Decision
 
-### 1. OCI Publication Strategy
+### 1. OCI publication and supply-chain contract
 
-#### Supported publication model
+A release is acceptable only when its image has been pushed to a named OCI registry
+and is identified by the resulting immutable **registry manifest digest**
+(`sha256:` followed by 64 hexadecimal characters). A mutable tag, local image ID,
+or image loaded only into the GitHub Actions runner is not equivalent evidence.
 
-An OpsSwarm container release is valid only when the image exists in a **public or
-internal OCI registry** and is referenced by its **immutable digest**
-(`sha256:…`). Locally built images, images referenced only by mutable tags, and
-images present only in the GitHub Actions runner's local Docker daemon are **not**
-acceptable evidence of a production deployment.
+The delivery workflow must:
 
-#### Release workflow requirements
+| ID | Acceptance criterion | Producing evidence type |
+|---|---|---|
+| P1 | Push the OCI image to the registry with a version tag and a pinned SHA tag. | Workflow push log and registry reference. |
+| P2 | Capture and validate the registry manifest digest from the push output before it is used. | `artifacts/release/IMAGE_DIGEST.txt`; value matches `^sha256:[0-9a-f]{64}$`. |
+| P3 | Generate an SPDX or CycloneDX SBOM from the registry-pushed image. | `artifacts/release/sbom.spdx.json` and/or `sbom.cdx.json`. |
+| P4 | Scan the registry-pushed image for CRITICAL/HIGH vulnerabilities and fail closed. | `artifacts/release/trivy.sarif` plus workflow result using `exit-code 1`. |
+| P5 | Record GitHub OIDC provenance for the released artefact/image digest. | `artifacts/release/PROVENANCE.md` with attestation reference. |
+| P6 | Demonstrate a clean-runner pull using the immutable reference. | Command transcript for `docker pull <image>@sha256:<digest>`. |
 
-The `release.yml` workflow (or its equivalent) must satisfy all of the following:
+`docker/build-push-action` configured with `load: true` does not meet P1, P2, or
+P6. `docker inspect ... .Id` is a local image identifier, not a registry manifest
+digest; it must not be recorded as release-digest evidence.
 
-| # | Requirement | Rationale |
-|---|-------------|-----------|
-| P1 | Image is pushed to a named registry (e.g. `ghcr.io/owner/opsswarm`) with a version tag | Immutable registry reference |
-| P2 | The push step outputs the full digest line (e.g. `sha256:abc123…`) and it is captured in a workflow output variable | Digest obtained from build/push, not local inspect |
-| P3 | The captured digest is verified to start with `sha256:` and to have 64 hex characters before any downstream step uses it | Guard against empty/undefined variable (see `set -u`) |
-| P4 | The digest is written to `artifacts/release/IMAGE_DIGEST.txt` and included in the draft release body | Digest available to operators |
-| P5 | An image SBOM (SPDX JSON or CycloneDX JSON) is generated from the **registry-pushed** image | SBOM must reflect the exact image that will be pulled |
-| P6 | A vulnerability scan (Trivy, Grype, or equivalent) runs against the registry-pushed image at CRITICAL/HIGH with `exit-code 1` (fail-closed) | Confirmed by `--exit-code 1` in `release.yml` step |
-| P7 | GitHub OIDC provenance attestation is recorded against the pushed image digest | Verifiable provenance chain |
+### 2. OpenClaw integration and trust boundary
 
-#### What `load: true` does NOT provide
+#### Mode A — supported: shared executable volume
 
-`docker/build-push-action` with `load: true` builds into the GitHub Actions runner's
-local Docker daemon. A locally loaded image has `RepoDigests = []` because it has
-never been pushed to a registry. Calling `docker inspect --format='{{.RepoDigests}}'`
-on such an image produces an empty string or a fragment with no `sha256:` digest.
-The shell variable `full_digest` assigned from this output is therefore empty when
-`set -u` is active, causing the workflow to fail or to publish an empty digest
-file. The correct approach is to use `push: true` (or `push: false` with a separate
-`docker push` step) so the digest is captured from the registry push output.
+The only supported container integration mode is a shared executable volume:
 
-#### Evidence artefacts
-
-A complete release consists of:
-
-```
-artifacts/release/
-  opsswarm-{version}-py3-none-any.whl
-  opsswarm-{version}.tar.gz
-  SHA256SUMS.txt
-  sbom.cdx.json           ← CycloneDX wheel SBOM
-  sbom.spdx.json          ← SPDX container image SBOM
-  IMAGE_DIGEST.txt        ← sha256:… of registry-pushed image
-  trivy.sarif             ← Vulnerability scan results
-  PROVENANCE.md           ← GitHub OIDC attestation reference
+```text
+Host or Kubernetes volume
+  └── OpenClaw executable
+        └── mounted into OpsSwarm container
+              └── OPSWARM_OPENCLAW_BIN=<mounted executable path>
+                    └── OpenClawClient subprocess invocation
 ```
 
----
-
-### 2. OpenClaw Integration Mechanism and Trust Boundary
-
-#### Architectural position
-
-OpenClaw is an **external AI reasoning runtime** that OpsSwarm invokes as a
-subprocess or via its gateway API. OpenClaw is **never embedded in the OpsSwarm
-container image layers** — this is an explicit non-goal (see ADR-008). The two
-components share a host or cluster node via a **shared executable volume** or an
-**authenticated local RPC endpoint**. Neither component trusts the other's
-filesystem without an explicit mount or credential.
-
-#### Supported runtime boundary modes
-
-OpsSwarm supports exactly **two** integration modes. Operators must choose one;
-mixed configurations are not supported.
-
-##### Mode A — Shared executable volume (default)
-
-```
-Host/K8s Node
-  └── /opt/openclaw/openclaw       ← OpenClaw binary, mode 0755
-        ↑
-        │  hostPath / PVC / ConfigMap binary
-        │
-OpsSwarm container
-  └── OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw
-        └── subprocess.execvp("/opt/openclaw/openclaw", …)
-```
-
-- The binary must exist on the host before OpsSwarm starts.
-- The K8s `openclaw-bin` volume must have a concrete `volumeSource` (hostPath,
-  PVC, or downward-API ConfigMap binary). The base manifest must document this
-  and overlay configurations must provide it.
-- The init container (`openclaw-check`) validates that the path is non-empty,
-  that the file exists, and that it is executable (`-x`) before the main
-  container proceeds.
-- Reconciliation: if the binary is absent at startup, the pod fails to start
-  with a clear error message from the init container. OpsSwarm does not retry
-  automatically; the operator must mount the binary.
-- If `OPSWARM_OPENCLAW_BIN` is set to an empty string, the init container exits
-  1 with a descriptive error; the pod does not start.
-
-##### Mode B — Authenticated local RPC endpoint
-
-```
-OpsSwarm container
-  └── OPSWARM_OPENCLAW_BIN=openclaw
-  └── OPENCLAW_GATEWAY_URL=http://localhost:8089
-        └── HTTP/REST or stdio-RPC to OpenClaw gateway on the same host/pod
-```
-
-- `OPSWARM_OPENCLAW_BIN` is set to the `openclaw` command on PATH.
-- `OPENCLAW_GATEWAY_URL` points to the OpenClaw gateway (default:
-  `http://localhost:8089`).
-- OpsSwarm and the OpenClaw gateway communicate over localhost HTTP.
-- Authentication to the gateway uses `OPSWARM_OPENCLAW_KEY` (Bearer token).
-- This mode is only suitable when both processes run on the same host or in the
-  same Kubernetes pod (shared network namespace).
-
-#### What the sidecar claim does NOT mean
-
-The phrase "sidecar" in OpenClaw documentation refers to **deployment topology**,
-not to automatic filesystem sharing. A Kubernetes sidecar container does **not**
-automatically make its `/usr/local/bin/openclaw` available to the main container
-unless an explicit volume is mounted from the sidecar to the main container.
-Claiming sidecar deployment automatically satisfies `OPSWARM_OPENCLAW_BIN` without
-a volume mount is incorrect.
-
-#### Reconciliation semantics
-
-| Event | Behaviour |
-|-------|-----------|
-| Binary absent at startup | Init container fails; pod stuck in `Init:Error`; event message explains missing path |
-| Binary removed at runtime | Running subprocess continues; next invocation fails with `FileNotFoundError`; incident not affected |
-| OpenClaw gateway unreachable | OpsSwarm returns `dependency_unavailable`; `RunState` transitions to `FAILED`; operator notified |
-| Token invalid | OpsSwarm returns `auth_denied`; `RunState` transitions to `FAILED`; operator notified |
-
----
-
-### 3. Readiness, Liveness, and Draining State Model
-
-#### Three-probe model
-
-OpsSwarm exposes three logical states governed by separate signals:
-
-| Probe | Endpoint | Purpose | Blocks new traffic? | Triggers restart? |
-|-------|----------|---------|---------------------|------------------|
-| Liveness | `GET /health` | Process alive, uvicorn responsive | No | Yes (after `failureThreshold` failures) |
-| Startup | `GET /health` | Application initialised (same signal; acceptable until #30) | Yes (until first success) | No |
-| Readiness | **Not `/health`** | Application ready to serve requests with all dependencies satisfied | Yes | No |
-| Draining | `GET /health` returns 503 after SIGTERM received | In-flight requests completing | Yes | N/A |
-
-#### `/health` contract
-
-`GET /health` returns `{"ok": true, "version": "<semver>", "architecture": "openclaw+github"}`
-with HTTP 200 and no authentication. It verifies only that:
-
-- The FastAPI application has started and uvicorn is listening.
-- The Python runtime is responsive.
-
-It does **not** verify:
-
-- That `GITHUB_TOKEN` is valid or has sufficient scope.
-- That GitHub API is reachable.
-- That OpenClaw is available or correctly configured.
-- That evidence/checkpoint persistence is writable.
-
-Therefore `/health` is suitable for **liveness probes** (has the process crashed?)
-and for **startup probes** (is the app initialised?), but **not** for readiness.
-
-#### Kubernetes readiness probe
-
-Until Issue #30 is resolved, the readiness probe is a **placeholder**. The
-documented behaviour is:
-
-> **Acceptance gate:** `/ready` endpoint or equivalent dependency-check signal
-> must exist and return 200 only when GitHub credentials are valid and OpenClaw
-> binary is confirmed executable. This is tracked in Issue #30.
-
-Operators must **not** set `readinessProbe` to `/health` and claim production
-readiness without the dependency check. The current K8s base manifest documents
-this limitation in its header comment.
-
-#### Draining
-
-When the OpsSwarm process receives SIGTERM (or when Kubernetes sends it):
-
-1. OpsSwarm stops accepting new HTTP requests (uvicorn stops routing new work).
-2. OpsSwarm allows in-flight GitHub API calls and OpenClaw invocations to complete
-   up to `terminationGracePeriodSeconds` (default: 60 s).
-3. OpsSwarm performs a final checkpoint save to `/app/runtime-data/runs/`.
-4. OpsSwarm exits 0.
-
-`terminationGracePeriodSeconds` must be at least 30 s in all K8s overlays. The
-value should cover the worst-case OpenClaw agent invocation duration.
-
-#### GitHub credential readiness
-
-GitHub credential validity is **not** checked by the HTTP surface at startup.
-The credential is used on the first outbound call. If that call fails with
-`auth_denied`, the `RunState` transitions to `FAILED` and the incident is left
-open with a descriptive error. This is the correct behaviour — failing closed
-rather than silently proceeding without GitHub access.
-
----
-
-### 4. K8s Durable-State and Network-Policy Baseline
-
-#### Volume requirements
-
-| Volume | Base manifest | Required source | Rationale |
-|--------|---------------|-----------------|-----------|
-| `openclaw-bin` | No `volumeSource` in base | **Must be provided by overlay** | Without this the init container fails |
-| `evidence-store` (`/var/lib/opsswarm`) | `emptyDir` | **Overlay must replace with PVC** for production | `emptyDir` is lost on pod deletion; evidence is irrecoverable |
-| `runtime-data` (`/app/runtime-data`) | `emptyDir` | **Overlay must replace with PVC** for production | Checkpoints are lost on pod deletion |
-| `tmp` (`/tmp`) | `emptyDir` | `emptyDir { medium: Memory }` in prod overlay | Prevents tmpfile leakage to host filesystem |
-
-The base manifest must document each volume's purpose and the minimum required
-`volumeSource` that an overlay must supply. The base must not be applied to a
-cluster without an overlay that provides these sources.
-
-#### `securityContext` placement
-
-`fsGroup` is a **Pod-level** field in `securityContext`. Placing it inside a
-container's `securityContext` is rejected by `kubectl apply --dry-run=server` in
-Kubernetes 1.27+. The Pod-level `securityContext` is where the following must be
-set:
-
-```yaml
-spec:
-  securityContext:        # ← Pod level
-    runAsNonRoot: true
-    runAsUser: 10001
-    runAsGroup: 10001
-    fsGroup: 10001        # ← correct location
-    seccompProfile:
-      type: RuntimeDefault
-  containers:
-    - name: opsswarm
-      securityContext:    # ← Container level (supplements Pod level)
-        runAsNonRoot: true
-        runAsUser: 10001
-        allowPrivilegeEscalation: false
-        capabilities:
-          drop: [ALL]
-```
-
-#### NetworkPolicy baseline
-
-The base `NetworkPolicy` must:
-
-- Allow ingress only from named namespaces (via `namespaceSelector`) and from
-  explicitly documented ingress controller CIDRs.
-- Allow egress to `api.github.com` (TCP 443) using FQDN-based `to[*].dnsName`
-  rather than a fixed CIDR block, because GitHub's IP ranges change without
-  notice.
-- Allow egress to the OpenClaw runtime host (configurable via
-  `OPENCLAW_EGRESS_HOST` in the ConfigMap).
-- Allow egress to DNS (UDP+TCP 53) for Kubernetes service discovery.
-- Allow egress to cloud metadata services (169.254.169.254, TCP 80/443) only
-  when explicitly required by the cloud provider; document this in the overlay.
-
-The base policy must **not** include `ingress[].from[].ipBlock.cidr: 0.0.0.0/0`
-as a catch-all. Production overlays must supply the actual ingress controller
-CIDRs.
-
----
-
-### 5. Non-Goals and Issue #70 Gate
-
-#### HA is not supported in v2.2
-
-OpsSwarm Enterprise v2.2 is designed, documented, and delivered as a **single-
-instance** service. This is an explicit non-goal, not a current limitation:
-
-> **Non-goal:** Do not claim HA or multi-instance guarantees until shared
-> transactional coordination (Issue #70) is complete.
-
-The deployment documentation must include this statement verbatim, and the K8s
-base `replicas` field must be set to `1` with a comment linking to Issue #70.
-
-#### What Issue #70 must provide before HA is claimed
-
-| Requirement | Owner |
-|-------------|-------|
-| Shared transactional run store (PostgreSQL or equivalent) | infra/dev-ops |
-| Distributed run ownership / lease mechanism | infra/dev-ops |
-| Cross-process deduplication of webhook events and commands | infra/dev-ops |
-| Optimistic concurrency / CAS for run record writes | infra/dev-ops |
-| Shared rate-limit and anti-replay state | infra/dev-ops |
-| Documented HA deployment runbook | docs |
-| Multi-process integration tests | test/qa |
-
-Until all of the above are implemented and verified, increasing `replicas` beyond
-`1` in the K8s manifests or recommending multi-instance deployment is a policy
-violation and must not appear in any OpsSwarm documentation.
-
----
-
-### 6. Acceptance Tests
-
-The following tests are **required** to be green before Issue #73 may be closed.
-Automated tests are in `tests/integration/test_container_deployment.py`.
-
-#### OCI image
-
-| Test | Method | Pass criterion |
-|------|--------|----------------|
-| Multi-stage build | Inspect Dockerfile | `AS builder` and `AS runtime` stages present; `COPY --from=builder` in runtime |
-| Non-root user | `docker run --entrypoint id` | `uid=10001(appuser) gid=10001(appgroup)` |
-| No GitHub token in layers | `docker history` | No match for `ghp_`, `ghs_`, `ghu_`, `GHO_`, `GHR_` |
-| Healthcheck configured | Inspect Dockerfile | `HEALTHCHECK CMD … /health` present |
-| SIGTERM graceful shutdown | `docker stop` | Process exits 0 within `stop_grace_period` |
-| SBOM generated | Inspect release workflow | SPDX/CycloneDX JSON artefact uploaded |
-| Image digest non-empty | `cat IMAGE_DIGEST.txt` | Starts with `sha256:`; 64 hex characters |
-| Vulnerability scan | Inspect `trivy.sarif` | Exit code was 1 on any CRITICAL/HIGH finding |
-
-#### Docker Compose
-
-| Test | Method | Pass criterion |
-|------|--------|----------------|
-| Config validates | `docker compose config` | Exit code 0 |
-| Named volumes declared | Inspect compose file | `opsswarm-runtime-data` in `volumes:` section |
-| Token via file mount | Inspect compose file | `GITHUB_TOKEN_FILE`; `/run/secrets/`; `read_only: true` |
-| Graceful shutdown | `docker compose stop` | Graceful within 30 s |
-
-#### Kubernetes
-
-| Test | Method | Pass criterion |
-|------|--------|----------------|
-| Kustomize renders | `kustomize build k8s/` | Exit code 0; `kind:` resources in output |
-| Server-side dry-run | `kubectl apply --dry-run=server -k k8s/` | Exit code 0 |
-| Non-root securityContext | Inspect `deployment.yaml` | `runAsNonRoot: true`, `runAsUser: 10001` at **Pod** level |
-| `fsGroup` at Pod level | Inspect `deployment.yaml` | `fsGroup` under `spec.securityContext`, not under `containers[].securityContext` |
-| `openclaw-bin` volume source | Inspect overlay manifest | Concrete `volumeSource` (hostPath / PVC / etc.) present in overlay |
-| `evidence-store` PVC | Inspect overlay manifest | `persistentVolumeClaim.claimName` in production overlay |
-| `runtime-data` PVC | Inspect overlay manifest | `persistentVolumeClaim.claimName` in production overlay |
-| NetworkPolicy egress | Inspect `network-policy.yaml` | `api.github.com` FQDN or resolved CIDR; no `0.0.0.0/0` ingress |
-| Replicas = 1 | Inspect `deployment.yaml` | `replicas: 1`; comment references Issue #70 |
+The deployment overlay must provide a concrete `openclaw-bin` volume source. An
+init container must verify that the configured executable exists and is executable
+before the OpsSwarm container starts. A missing executable is a startup failure;
+it must not degrade silently.
+
+#### Mode B — future / unsupported
+
+`OPSWARM_OPENCLAW_BIN=openclaw` together with `OPENCLAW_GATEWAY_URL` is **not a
+supported configuration**. The implemented adapter in `opsswarm/openclaw.py`
+accepts a binary path and invokes it with `asyncio.create_subprocess_exec`; it does
+not read `OPENCLAW_GATEWAY_URL` or select an HTTP, REST, or JSON-RPC transport.
+A future gateway adapter requires its own implementation, authentication contract,
+and ADR update. Until then, deployment documentation must not present this
+combination as functional.
+
+### 3. Canonical liveness, readiness, and drain contract
+
+The canonical lifecycle owner is `opsswarm/runtime.py`. Its process-local
+`ReadinessManager`, accessed only through `get_readiness()`, owns successful
+startup readiness, SIGTERM pre-drain state, atomic admission/in-flight accounting,
+and background-dispatch tracking. `opsswarm/api.py` wires that owner; it must not
+introduce another lifecycle manager, app state singleton, task registry, or `/ready`
+controller.
+
+Only two HTTP probes are provided by the canonical contract; no third probe is
+assumed:
+
+| Signal | Endpoint / enforcement point | Contract |
+|---|---|---|
+| Liveness | `GET /health` | HTTP 200 while the process is alive and the HTTP server responds. It is never the readiness or drain-rejection signal. |
+| Readiness | `GET /ready` | HTTP 200 only after startup preflight succeeds and while the process accepts work; otherwise opaque HTTP 503. |
+| Drain admission | `GET /ready` and `@check_draining` on mutable ingress | `/ready` returns 503, and new mutable work is rejected with 503 while accepted work is drained. |
+
+The canonical lifecycle implementation must:
+
+- set readiness only after its startup preflight succeeds;
+- begin drain before the server ceases admitting mutable work on SIGTERM/shutdown;
+- reject new mutable work atomically while allowing tracked, already accepted work
+  to complete within the configured bounded grace period;
+- track detached background dispatches, cancel/settle them at the drain deadline,
+  and avoid an unawaited-coroutine or completion-callback race;
+- leave `/health`, read endpoints, and `/metrics` ungated by readiness; and
+- preserve GitHub webhook HMAC verification independently of runtime API auth.
+
+The endpoints that perform drain rejection are `/ready` and mutable ingress guarded
+by `@check_draining`: `/runs/{issue_number}/resume`, `/webhooks/github`, and
+`/hooks/monitoring`. `/health` continues to return HTTP 200 while the process is
+alive, including during draining.
+
+### 4. Kubernetes single-instance baseline
+
+A production overlay must meet all of these conditions:
+
+| ID | Acceptance criterion | Producing evidence type |
+|---|---|---|
+| K1 | The rendered manifests use `replicas: 1`; no HA claim is made. | Rendered Deployment and review of the declared replica count. |
+| K2 | The OpenClaw executable volume has a concrete source and is mounted for validation and use. | Rendered overlay manifest. |
+| K3 | `fsGroup` is under the Pod `securityContext`, not a container `securityContext`. | Rendered Deployment. |
+| K4 | Evidence and runtime/checkpoint storage are PVC-backed, not `emptyDir`. | Rendered PVCs and Deployment volume references. |
+| K5 | Kustomize rendering succeeds. | `kustomize build k8s/` output. |
+| K6 | The chosen cluster accepts a server-side dry-run. | `kubectl apply --dry-run=server -k k8s/` output. |
+| K7 | Ingress and egress are explicitly restricted; no production catch-all `0.0.0.0/0` ingress rule is present. | Rendered NetworkPolicy and policy review. |
+
+### 5. Required acceptance evidence and ownership
+
+Every row is an acceptance criterion, not a claim that evidence already exists.
+Issue #73 may be accepted only when all applicable evidence is produced and
+reviewed, and the canonical lifecycle implementation is available.
+
+| Gate | Acceptance criterion | Producing evidence type | Owning Kanban card |
+|---|---|---|---|
+| G1 | Registry-pushed OCI manifest digest is recorded and validated. | `IMAGE_DIGEST.txt` and successful push log. | `t_e0cbc06c` (PR #93) |
+| G2 | Container SBOM is produced from the registry-pushed image. | SPDX/CycloneDX SBOM artefact. | `t_e0cbc06c` (PR #93) |
+| G3 | Provenance/attestation covers the delivered release artefact. | GitHub attestation reference / `PROVENANCE.md`. | `t_e0cbc06c` (PR #93) |
+| G4 | Registry image vulnerability scan fails closed at CRITICAL/HIGH. | Trivy SARIF artefact and workflow outcome. | `t_e0cbc06c` (PR #93) |
+| G5 | A clean environment can pull the published image by immutable digest. | Pull-by-digest execution transcript. | `t_72bc8bee` |
+| G6 | Compose state survives a restart through named persistent volumes. | Compose smoke output and persistence assertion. | `t_e0cbc06c` (PR #93) |
+| G7 | Production K8s state is PVC-backed and overlay manifests render. | Rendered Kustomize output and PVC references. | `t_e0cbc06c` (PR #93) |
+| G8 | K8s manifests pass server-side dry-run against the target cluster. | `kubectl apply --dry-run=server` transcript. | `t_e0cbc06c` (PR #93) |
+| G9 | A live restart/recovery smoke preserves required state and restores readiness. | Live deployment/restart test report. | `t_e0cbc06c` (PR #93) |
+| G10 | Startup, `/ready`, SIGTERM pre-drain, ingress rejection, and background-task tracking have one runtime owner. | Focused unit/integration test results and canonical implementation review. | `t_d625c7b9` |
+| G11 | The competing lifecycle PRs are normalised to one canonical PR after verification. | Reconciliation decision and exact-head CI status. | `t_9758bb0d` |
+| G12 | Independent lifecycle regression coverage verifies the canonical owner. | QA report and focused test output. | `t_4b2618db` |
+
+### 6. HA non-goal
+
+OpsSwarm Enterprise is a single-instance service until Issue #70 provides and
+verifies shared transactional state, distributed ownership, cross-process
+idempotency, and shared anti-replay/rate-limit semantics. Increasing replicas or
+claiming multi-instance recovery before that gate is satisfied is prohibited.
 
 ---
 
@@ -374,79 +175,37 @@ Automated tests are in `tests/integration/test_container_deployment.py`.
 
 ### Positive
 
-- Production operators receive an unambiguous contract for OCI image provenance,
-  OpenClaw integration, and readiness semantics.
-- The five blockers identified in the PR #93 review are each assigned to a
-  specific owner with an objectively verifiable acceptance test.
-- Issue #70 is explicitly gated; HA claims are prohibited until the gate passes.
-- K8s base manifest gaps (volume source, `fsGroup` placement, `emptyDir`
-  durability) are documented as requiring overlay resolution before production
-  use.
+- The delivery contract distinguishes registry manifest evidence from local build
+  artefacts and makes each supply-chain gate objectively reviewable.
+- `/health`, `/ready`, and mutable-ingress drain behaviour are internally
+  consistent and have one stated lifecycle owner.
+- The unsupported OpenClaw gateway combination cannot be mistaken for a supported
+  production mode.
+- Evidence ownership and prerequisites for Issue #73 are explicit.
 
 ### Negative
 
-- Operators must supply an explicit `volumeSource` for `openclaw-bin` in any
-  K8s overlay — there is no default that works out of the box.
-- The readiness probe cannot claim production-grade dependency checking until
-  Issue #30 is resolved; this is now a documented gap.
-- Production K8s overlays must replace `emptyDir` with PVC-backed volumes for
-  evidence and runtime-data durability; this is an operational requirement, not
-  an optional optimisation.
+- Container delivery remains unaccepted until external registry, cluster, and live
+  recovery evidence is produced; documentation alone cannot satisfy those gates.
+- Operators must provision both the OpenClaw executable boundary and durable
+  production storage.
+- A future OpenClaw gateway transport will require a separate implementation and
+  contract review.
 
 ### Neutral
 
-- The ADR is documentation-only. Production code, workflows, Dockerfile, Compose,
-  and K8s manifests are modified in follow-on tasks assigned below.
-- The ADR does not change any existing approved ADR. It extends the deployment
-  layer only.
+- This is a documentation-only proposed ADR. It neither changes production
+  artefacts nor asserts that any required check has been run.
 
 ---
 
-## Follow-on Ownership Matrix
+## Alternatives considered
 
-Each blocker is assigned to exactly one owner. No blocker appears in more than
-one row.
-
-| # | Blocker description | Owner | Deliverable |
-|---|---------------------|-------|-------------|
-| R1 | Fix `release.yml`: replace `load: true` with `push: true`; capture digest from push output; verify non-empty `sha256:` before use | **CI/dev-ops** | Updated `.github/workflows/release.yml`; digest artefact in release run |
-| R2 | Remove silent fallback in `Dockerfile` `uv pip install` step | **CI/dev-ops** | Updated `Dockerfile` stage 1; build fails on lock resolution error |
-| R3 | Add concrete `volumeSource` for `openclaw-bin` in K8s `overlays/dev/` and document `overlays/prod/` requirement | **infra/dev-ops** | Updated `k8s/overlays/dev/kustomization.yaml`; updated `CONTAINER_DEPLOYMENT.md` |
-| R4 | Move `fsGroup` from container `securityContext` to Pod-level `securityContext` in `k8s/base/deployment.yaml` | **infra/dev-ops** | Updated `k8s/base/deployment.yaml` |
-| R5 | Add PVC-backed volumes for `evidence-store` and `runtime-data` in `k8s/overlays/prod/`; update `CONTAINER_DEPLOYMENT.md` | **infra/dev-ops** | Updated `k8s/overlays/prod/`; updated `CONTAINER_DEPLOYMENT.md` |
-| R6 | Replace broad `0.0.0.0/0` ingress in `k8s/base/network-policy.yaml` with FQDN-based egress and documented ingress CIDRs; add `overlays/prod/` policy | **infra/dev-ops** | Updated `k8s/base/network-policy.yaml`; updated `CONTAINER_DEPLOYMENT.md` |
-| R7 | Add `/ready` endpoint or dependency-check signal; implement as `readinessProbe` in K8s base (tracked in Issue #30) | **runtime/backend** | Issue #30 closure; updated `deployment.yaml` readiness probe |
-| R8 | Confirm `replicas: 1` in K8s base and add Issue #70 non-goal statement to `CONTAINER_DEPLOYMENT.md` and `k8s/base/deployment.yaml` header | **docs** (this ADR) | This ADR; `CONTAINER_DEPLOYMENT.md` updated by R3/R5/R6 |
-| R9 | Add `acceptance_test` marker group to `tests/integration/test_container_deployment.py` for R1–R7 regression coverage | **test/qa** | Updated `tests/integration/test_container_deployment.py` |
-
----
-
-## Alternatives Considered
-
-### OCI publication
-
-| Option | Description | Rejected because |
-|--------|-------------|-----------------|
-| Use `load: true` + `docker inspect` | Keep local image, read digest from daemon | Local images have no registry digest; empty variable with `set -u` |
-| Separate build and push steps | Build locally, then `docker push` | Two steps; digest must be captured from push output correctly |
-| Use GitHub OIDC attestation only | Trust provenance without digest | Operators need the digest to pull a specific image version |
-
-### OpenClaw integration
-
-| Option | Description | Rejected because |
-|--------|-------------|-----------------|
-| Embed OpenClaw in image layers | Copy binary in Dockerfile | Violates ADR-008; forces image rebuild on every OpenClaw update |
-| Rely on sidecar filesystem sharing | Assume sidecar makes binary available | No K8s mechanism shares a container's filesystem without explicit volume mount |
-| Require authenticated RPC only | No file-based integration | Host-mount volume is simpler for single-node / VM deployments; both modes needed |
-
-### Readiness
-
-| Option | Description | Rejected because |
-|--------|-------------|-----------------|
-| Use `/health` as readiness | Current implementation | Does not verify GitHub token or OpenClaw availability |
-| Readiness probe with shell exec curl | Check GitHub API in probe | Adds latency to every readiness check; credential exposure in probe command |
-| Separate readiness service | `/ready` endpoint with dependency checks | Correct solution; tracked in Issue #30 |
-
----
+| Alternative | Rejected because |
+|---|---|
+| Treat local Docker image ID as image digest | It is not a registry manifest digest and cannot support independent pull-by-digest reproduction. |
+| Treat `/health` as readiness or drain rejection | Liveness would fail during controlled drain and conflate process health with admission state. |
+| Retain a second API-owned lifecycle manager | It creates competing readiness, pre-drain, and background-task ownership. |
+| Claim Mode B from `OPENCLAW_GATEWAY_URL` configuration alone | No implemented adapter reads this setting or performs gateway RPC. |
 
 *End of ADR-030*
