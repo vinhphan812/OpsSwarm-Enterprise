@@ -1,0 +1,88 @@
+# k8s/overlays/prod/kustomization.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# Production overlay — managed Kubernetes (GKE, EKS, AKS)
+#
+# Overrides from base:
+#   - image: pinned to v{version} tag (no :latest)
+#   - imagePullPolicy: Always (required for :latest; use IfNotPresent for tags)
+#   - APP_ENV: production (enables fail-closed auth checks)
+#   - LOG_LEVEL: WARNING (reduces log volume under normal operation)
+#   - Service type: LoadBalancer (or use Ingress — see below)
+#   - resource limits: slightly tighter (observe and tune for your workload)
+#   - PDB strategy: maxUnavailable (enabled after replicas > 1, see pdb-patch.yaml)
+#   - secret: NOT generated here — use sealed-secrets or external-secrets operator
+#
+# Security notes:
+#   - readOnlyRootFilesystem: consider setting true in deployment.yaml and
+#     using tmpfs for /tmp, /var/run in this overlay.
+#   - NetworkPolicy: k8s/overlays/prod/network-policy.yaml adds cloud LB
+#     ingress and model-provider egress rules.  Review and un-comment the
+#     specific provider CIDRs before deploying.
+#   - AppArmor / seccomp: additional hardening can be added via a pod security
+#     policy or Pod Security Standards (PSS) in the namespace.
+#
+# Usage:
+#   # Apply prod overlay:
+#   kubectl apply -k k8s/overlays/prod
+#
+#   # Roll back to previous version:
+#   kubectl rollout undo deployment/opsswarm -n opsswarm
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: opsswarm
+
+resources:
+  - ../../base
+  - ./network-policy.yaml
+
+# ── Patches ─────────────────────────────────────────────────────────────────
+patches:
+  # Pin image to version tag (no :latest in production).
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+    target:
+      kind: Deployment
+      name: opsswarm
+
+  # Production environment and log level.
+  - patch: |-
+      - op: replace
+        path: /data/APP_ENV
+        value: production
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: WARNING
+    target:
+      kind: ConfigMap
+      name: opsswarm-config
+
+  # LoadBalancer service — or replace with an Ingress resource for HTTPS.
+  - patch: |-
+      - op: replace
+        path: /spec/type
+        value: LoadBalancer
+    target:
+      kind: Service
+      name: opsswarm
+
+  # Production resource limits — tighter ceiling, monitor before lowering.
+  - patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2000m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 2Gi
+    target:
+      kind: Deployment
+      name: opsswarm
+
+# ── Images ────────────────────────────────────────────────────────────────────
+images:
+  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+    newTag: "2.2.0"
+    newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
