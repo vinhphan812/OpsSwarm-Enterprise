@@ -175,15 +175,17 @@ class TestOCIDockerfile:
             assert pattern not in content, \
                 f"Dockerfile must not contain hardcoded secret pattern: {pattern}"
 
-    def test_dockerfile_opsswarm_openclaw_bin_env_var(self):
-        """A.1  OPSWARM_OPENCLAW_BIN env var is documented / defaulted to empty."""
+    def test_dockerfile_provisions_pinned_openclaw_cli(self):
+        """A.1  Runtime image ships the pinned CLI the adapter invokes."""
         content = read(DOCKERFILE)
-        # The env var should be either absent (binary not in image) or explicitly
-        # set to empty string (documenting the contract that it must be supplied at runtime).
-        # A hardcoded binary path would be a policy violation.
-        # We allow OPSWARM_OPENCLAW_BIN=${...} or OPSWARM_OPENCLAW_BIN: but not a literal path.
-        assert not re.search(r'OPSWARM_OPENCLAW_BIN[=:]["\'].*openclaw', content), \
-            "OpenClaw binary must not be embedded in image layers"
+        assert 'openclaw@${OPENCLAW_VERSION}' in content, \
+            "Dockerfile must install the OpenClaw npm package at a pinned build argument"
+        assert 'ARG OPENCLAW_VERSION=' in content, \
+            "Dockerfile must pin OPENCLAW_VERSION"
+        assert 'ENV OPSWARM_OPENCLAW_BIN="/usr/local/bin/openclaw"' in content, \
+            "Container must invoke its provisioned OpenClaw CLI, not a host path"
+        assert "openclaw --version" in content, \
+            "Dockerfile must prove the installed OpenClaw executable is invokable"
 
     def test_dockerfile_copies_canonical_version_module(self):
         """A.6  The build copies the canonical package version module, not dead VERSION data."""
@@ -250,15 +252,20 @@ class TestOCIReleaseWorkflow:
         assert has_sbom_action and (has_json_output or has_sbom_artifact), \
             "release.yml must generate SPDX/CycloneDX SBOM JSON artifact"
 
-    def test_image_digest_recorded_in_release(self):
-        """A.6  Release workflow records the image digest (docker inspect)."""
-        if not RELEASE_WORKFLOW.is_file():
-            pytest.skip("release.yml not found")
-
+    def test_release_publishes_and_verifies_registry_digest(self):
+        """A.6  A registry push output, not a local image ID, drives evidence."""
         content = read(RELEASE_WORKFLOW)
-        # docker inspect --format='{{.RepoDigests}}' or similar to capture digest.
-        assert "digest" in content.lower() or "sha256" in content.lower(), \
-            "release.yml must record the image digest"
+        assert "packages: write" in content, "release must grant GHCR package-write permission"
+        assert "docker/login-action" in content, "release must authenticate to GHCR"
+        assert "push: true" in content, "release must publish rather than load locally"
+        assert "steps.build_image.outputs.digest" in content, \
+            "release must capture the build/push action manifest digest"
+        assert re.search(r"\^sha256:\[a-f0-9\]\{64\}\$", content), \
+            "release must reject an absent or malformed manifest digest"
+        assert "docker pull \"$IMAGE@$digest\"" in content, \
+            "release must verify the published image can be pulled by digest"
+        assert "load: true" not in content, \
+            "release evidence must not derive from a local Docker image"
 
     def test_trivy_fail_closed_in_release_workflow(self):
         """A.7  release.yml runs Trivy at HIGH/CRITICAL with exit-code 1 (fail-closed)."""
@@ -594,30 +601,28 @@ class TestKubernetes:
         assert prod_overlay.is_file(), \
             f"overlays/prod/kustomization.yaml not found at {prod_overlay}"
 
-    def test_deployment_has_openclaw_init_container(self):
-        """C.7  Deployment has an init container that validates the OpenClaw binary.
-
-        The init container blocks pod startup if OPSWARM_OPENCLAW_BIN is empty or
-        the binary is not found/executable at the specified path.  This proves the
-        adapter contract — the container will not start without a valid OpenClaw
-        binary, preventing a silent failure that would otherwise only surface at
-        first incident response.
-        """
+    def test_deployment_has_openclaw_runtime_check(self):
+        """C.7  Base validates the image-provisioned OpenClaw CLI before startup."""
         deployment_file = K8S_BASE / "deployment.yaml"
-        if not deployment_file.is_file():
-            pytest.skip(f"deployment.yaml not found at {deployment_file}")
-
         content = read(deployment_file)
-        assert "initContainers" in content, \
-            "deployment.yaml must define an init container"
-        assert "openclaw" in content.lower(), \
-            "init container must be named openclaw-check or similar"
-        # The init container must check that the binary is executable.
-        assert "OPSWARM_OPENCLAW_BIN" in content, \
-            "init container must reference OPSWARM_OPENCLAW_BIN from the ConfigMap"
-        # The init container must exit 1 if the binary is not found.
-        assert "exit 1" in content or "exit 1" in content.lower(), \
-            "init container must fail (exit 1) when OpenClaw binary is not available"
+        assert "initContainers" in content, "deployment.yaml must define an init container"
+        assert "openclaw-runtime-check" in content, \
+            "init container must validate the shipped OpenClaw runtime"
+        assert 'value: /usr/local/bin/openclaw' in content, \
+            "the supported container mode must use the image-provisioned CLI"
+        assert '"$bin" --version' in content, \
+            "init container must invoke OpenClaw rather than merely inspect a mount"
+        assert "-x \"$bin\"" in content and "exit 1" in content, \
+            "init container must fail closed if the shipped CLI is not executable"
+        assert "openclaw-bin" not in content, \
+            "embedded CLI mode must not retain a dangling executable volume"
+
+    def test_deployment_uses_pod_fs_group_and_ready_probe(self):
+        """C.3/C.4  Pod-level fsGroup and canonical /ready gate are rendered."""
+        content = read(K8S_BASE / "deployment.yaml")
+        assert "fsGroup: 10001" in content, "fsGroup must be in the Pod spec securityContext"
+        assert "readinessProbe:" in content and "path: /ready" in content, \
+            "production readiness must use /ready, never /health"
 
     def test_network_policy_has_no_public_ingress(self):
         """C.7  NetworkPolicy base has no 0.0.0.0/0 ingress rule.

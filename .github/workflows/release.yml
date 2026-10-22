@@ -14,6 +14,7 @@ on:
 permissions:
   contents: write
   actions: read
+  packages: write
   id-token: write
   attestations: write
 
@@ -314,46 +315,56 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d3b53c60f864b11ee2f0cd543bfae1e76d28e6d # v3.9.0
 
-      - name: Build OCI image for OpsSwarm Enterprise
+      - name: Authenticate to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and publish OCI image for OpsSwarm Enterprise
         id: build_image
         uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v6.12.0
         with:
           context: .
           file: ./Dockerfile
-          load: true
-          tags: |
-            opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}:${{ steps.release_ref.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: true
+          provenance: mode=max
           sbom: true
 
-      - name: Record image digest
+      - name: Record and verify published image digest
         id: image_digest
         shell: bash
         env:
-          IMAGE_TAG: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          IMAGE_DIGEST: ${{ steps.build_image.outputs.digest }}
         run: |
           set -euo pipefail
-          # Use .Id — always available for any locally-loaded image (sha256:...).
-          # .RepoDigests is registry-only and is empty after a plain `load: true`.
-          full_digest=$(docker inspect --format='{{.Id}}' "$IMAGE_TAG")
-          # Fail fast if digest is absent or malformed — evidence must be verifiable.
-          if [[ -z "$full_digest" ]] || [[ ! "$full_digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "ERROR: failed to capture a valid sha256 image digest. Got: '$full_digest'" >&2
+          digest="${IMAGE_DIGEST:-}"
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "ERROR: build/push did not return an immutable manifest digest; got ${digest@Q}" >&2
             exit 1
           fi
-          echo "full_digest=$full_digest" >> "$GITHUB_OUTPUT"
-          # Also write to a file so it can be attached to the release body.
-          echo "$full_digest" > artifacts/release/IMAGE_DIGEST.txt
+          printf '%s\n' "$digest" > artifacts/release/IMAGE_DIGEST.txt
+          printf 'image=%s\n' "$IMAGE" >> "$GITHUB_OUTPUT"
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+          docker pull "$IMAGE@$digest"
+          pulled_digest="$(docker image inspect --format='{{index .RepoDigests 0}}' "$IMAGE@$digest" | sed 's/.*@//')"
+          [[ "$pulled_digest" == "$digest" ]] || {
+            echo "ERROR: pull-by-digest verification mismatch: expected $digest, got ${pulled_digest@Q}" >&2
+            exit 1
+          }
 
-      - name: Generate SPDX SBOM from container image
+      - name: Generate SPDX SBOM from published container image
         uses: anchore/sbom-action@bb502a77cf8aa87824c7c1c21e6f3bc4ce39cfe3 # v0.17.0
         with:
-          image: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          image: ${{ steps.image_digest.outputs.image }}@${{ steps.image_digest.outputs.digest }}
           format: spdx-json
           output-file: artifacts/release/sbom.spdx.json
-          image-url: ghcr.io/${{ github.repository }}:${{ steps.release_ref.outputs.tag }}
+          image-url: ${{ steps.image_digest.outputs.image }}@${{ steps.image_digest.outputs.digest }}
           image-checks: ""
 
       - name: Validate SBOM is well-formed SPDX JSON
@@ -365,12 +376,19 @@ jobs:
       - name: Vulnerability scan with Trivy (fail-closed at CRITICAL)
         uses: aquasecurity/trivy-action@5c14972d7ab9fcbfa23ea40e6d2e1fb0a98f3d # 0.24.0
         with:
-          image-ref: opsswarm-release:${{ steps.release_ref.outputs.tag }}
+          image-ref: ${{ steps.image_digest.outputs.image }}@${{ steps.image_digest.outputs.digest }}
           format: sarif
           output: artifacts/release/trivy.sarif
           severity: CRITICAL,HIGH
           exit-code: "1"   # fail-closed: non-zero exit on any CRITICAL or HIGH finding
           vuln-type: os,library
+
+      - name: Attest published container image provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-name: ${{ steps.image_digest.outputs.image }}
+          subject-digest: ${{ steps.image_digest.outputs.digest }}
+          push-to-registry: true
 
       - name: Upload container supply-chain evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

@@ -63,32 +63,13 @@ patches:
 
   # Use emptyDir for evidence and runtime-data in local dev (no cluster storage needed).
   # Remove these two patches if your cluster has dynamic StorageClass provisioning.
-  # Volume index: 0=openclaw-bin, 1=evidence-store, 2=runtime-data, 3=tmp.
-  # Note: use `op: remove` to delete the persistentVolumeClaim key rather than
-  # replacing it with an empty object, to avoid rendering a null key in YAML.
-  #
-  # openclaw-bin: bind-mount the host's OpenClaw binary so the init container
-  # can validate it.  Adjust the host path to match your local installation.
-  # Note: the base uses emptyDir for this volume; we replace it with hostPath
-  # using a strategic-merge patch (which overwrites the entire volume entry).
-  - patch: |-
-      - op: remove
-        path: /spec/template/spec/volumes/0/emptyDir
-      - op: add
-        path: /spec/template/spec/volumes/0/hostPath
-        value:
-          path: /usr/local/bin/openclaw
-          type: FileOrCreate
-    target:
-      kind: Deployment
-      name: opsswarm
-
+  # Volume index: 0=evidence-store, 1=runtime-data, 2=tmp.
   # evidence-store: emptyDir (local dev — durability not required)
   - patch: |-
       - op: remove
-        path: /spec/template/spec/volumes/1/persistentVolumeClaim
+        path: /spec/template/spec/volumes/0/persistentVolumeClaim
       - op: add
-        path: /spec/template/spec/volumes/1/emptyDir
+        path: /spec/template/spec/volumes/0/emptyDir
         value: {}
     target:
       kind: Deployment
@@ -97,9 +78,9 @@ patches:
   # runtime-data: emptyDir (local dev — durability not required)
   - patch: |-
       - op: remove
-        path: /spec/template/spec/volumes/2/persistentVolumeClaim
+        path: /spec/template/spec/volumes/1/persistentVolumeClaim
       - op: add
-        path: /spec/template/spec/volumes/2/emptyDir
+        path: /spec/template/spec/volumes/1/emptyDir
         value: {}
     target:
       kind: Deployment

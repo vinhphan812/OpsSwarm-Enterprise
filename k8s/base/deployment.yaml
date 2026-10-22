@@ -24,21 +24,14 @@
 #                          issue #30 provides a real /ready endpoint.
 #   resources:           — conservative defaults; tune based on observed p95.
 #
-# OpenClaw binary delivery:
-#   The OpenClaw binary is NOT embedded in the OpsSwarm image.  An init container
-#   validates the binary's presence and executability before the main container
-#   starts (see initContainers.openclaw-bin below).
+# OpenClaw runtime delivery:
+#   The OpenClaw CLI is provisioned in the OpsSwarm image at
+#   /usr/local/bin/openclaw.  The init container invokes `openclaw --version`
+#   before the application starts, providing a real executable check without a
+#   hostPath, sidecar, or shared executable volume.
 #
-#   Volume source strategy (in order of preference):
-#     Dev:     bind-mount from the host node (hostPath) — see overlays/dev/.
-#     Prod:    ReadOnlyMany PVC or ConfigMap containing the binary.
-#     Minimal: emptyDir — binary not present; main container runs but OpenClaw
-#              calls will fail at incident-response time.  Suitable for local dev
-#              where OpenClaw is not yet installed.
-#
-#   The base manifest uses emptyDir as the safe default so the manifest is
-#   always applicable.  Operators MUST override with the appropriate volume source
-#   for their environment before production use.
+#   Container delivery supports this embedded-CLI mode only.  A host/sidecar
+#   binary mount is future/not supported and must not be configured here.
 #
 # Apply:  kubectl apply -k k8s/overlays/dev   # dev (uses hostPath)
 #         kubectl apply -k k8s/overlays/prod  # production
@@ -77,7 +70,6 @@ spec:
         app.kubernetes.io/version: "2.2.0"
       annotations:
         # Prometheus scrape annotations — used by the Prometheus scrape config.
-        # Issue #30 adds a /metrics endpoint and a real readiness check.
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
@@ -93,62 +85,35 @@ spec:
         fsGroup: 10001
 
       # ── Init containers ──────────────────────────────────────────────────────
-      # openclaw-bin: validates that the OpenClaw binary is present and executable
-      # at the path set by OPSWARM_OPENCLAW_BIN (default: /usr/local/bin/openclaw).
-      # Blocks the main container if the binary is absent so the pod fails-fast
-      # rather than silently degrading at incident-response time.
-      #
-      # ⚠️  The base manifest uses an emptyDir for the openclaw-bin volume.  This
-      # allows the manifest to be applied without error, but the binary check will
-      # fail because emptyDir contains nothing.  Operators MUST override this with
-      # a hostPath (dev) or ReadOnlyMany PVC (prod) in their overlay; see
-      # overlays/dev/kustomization.yaml for a working dev example.
+      # Fail closed before starting the API when the shipped OpenClaw CLI is not
+      # executable.  No executable volume is required: the binary lives in the
+      # same pinned image as the application.
       initContainers:
-        - name: openclaw-bin
+        - name: openclaw-runtime-check
           image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
           imagePullPolicy: IfNotPresent
-          # Use a lightweight shell image to keep the init container slim.
-          # The actual binary check below is shell-only; no Python needed.
           command:
             - /bin/sh
             - -c
             - |
+              set -eu
               bin="${OPSWARM_OPENCLAW_BIN:-/usr/local/bin/openclaw}"
-              if [ -z "$bin" ]; then
-                echo "ERROR: OPSWARM_OPENCLAW_BIN is not set — cannot check binary"
+              [ -x "$bin" ] || {
+                echo "ERROR: shipped OpenClaw CLI is not executable at $bin" >&2
                 exit 1
-              fi
-              if [ ! -f "$bin" ]; then
-                echo "ERROR: OpenClaw binary not found at $bin"
-                echo "NOTE: The base manifest uses emptyDir for openclaw-bin volume."
-                echo "      Override with hostPath (dev) or ReadOnlyMany PVC (prod)."
-                exit 1
-              fi
-              if [ ! -x "$bin" ]; then
-                echo "ERROR: OpenClaw binary at $bin is not executable"
-                exit 1
-              fi
-              echo "OpenClaw binary validated at $bin"
+              }
+              "$bin" --version
           env:
             - name: OPSWARM_OPENCLAW_BIN
-              valueFrom:
-                configMapKeyRef:
-                  name: opsswarm-config
-                  key: OPSWARM_OPENCLAW_BIN
+              value: /usr/local/bin/openclaw
           securityContext:
-            runAsNonRoot: false
-            runAsUser: 0
-            # The init container runs as root to read any host-path binary.
-            # It exits before the main container starts; this is intentional.
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
             allowPrivilegeEscalation: false
             capabilities:
               drop:
                 - ALL
-          volumeMounts:
-            - name: openclaw-bin
-              mountPath: /usr/local/bin/openclaw
-              # readOnly is unnecessary — we are only checking the file, not writing.
-              # Set readOnly: true when the underlying volume is ReadOnlyMany.
 
       # ── Application container ─────────────────────────────────────────────
       containers:
@@ -205,26 +170,17 @@ spec:
             successThreshold: 1
 
           # ── Readiness probe ────────────────────────────────────────────────
-          # OMITTED until /ready endpoint is implemented (issue #30).
-          #
-          # /health is NOT a readiness signal because it does not verify:
-          #   1. Auth configuration is loaded and valid.
-          #   2. GitHub API (api.github.com) is reachable.
-          #   3. OpenClaw binary responds to a health check.
-          #
-          # Until issue #30 provides a real /ready endpoint that covers the above,
-          # pods are admitted as "ready" as soon as the container starts, regardless
-          # of whether they can process incidents.  Monitor liveness restarts and
-          # the opsswarm-health metric to detect unhealthy pods.
-          #
-          # When /ready is available, add a readinessProbe similar to:
-          #   readinessProbe:
-          #     httpGet:
-          #       path: /ready
-          #       port: http
-          #     initialDelaySeconds: 5
-          #     periodSeconds: 10
-          #     failureThreshold: 3
+          # /ready is the canonical lifecycle gate: 200 only after startup
+          # validation, and 503 while starting, draining, or failed.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
 
           # ── Environment variables ──────────────────────────────────────────
           env:
@@ -255,10 +211,7 @@ spec:
                   name: opsswarm-config
                   key: PORT
             - name: OPSWARM_OPENCLAW_BIN
-              valueFrom:
-                configMapKeyRef:
-                  name: opsswarm-config
-                  key: OPSWARM_OPENCLAW_BIN
+              value: /usr/local/bin/openclaw
             - name: OPENCLAW_TIMEOUT_SECONDS
               valueFrom:
                 configMapKeyRef:
@@ -322,16 +275,8 @@ spec:
 
       # ── Volumes ────────────────────────────────────────────────────────────
       volumes:
-        # OpenClaw binary volume.
-        # ⚠️  Base uses emptyDir (ephemeral).  The binary is absent, so the
-        # init container will fail and the pod will not become ready.
-        # Operators MUST override this in their overlay:
-        #   Dev:  hostPath (see overlays/dev/kustomization.yaml).
-        #   Prod: ReadOnlyMany PVC or ConfigMap containing the openclaw binary.
-        - name: openclaw-bin
-          emptyDir: {}
-
-        # Evidence store — NOT durable with emptyDir (data lost on pod deletion).
+        # Evidence and checkpoint PVCs are required even in base: data survives
+        # pod recreation and production must not silently fall back to emptyDir.
         # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
         # The opsswarm-evidence PVC (defined in kustomization.yaml) provides
         # ReadWriteOnce access via the default StorageClass.  For multi-replica

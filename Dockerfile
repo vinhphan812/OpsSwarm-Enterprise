@@ -11,10 +11,20 @@
 #   microservice and is preserved for backward compatibility.  This file is the
 #   canonical, production-grade container for OpsSwarm Enterprise.
 #
-#   OpenClaw (the AI reasoning runtime) is NOT embedded in the image layers.
-#   Set OPSWARM_OPENCLAW_BIN to the path of the OpenClaw binary on the host or
-#   in a Kubernetes sidecar volume at runtime.  See docs/guides/CONTAINER_DEPLOYMENT.md.
+#   OpenClaw is provisioned in this image from the pinned npm package below.
+#   The only supported container mode is the embedded CLI at
+#   /usr/local/bin/openclaw; host/sidecar binary mounts are not supported.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 0 — OpenClaw runtime
+# Pin the actual Gateway CLI used by OpsSwarm so the image can execute a real
+# `openclaw agent ... --json` invocation instead of relying on a host binary.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM node:26-bookworm-slim AS openclaw-runtime
+ARG OPENCLAW_VERSION=2026.10.5
+RUN npm install --global --omit=dev "openclaw@${OPENCLAW_VERSION}" \
+    && openclaw --version
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 1 — builder
@@ -43,11 +53,7 @@ RUN uv pip install --no-cache -r /app/requirements.lock || \
 
 # Copy source and build the wheel in-place (editable install not needed in the wheel).
 COPY pyproject.toml /app/pyproject.toml
-COPY VERSION /app/VERSION
 COPY opsswarm /app/opsswarm
-COPY apps /app/apps
-COPY services /app/services
-COPY data /app/data
 COPY config /app/config
 COPY scripts /app/scripts
 
@@ -85,6 +91,14 @@ COPY --from=builder /dist/*.whl /app/
 # Copy uv so we can install the wheel into a venv without pip.
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 
+# Copy the pinned OpenClaw CLI and its Node.js runtime.  Node is copied rather
+# than installed with an unpinned OS package, keeping the executable available
+# at the exact path configured below.
+COPY --from=openclaw-runtime /usr/local/bin/node /usr/local/bin/node
+COPY --from=openclaw-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw \
+    && openclaw --version
+
 # Copy config directory — opsswarm/config.py reads config/production.yaml at import time
 # (before uvicorn binds the port). Without this the container raises FileNotFoundError.
 # Chown so non-root appuser can read the files.
@@ -99,11 +113,10 @@ RUN uv venv /app/.venv \
 # Expose the port that uvicorn binds (controlled by PORT env var, default 8080).
 ENV PORT=8080
 ENV PATH="/app/.venv/bin:$PATH"
-# OPSWARM_OPENCLAW_BIN: absolute path to the OpenClaw binary.  OpsSwarm loads this
-# from the environment at startup; it is NOT baked into the image layers so that
-# OpenClaw can be upgraded independently of the OpsSwarm image (sidecar or host
-# mount).  See docs/guides/CONTAINER_DEPLOYMENT.md.
-ENV OPSWARM_OPENCLAW_BIN=""
+# OPSWARM_OPENCLAW_BIN is the image-provisioned, pinned OpenClaw CLI.  The
+# container contract supports this embedded executable only; configure gateway
+# credentials at runtime, never in image layers.
+ENV OPSWARM_OPENCLAW_BIN="/usr/local/bin/openclaw"
 
 # Verify the health endpoint responds before marking the container healthy.
 # HEALTHCHECK is for `docker run` invocations only; Kubernetes probes are
