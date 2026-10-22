@@ -1,7 +1,7 @@
 # ADR-031: High-Availability Multi-Process Coordination
 
-**Status:** Proposed
-**Created:** 2026-10-21
+**Status:** Proposed  
+**Created:** 2026-10-21  
 **Related:** Issue #70
 
 ---
@@ -413,7 +413,8 @@ the fencing checks are implemented on every protected path.
 
 ## External Side-Effect Intent and Outcome Reconciliation
 
-Epoch fencing guarantees that a stale leader cannot commit durable database mutations after a newer lease epoch has been granted. However, epoch fencing **cannot revoke or abort an HTTP request to GitHub** that was already transmitted (or in flight) by a leader that subsequently lost its lease or was paused. 
+Epoch fencing guarantees that a stale leader cannot commit durable database mutations after a newer lease epoch has been granted. However, epoch fencing **cannot revoke or abort an HTTP request to GitHub** that was already transmitted (or in flight) by a leader that subsequently lost its lease or was paused.
+
 
 To handle external side effects safely without assuming distributed transactions across GitHub and PostgreSQL, OpsSwarm enforces a durable **intent/outcome reconciliation contract**.
 
