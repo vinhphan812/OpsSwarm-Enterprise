@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opsswarm
+  namespace: opsswarm-production
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: api-gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opsswarm
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opsswarm
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opsswarm
+          image: ghcr.io/vinhphan812/opsswarm:v2.2.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8088
+              name: http
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: OPSWARM_CONFIG
+              value: "/etc/opsswarm/production.yaml"
+            - name: OPSWARM_DATA_DIR
+              value: "/var/lib/opsswarm"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: GITHUB_TOKEN
+            - name: GITHUB_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: GITHUB_WEBHOOK_SECRET
+            - name: OPSWARM_RUNTIME_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: OPSWARM_RUNTIME_SECRET
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: data-volume
+              mountPath: /var/lib/opsswarm
+            - name: config-volume
+              mountPath: /etc/opsswarm
+              readOnly: true
+            - name: tmp-volume
+              mountPath: /tmp
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 0
+            periodSeconds: 5
+            failureThreshold: 24
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          terminationMessagePolicy: File
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: opsswarm-data-pvc
+        - name: config-volume
+          configMap:
+            name: opsswarm-config
+        - name: tmp-volume
+          emptyDir:
+            sizeLimit: 64Mi

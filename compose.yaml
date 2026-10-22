@@ -1,0 +1,37 @@
+version: "3.8"
+
+services:
+  opsswarm:
+    image: ghcr.io/vinhphan812/opsswarm:v2.2.0
+    container_name: opsswarm-gateway
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - "127.0.0.1:8088:8088"
+    environment:
+      - APP_ENV=production
+      - OPSWARM_CONFIG=/etc/opsswarm/production.yaml
+      - OPSWARM_DATA_DIR=/var/lib/opsswarm
+    env_file:
+      - .env.production
+    volumes:
+      - opsswarm-data:/var/lib/opsswarm
+      - ./config/production.yaml:/etc/opsswarm/production.yaml:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8088/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    stop_grace_period: 45s
+
+volumes:
+  opsswarm-data:
+    name: opsswarm-data

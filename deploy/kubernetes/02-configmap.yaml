@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opsswarm-config
+  namespace: opsswarm-production
+data:
+  production.yaml: |
+    # Production configuration for OpsSwarm Enterprise (Single-node OCI profile)
+    app_env: production
+    log_level: info
+    github:
+      origins:
+        - https://github.com
+        - https://api.github.com
+    budget:
+      max_parallel_specialists: 4
+      default_max_turns: 20

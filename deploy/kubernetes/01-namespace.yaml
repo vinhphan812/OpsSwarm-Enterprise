@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opsswarm-production
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/part-of: opsswarm-enterprise
