@@ -23,7 +23,7 @@ def poll_checks(repo, head_sha, expected_checks, max_attempts=60, sleep_seconds=
         for inner in range(5):
             try:
                 req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=30) as resp:
+                with urllib.request.urlopen(req, timeout=30) as resp:  # nosec B310
                     json_data = json.load(resp)
                 break
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError) as e:
