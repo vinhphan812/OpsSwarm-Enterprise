@@ -20,3 +20,10 @@ def test_verify_cli_fail(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "FAIL" in captured.err
     assert "ERROR" in captured.err
+
+
+def test_verify_cli_usage():
+    import pytest
+    with pytest.raises(SystemExit):
+        main(["evidence"])
+
