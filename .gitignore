@@ -13,12 +13,35 @@ runtime-data/
 .hermes*
 
 .gitnexus
-dist*
-build
+dist*/
+build*/
 .ruff_cache
-artifacts/
+artifacts/*
+!artifacts/.gitkeep
 *.egg-info/
 .coverage
 _diag_*.py
 .tmp-pr*.md
 .locked-runtime/
+.worktrees/
+
+# Legacy root scratch/investigation scripts from pre-cleanup master.
+# Mandatory policy: new validation scripts must be placed under scripts/ (e.g. scripts/check_*.py).
+/check_bandit_json.py
+/check_final.py
+/check_metrics.py
+/check_more_info.py
+/check_norm_path.py
+/check_raw_structure.py
+/check_token_context.py
+/debug_validate.py
+/debug_validate2.py
+/diagnose_validate.py
+/find_fail.py
+/get_bandit_findings.py
+/inspect_alerts.py
+/inspect_test_alerts.py
+/parse_alerts.py
+/simulate_validate.py
+/trace_norm.py
+/trace_token.py
