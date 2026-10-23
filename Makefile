@@ -1,4 +1,4 @@
-.PHONY: install run check-openclaw lint typecheck test-unit test coverage build ci
+.PHONY: install run check-openclaw lint typecheck test-unit test coverage build ci verify-coverage-gate
 
 install:
 	python -m pip install -e '.[dev]'
@@ -25,7 +25,12 @@ test:
 coverage:
 	python -m pytest -q --cov=opsswarm --cov-report=term-missing --cov-fail-under=90
 
+# Fail when the coverage gate declared in pyproject.toml, the Makefile and
+# .github/workflows/ci.yml disagree. pyproject.toml is the source of truth.
+verify-coverage-gate:
+	python scripts/verify_coverage_gate.py
+
 build:
 	python -m build
 
-ci: lint typecheck test coverage build
+ci: lint typecheck verify-coverage-gate test coverage build
