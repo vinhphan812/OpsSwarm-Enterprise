@@ -18,6 +18,9 @@ metadata:
     app.kubernetes.io/component: config
     app.kubernetes.io/version: "2.2.0"
 data:
+  # ── GitHub repository ───────────────────────────────────────────────────────
+  GITHUB_REPO: vinhphan812/OpsSwarm-Enterprise
+
   # ── OpsSwarm runtime paths ────────────────────────────────────────────────
   # Config file path.  production.yaml lives under /app/config/ inside the
   # container and is copied from the image at build time.

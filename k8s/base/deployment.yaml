@@ -185,6 +185,11 @@ spec:
           # ── Environment variables ──────────────────────────────────────────
           env:
             # References ConfigMap values (non-sensitive).
+            - name: GITHUB_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: GITHUB_REPO
             - name: OPSWARM_CONFIG
               valueFrom:
                 configMapKeyRef:
