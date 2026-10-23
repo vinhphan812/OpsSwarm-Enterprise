@@ -24,6 +24,7 @@ Schema:
       allowed_tools: [tool_c, tool_d, ...] # OR (capabilities + extra tools)
       deny_tools: [tool_e, ...]           # explicit blocklist per profile
 """
+
 from __future__ import annotations
 
 import logging
@@ -191,14 +192,10 @@ class ToolAllowlist:
         capabilities: dict[str, ToolCapability] = {}
         for cap_id, cap_data in raw_caps.items():
             if not isinstance(cap_data, dict):
-                raise ValueError(
-                    f"[ADR-027] Capability {cap_id!r} must be a dict with 'tools' key"
-                )
+                raise ValueError(f"[ADR-027] Capability {cap_id!r} must be a dict with 'tools' key")
             tools_raw = cap_data.get("tools", [])
             if not isinstance(tools_raw, list):
-                raise ValueError(
-                    f"[ADR-027] Capability {cap_id!r}.tools must be a list"
-                )
+                raise ValueError(f"[ADR-027] Capability {cap_id!r}.tools must be a list")
             capabilities[cap_id] = ToolCapability(
                 id=cap_id,
                 description=cap_data.get("description"),

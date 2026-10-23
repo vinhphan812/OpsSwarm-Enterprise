@@ -286,18 +286,22 @@ class TestValidateOrigins:
         assert errors == []
 
     def test_multiple_valid_origins(self):
-        errors = validate_origins([
-            "https://api.github.com",
-            "https://ghes.example.com",
-        ])
+        errors = validate_origins(
+            [
+                "https://api.github.com",
+                "https://ghes.example.com",
+            ]
+        )
         assert errors == []
 
     def test_mixed_valid_and_invalid(self):
-        errors = validate_origins([
-            "https://api.github.com",
-            "http://localhost",        # invalid in production
-            "https://ghes.example.com",
-        ])
+        errors = validate_origins(
+            [
+                "https://api.github.com",
+                "http://localhost",  # invalid in production
+                "https://ghes.example.com",
+            ]
+        )
         assert len(errors) == 1
         assert "localhost" in errors[0]
 
@@ -313,10 +317,12 @@ class TestBuildAllowedOriginsSet:
         assert allowed == frozenset(["https://api.github.com"])
 
     def test_multiple_origins(self):
-        allowed = build_allowed_origins_set([
-            "https://api.github.com",
-            "https://ghes.example.com",
-        ])
+        allowed = build_allowed_origins_set(
+            [
+                "https://api.github.com",
+                "https://ghes.example.com",
+            ]
+        )
         assert len(allowed) == 2
         assert "https://api.github.com" in allowed
         assert "https://ghes.example.com" in allowed
@@ -328,10 +334,12 @@ class TestBuildAllowedOriginsSet:
 
     def test_raises_with_all_errors_listed(self):
         with pytest.raises(ValueError) as exc_info:
-            build_allowed_origins_set([
-                "http://localhost",       # HTTP scheme invalid in production
-                "ftp://ghes.example.com",  # non-HTTP(S) scheme
-            ])
+            build_allowed_origins_set(
+                [
+                    "http://localhost",  # HTTP scheme invalid in production
+                    "ftp://ghes.example.com",  # non-HTTP(S) scheme
+                ]
+            )
         errors_str = str(exc_info.value)
         assert "localhost" in errors_str
         assert "ghes.example.com" in errors_str
@@ -518,10 +526,12 @@ class TestOriginDiagnostic:
         assert "token" not in diag.lower()
 
     def test_multiple_origins(self):
-        diag = get_effective_origin_diagnostic([
-            "https://api.github.com",
-            "https://ghes.example.com",
-        ])
+        diag = get_effective_origin_diagnostic(
+            [
+                "https://api.github.com",
+                "https://ghes.example.com",
+            ]
+        )
         assert "2 origin(s)" in diag
         assert "api.github.com" in diag
 

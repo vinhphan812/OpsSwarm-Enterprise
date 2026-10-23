@@ -74,7 +74,10 @@ Return a task object with id="HX1", type="INVESTIGATE", objective, profile, requ
 
 # ADR-015: Phase 2 RCA synthesis prompt (Plan_RCA)
 def rca_plan_prompt(
-    incident: IncidentContext, root: RootCauseArtifact, findings: list[Finding], human_inputs: list[dict]
+    incident: IncidentContext,
+    root: RootCauseArtifact,
+    findings: list[Finding],
+    human_inputs: list[dict],
 ) -> str:
     return f"""You are OpsSwarm S3-RCA. Produce a structured postmortem and root-cause analysis report.
 Draw on the verified root-cause analysis, all investigation findings, and any human inputs.

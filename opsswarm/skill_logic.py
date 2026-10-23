@@ -241,9 +241,13 @@ async def verify_recovery(oc, agent, run_id, incident, execution) -> Verificatio
         )
 
 
-async def make_extra_task(oc, agent: str, run_id: str, incident: IncidentContext, request: str) -> Task:
+async def make_extra_task(
+    oc, agent: str, run_id: str, incident: IncidentContext, request: str
+) -> Task:
     metrics.record_openclaw_call(agent)
-    data = await oc.run_json(agent, f"{run_id}-extra", extra_investigation_prompt(incident, request))
+    data = await oc.run_json(
+        agent, f"{run_id}-extra", extra_investigation_prompt(incident, request)
+    )
     try:
         return Task.model_validate(data)
     except ValidationError as ve:
@@ -270,8 +274,13 @@ async def make_extra_task(oc, agent: str, run_id: str, incident: IncidentContext
 
 # ADR-015: Phase 2 RCA synthesis (Plan_RCA)
 async def synthesize_rca(
-    oc, agent, run_id, incident: IncidentContext, root: RootCauseArtifact,
-    findings: list[Finding], human_inputs: list[dict]
+    oc,
+    agent,
+    run_id,
+    incident: IncidentContext,
+    root: RootCauseArtifact,
+    findings: list[Finding],
+    human_inputs: list[dict],
 ) -> RCAReport:
     """Synthesize a structured RCA report after the incident has been verified resolved.
 
@@ -335,22 +344,26 @@ def _normalize_rca_report(data: dict) -> dict:
             if isinstance(a, str):
                 normalized_actions.append({"description": a, "priority": "medium", "owner": None})
             elif isinstance(a, dict):
-                normalized_actions.append({
-                    "description": a.get("description", a.get("action", "")),
-                    "priority": a.get("priority", "medium"),
-                    "owner": a.get("owner"),
-                })
+                normalized_actions.append(
+                    {
+                        "description": a.get("description", a.get("action", "")),
+                        "priority": a.get("priority", "medium"),
+                        "owner": a.get("owner"),
+                    }
+                )
         result["corrective_actions"] = normalized_actions
     if "timeline" in result:
         timeline = result["timeline"]
         normalized_timeline = []
         for ev in timeline:
             if isinstance(ev, dict):
-                normalized_timeline.append({
-                    "timestamp": ev.get("timestamp", ""),
-                    "actor": ev.get("actor", ""),
-                    "action": ev.get("action", ""),
-                })
+                normalized_timeline.append(
+                    {
+                        "timestamp": ev.get("timestamp", ""),
+                        "actor": ev.get("actor", ""),
+                        "action": ev.get("action", ""),
+                    }
+                )
         result["timeline"] = normalized_timeline
 
     return result

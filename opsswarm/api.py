@@ -131,14 +131,18 @@ class LifecycleManager:
 
         # Wait for background tasks with timeout
         if self._background_tasks:
-            logger.info(f"Waiting for {len(self._background_tasks)} background tasks (timeout={timeout}s)")
+            logger.info(
+                f"Waiting for {len(self._background_tasks)} background tasks (timeout={timeout}s)"
+            )
             done, pending = await asyncio.wait(
                 self._background_tasks,
                 timeout=timeout,
                 return_when=asyncio.ALL_COMPLETED,
             )
             if pending:
-                logger.warning(f"{len(pending)} background tasks did not complete within {timeout}s")
+                logger.warning(
+                    f"{len(pending)} background tasks did not complete within {timeout}s"
+                )
                 # Cancel pending tasks
                 for task in pending:
                     if not task.done():

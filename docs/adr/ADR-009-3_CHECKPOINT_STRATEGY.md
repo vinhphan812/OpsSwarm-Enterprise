@@ -1,7 +1,7 @@
 # ADR-009-3: Checkpoint Granularity for Crash Recovery
 
-**Status:** Proposed  
-**Created:** 2026-09-22  
+**Status:** Proposed
+**Created:** 2026-09-22
 **Related:** Issue #9, PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md
 
 ## Context
@@ -11,7 +11,7 @@ transition:
 
 ```python
 # orchestrator.py:20-26
-async def _set_state(self, run:RunRecord, state:RunState):
+async def _set_state(self, run: RunRecord, state: RunState):
     run.transition(state)
     self.store.save(run)
 ```

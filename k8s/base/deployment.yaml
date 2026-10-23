@@ -90,7 +90,7 @@ spec:
       # same pinned image as the application.
       initContainers:
         - name: openclaw-runtime-check
-          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -119,10 +119,10 @@ spec:
       containers:
         - name: opsswarm
           # Replace with your actual image reference.
-          # Canonical: ghcr.io/vinhphan812/opsswarm-openclaw-github:<tag>
-          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-openclaw-github:latest .
+          # Canonical: ghcr.io/vinhphan812/opsswarm-enterprise:<tag>
+          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-enterprise:latest .
           # The <tag> should be updated in overlays/dev and overlays/prod.
-          image: ghcr.io/vinhphan812/opsswarm-openclaw-github:latest
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
           imagePullPolicy: IfNotPresent
 
           ports:

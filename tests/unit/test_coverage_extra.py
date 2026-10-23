@@ -22,6 +22,7 @@ from opsswarm.openclaw import OpenClawClient, OpenClawError
 # evidence.py: _signature_with_chain() fallback branch (lines 119-135)
 # -----------------------------------------------------------------------
 
+
 class TestEvidenceSignatureWithChainFallback:
     def test_signature_with_chain_kind_not_in_signature_key_fields(self, tmp_path):
         """_signature_with_chain() falls back to exclude-volatile-fields when kind
@@ -41,6 +42,7 @@ class TestEvidenceSignatureWithChainFallback:
 # evidence.py: _compute_idempotency_key() non-None path (line 142)
 # -----------------------------------------------------------------------
 
+
 class TestEvidenceIdempotencyKey:
     def test_compute_idempotency_key_with_event_id(self, tmp_path):
         """_compute_idempotency_key() computes a SHA256 hex when event_id is provided."""
@@ -59,6 +61,7 @@ class TestEvidenceIdempotencyKey:
 # -----------------------------------------------------------------------
 # evidence.py: append() with idempotency enabled (line 141)
 # -----------------------------------------------------------------------
+
 
 class TestEvidenceAppendWithIdempotency:
     def test_append_with_event_id_stores_idempotency_key(self, tmp_path):
@@ -84,15 +87,11 @@ class TestEvidenceAppendWithIdempotency:
         """
         ev = EvidenceStore(data_dir=tmp_path, enable_idempotency=True)
         run_id = "dup-run"
-        eid1, dup1 = ev.append(
-            run_id, "S4.finding", {"task_id": "T1", "finding": "first"}
-        )
+        eid1, dup1 = ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "first"})
         assert dup1 is False
 
         # Same payload → duplicate, returns (None, True)
-        eid2, dup2 = ev.append(
-            run_id, "S4.finding", {"task_id": "T1", "finding": "first"}
-        )
+        eid2, dup2 = ev.append(run_id, "S4.finding", {"task_id": "T1", "finding": "first"})
         assert dup2 is True
         assert eid2 is None  # Skipped duplicates return None as evidence ID
 
@@ -101,16 +100,17 @@ class TestEvidenceAppendWithIdempotency:
 # openclaw.py: _extract_json() bounded salvage paths (lines 160-168)
 # -----------------------------------------------------------------------
 
+
 class TestOpenClawExtractJson:
     def test_extract_json_bounded_salvage_array(self):
         """_extract_json() salvages the first JSON array from text."""
-        text = "Here is the result:\n[{\"key\": \"value1\"}, {\"key\": \"value2\"}]\nSome trailing text"
+        text = 'Here is the result:\n[{"key": "value1"}, {"key": "value2"}]\nSome trailing text'
         result = OpenClawClient._extract_json(text)
         assert result == [{"key": "value1"}, {"key": "value2"}]
 
     def test_extract_json_bounded_salvage_object(self):
         """_extract_json() salvages the first JSON object from text."""
-        text = "Output:\n{\"task_id\": \"T1\", \"finding\": \"ok\"}\n---"
+        text = 'Output:\n{"task_id": "T1", "finding": "ok"}\n---'
         result = OpenClawClient._extract_json(text)
         assert result == {"task_id": "T1", "finding": "ok"}
 
@@ -136,6 +136,7 @@ class TestOpenClawExtractJson:
 # openclaw.py: run_text() — error and fallback paths
 # -----------------------------------------------------------------------
 
+
 class TestOpenClawRunText:
     @pytest.mark.asyncio
     async def test_run_text_result_payloads_nested(self):
@@ -145,12 +146,7 @@ class TestOpenClawRunText:
         client = OpenClawClient(binary="echo")
         mock_proc = MagicMock()
         mock_proc.returncode = 0
-        envelope = {
-            "ok": True,
-            "result": {
-                "payloads": [{"text": "isolated result text"}]
-            }
-        }
+        envelope = {"ok": True, "result": {"payloads": [{"text": "isolated result text"}]}}
 
         async def mock_communicate():
             return (json.dumps(envelope).encode(), b"")
@@ -185,17 +181,21 @@ class TestOpenClawRunText:
 # evidence.py: additional coverage
 # -----------------------------------------------------------------------
 
+
 class TestEvidenceAdditionalCoverage:
     def test_signature_fallback_unknown_kind(self, tmp_path):
         """_signature() falls back to exclude-volatile-fields for unknown kinds (lines 108-110)."""
         ev = EvidenceStore(data_dir=tmp_path)
         # "totally.unknown.kind" is not in SIGNATURE_KEY_FIELDS → fallback
-        sig = ev._signature("totally.unknown.kind", {
-            "timestamp": "2026-10-01",
-            "eid": "EV-1",
-            "run_id": "run-x",
-            "actor": "alice",
-        })
+        sig = ev._signature(
+            "totally.unknown.kind",
+            {
+                "timestamp": "2026-10-01",
+                "eid": "EV-1",
+                "run_id": "run-x",
+                "actor": "alice",
+            },
+        )
         assert sig is not None
         # "timestamp", "eid", "run_id" excluded; only "actor" used
         assert len(sig) == 16

@@ -1150,7 +1150,9 @@ class TestRateLimiterBounded:
         import opsswarm.auth as auth_module
 
         limiter = auth_module._SimpleRateLimiter(max_requests=1, window_seconds=60, max_buckets=5)
-        auth_module.reload_monitoring_config(limiter, {"monitoring": {"rate_limit_buckets_max": 100}})
+        auth_module.reload_monitoring_config(
+            limiter, {"monitoring": {"rate_limit_buckets_max": 100}}
+        )
         assert limiter._max_buckets == 100
 
 
@@ -1259,9 +1261,7 @@ class TestCrossScopeDepletion:
         assert r.status_code == 200
 
         # Scope-based key must be present in limiter
-        scope_key_hits = auth_module._monitoring_limiter._hits.get(
-            ("scope:opsswarm:monitor",), []
-        )
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(("scope:opsswarm:monitor",), [])
         assert len(scope_key_hits) == 1, (
             "opsswarm:monitor token should register scope:opsswarm:monitor key"
         )
@@ -1290,9 +1290,7 @@ class TestCrossScopeDepletion:
         )
         assert r.status_code in (200, 400)  # 400 = gh.create_issue mocked rejection
 
-        scope_key_hits = auth_module._monitoring_limiter._hits.get(
-            ("scope:opsswarm:admin",), []
-        )
+        scope_key_hits = auth_module._monitoring_limiter._hits.get(("scope:opsswarm:admin",), [])
         assert len(scope_key_hits) == 1, (
             "opsswarm:admin token should register scope:opsswarm:admin key"
         )
@@ -1335,8 +1333,7 @@ class TestCrossScopeDepletion:
         )
         # Only IP-based key is expected
         ip_keys = [
-            k for k in auth_module._monitoring_limiter._hits
-            if not k[0].startswith("scope:")
+            k for k in auth_module._monitoring_limiter._hits if not k[0].startswith("scope:")
         ]
         assert len(ip_keys) >= 1, "IP-based key should be recorded"
 
@@ -1417,10 +1414,7 @@ class TestCrossScopeDepletion:
             "scope:opsswarm:write must never enter the monitoring limiter"
         )
         # IP-based keys may appear; no scope keys must appear
-        scope_keys = [
-            k for k in auth_module._monitoring_limiter._hits
-            if k[0].startswith("scope:")
-        ]
+        scope_keys = [k for k in auth_module._monitoring_limiter._hits if k[0].startswith("scope:")]
         assert len(scope_keys) == 0, (
             f"Found unexpected scope keys in monitoring limiter: {scope_keys}"
         )
@@ -1463,18 +1457,11 @@ class TestCrossScopeDepletion:
             if i < 20:
                 assert r.status_code == 401, f"Request {i} should get 401 (unauthenticated)"
             else:
-                assert r.status_code == 429, (
-                    "Request 21 should get 429 (IP rate limit exceeded)"
-                )
+                assert r.status_code == 429, "Request 21 should get 429 (IP rate limit exceeded)"
 
         # No scope-based keys should be in the limiter
-        scope_keys = [
-            k for k in auth_module._monitoring_limiter._hits
-            if k[0].startswith("scope:")
-        ]
-        assert len(scope_keys) == 0, (
-            "Invalid bearer tokens must not register scope keys"
-        )
+        scope_keys = [k for k in auth_module._monitoring_limiter._hits if k[0].startswith("scope:")]
+        assert len(scope_keys) == 0, "Invalid bearer tokens must not register scope keys"
 
     # ------------------------------------------------------------------ #
     # T6: Direct and trusted-proxy source paths — both use IP fallback

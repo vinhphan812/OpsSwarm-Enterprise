@@ -128,6 +128,23 @@ ENV PATH="/app/.venv/bin:$PATH"
 # credentials at runtime, never in image layers.
 ENV OPSWARM_OPENCLAW_BIN="/usr/local/bin/openclaw"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# OCI image metadata
+#
+# org.opencontainers.image.source is REQUIRED, not decorative: GitHub links a
+# container package to its repository through this label.  Without it a package
+# published under the same namespace stays unlinked, and the repository's own
+# workflow-scoped registry credential is then denied `read_package` on push —
+# the registry rejects the push with `permission_denied` even though the
+# workflow declares `packages: write`.
+# ─────────────────────────────────────────────────────────────────────────────
+LABEL org.opencontainers.image.title="OpsSwarm Enterprise" \
+      org.opencontainers.image.description="Governed multi-agent incident response for OpenClaw on GitHub Issues" \
+      org.opencontainers.image.source="https://github.com/vinhphan812/OpsSwarm-Enterprise" \
+      org.opencontainers.image.vendor="OpsSwarm" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.base.name="docker.io/library/python:3.11-slim"
+
 # Verify the health endpoint responds before marking the container healthy.
 # HEALTHCHECK is for `docker run` invocations only; Kubernetes probes are
 # configured via the deployment manifest (separate task).

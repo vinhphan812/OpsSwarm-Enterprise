@@ -169,6 +169,7 @@ markers = [
 import pytest
 import httpx
 
+
 @pytest.fixture
 def mock_github(responses):
     """Mock GitHub API responses using pytest-httpx."""
@@ -181,9 +182,10 @@ def mock_github(responses):
 # tests/integration/openclaw/test_dispatch.py
 from unittest.mock import patch, AsyncMock
 
+
 @pytest.mark.integration
 async def test_task_dispatch():
-    with patch('opsswarm.openclaw.subprocess.run') as mock_run:
+    with patch("opsswarm.openclaw.subprocess.run") as mock_run:
         mock_run.return_value = AsyncMock()
         # test dispatch logic
 ```
@@ -278,14 +280,13 @@ Add markers to existing tests:
 
 ```python
 # Before
-def test_safe_auto_resolves(tmp_path, cfg, issue):
-    ...
+def test_safe_auto_resolves(tmp_path, cfg, issue): ...
+
 
 # After
 @pytest.mark.integration
 @pytest.mark.slow
-async def test_safe_auto_resolves(tmp_path, cfg, issue):
-    ...
+async def test_safe_auto_resolves(tmp_path, cfg, issue): ...
 ```
 
 ### 7.3 Phase 3: Expand Layers

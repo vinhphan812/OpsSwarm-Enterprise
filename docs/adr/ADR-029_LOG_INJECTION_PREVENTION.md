@@ -14,7 +14,7 @@ Code Scanning flagged two `py/log-injection` MEDIUM alerts in `opsswarm/github_c
 logger.error(
     "GitHub API HTTP error: status=%s path=%s detail=%s",
     e.response.status_code,
-    path,          # ← attacker-controlled
+    path,  # ← attacker-controlled
     e.response.text[:500],  # ← GitHub-controlled, may contain control chars
 )
 

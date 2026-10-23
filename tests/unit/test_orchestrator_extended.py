@@ -139,8 +139,10 @@ async def test_verify_pass(cfg, tmp_path):
     """
     gh = FakeGitHub({"number": 1})
 
-    with patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify, \
-         patch("opsswarm.skill_logic.synthesize_rca", new_callable=AsyncMock) as mock_rca:
+    with (
+        patch("opsswarm.skill_logic.verify_recovery", new_callable=AsyncMock) as mock_verify,
+        patch("opsswarm.skill_logic.synthesize_rca", new_callable=AsyncMock) as mock_rca,
+    ):
         mock_verify.return_value = VerificationResult(
             verified=True,
             confidence=0.99,
@@ -327,12 +329,14 @@ async def test_handle_comment_command_confirmed(cfg, tmp_path):
     eng.github.comment = AsyncMock()
     eng.store.save = MagicMock()
     from opsswarm.models import RecoveryPlan, RemediationOption, ExecutionResult
+
     option = RemediationOption(id="opt1", risk="read", description="Safe")
     run.recovery_plan = RecoveryPlan(options=[option])
 
     # Patch execute_option to simulate successful execution (sets run.execution)
     async def mock_execute_option(r, opt):
         run.execution = ExecutionResult(option_id=opt.id, success=True, summary="executed")
+
     eng._execute_option = AsyncMock(side_effect=mock_execute_option)
 
     cmd = MagicMock()

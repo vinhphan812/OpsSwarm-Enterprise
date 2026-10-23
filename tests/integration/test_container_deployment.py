@@ -55,6 +55,8 @@ K8S_BASE = K8S_DIR / "base"
 K8S_KUSTOMIZATION = K8S_DIR / "kustomization.yaml"
 K8S_BASE_KUSTOMIZATION = K8S_BASE / "kustomization.yaml"
 
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
+
 DOCS_DIR = REPO_ROOT / "docs"
 CONTAINER_DEPLOYMENT_GUIDE = DOCS_DIR / "guides" / "CONTAINER_DEPLOYMENT.md"
 SECURITY_DOC = DOCS_DIR / "SECURITY.md"
@@ -99,8 +101,11 @@ def read(path: Path) -> str:
 def grep_file(pattern: str, path: Path) -> list[str]:
     """Return all lines in *path* that match *pattern* (case-insensitive)."""
     try:
-        return [line.rstrip() for line in path.read_text(encoding="utf-8").splitlines()
-                if re.search(pattern, line, re.IGNORECASE)]
+        return [
+            line.rstrip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if re.search(pattern, line, re.IGNORECASE)
+        ]
     except FileNotFoundError:
         return []
 
@@ -152,7 +157,7 @@ def _extract_top_level_block(text: str, key: str) -> str:
         return ""
 
     block: list[str] = []
-    for line in lines[start + 1:]:
+    for line in lines[start + 1 :]:
         if not line.strip():
             block.append(line)
             continue
@@ -201,6 +206,7 @@ def _render_prod_overlay() -> str | None:
 # A. OCI Image
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestOCIDockerfile:
     """Acceptance criteria A.1 – A.7 for the OCI image."""
 
@@ -212,55 +218,123 @@ class TestOCIDockerfile:
         """A.1  Dockerfile uses multi-stage build (builder → runtime)."""
         content = read(DOCKERFILE)
         # Stage 1 should build/install dependencies; Stage 2 should be slim runtime.
-        assert "AS builder" in content or "FROM python:3.11-slim AS" in content, \
+        assert "AS builder" in content or "FROM python:3.11-slim AS" in content, (
             "Dockerfile must have a named builder stage"
-        assert "AS runtime" in content or "FROM python:3.11-slim AS" in content, \
+        )
+        assert "AS runtime" in content or "FROM python:3.11-slim AS" in content, (
             "Dockerfile must have a named runtime stage"
+        )
         # The runtime stage should copy from the builder.
-        assert re.search(r"COPY\s+--from=builder", content), \
+        assert re.search(r"COPY\s+--from=builder", content), (
             "Runtime stage must copy artifacts from builder using --from=builder"
+        )
 
     def test_dockerfile_non_root_user(self):
         """A.2  Image creates and switches to non-root user (uid 10001)."""
         content = read(DOCKERFILE)
         # groupadd / useradd with explicit gid/uid 10001
-        assert re.search(r"(groupadd|addgroup).*10001", content), \
+        assert re.search(r"(groupadd|addgroup).*10001", content), (
             "Dockerfile must create appgroup with gid 10001"
-        assert re.search(r"(useradd|adduser).*10001", content), \
+        )
+        assert re.search(r"(useradd|adduser).*10001", content), (
             "Dockerfile must create appuser with uid 10001"
+        )
         # USER directive switches away from root.
-        assert re.search(r"^\s*USER\s+appuser", content, re.MULTILINE), \
+        assert re.search(r"^\s*USER\s+appuser", content, re.MULTILINE), (
             "Dockerfile must have USER directive to switch to non-root"
+        )
 
     def test_dockerfile_exec_entrypoint_for_sigterm(self):
         """A.5  ENTRYPOINT uses exec so SIGTERM reaches uvicorn directly."""
         content = read(DOCKERFILE)
         # Look for shell form with exec, or JSON array form.
         # exec replaces the shell with uvicorn as PID 1.
-        assert "exec" in content, \
+        assert "exec" in content, (
             "ENTRYPOINT must use 'exec' to replace shell with uvicorn as PID 1"
-        assert "uvicorn" in content, \
-            "ENTRYPOINT must invoke uvicorn"
+        )
+        assert "uvicorn" in content, "ENTRYPOINT must invoke uvicorn"
 
     def test_dockerfile_no_github_token_in_layers(self):
         """A.4  No GitHub token patterns in Dockerfile source (secrets not baked in)."""
         content = read(DOCKERFILE)
         forbidden = ["GITHUB_TOKEN", "ghp_", "ghs_", "ghu_", "gho_", "ghr_"]
         for pattern in forbidden:
-            assert pattern not in content, \
+            assert pattern not in content, (
                 f"Dockerfile must not contain hardcoded secret pattern: {pattern}"
+            )
 
     def test_dockerfile_provisions_pinned_openclaw_cli(self):
         """A.1  Runtime image ships the pinned CLI the adapter invokes."""
         content = read(DOCKERFILE)
-        assert 'openclaw@${OPENCLAW_VERSION}' in content, \
+        assert "openclaw@${OPENCLAW_VERSION}" in content, (
             "Dockerfile must install the OpenClaw npm package at a pinned build argument"
-        assert 'ARG OPENCLAW_VERSION=' in content, \
-            "Dockerfile must pin OPENCLAW_VERSION"
-        assert 'ENV OPSWARM_OPENCLAW_BIN="/usr/local/bin/openclaw"' in content, \
+        )
+        assert "ARG OPENCLAW_VERSION=" in content, "Dockerfile must pin OPENCLAW_VERSION"
+        assert 'ENV OPSWARM_OPENCLAW_BIN="/usr/local/bin/openclaw"' in content, (
             "Container must invoke its provisioned OpenClaw CLI, not a host path"
-        assert "openclaw --version" in content, \
+        )
+        assert "openclaw --version" in content, (
             "Dockerfile must prove the installed OpenClaw executable is invokable"
+        )
+
+    def test_dockerfile_declares_oci_source_label(self):
+        """A.8  The image declares org.opencontainers.image.source.
+
+        GitHub links a container package to its repository through this label.
+        Without it a package published under the same namespace stays unlinked
+        and the repository's workflow credential is denied `read_package` on
+        push, so the registry rejects the workflow's push with
+        `permission_denied` even though the workflow declares
+        `packages: write`.
+        """
+        content = read(DOCKERFILE)
+        assert "org.opencontainers.image.source" in content, (
+            "Dockerfile must declare org.opencontainers.image.source so GitHub "
+            "links the published container package to this repository"
+        )
+        # The label value must point at this repository, not at a namespace
+        # that merely resembles it.
+        match = re.search(r'org\.opencontainers\.image\.source="([^"]+)"', content)
+        assert match is not None, (
+            "org.opencontainers.image.source must be assigned a quoted URL value"
+        )
+        assert match.group(1) == "https://github.com/vinhphan812/OpsSwarm-Enterprise", (
+            "org.opencontainers.image.source must point at the canonical "
+            f"repository, got {match.group(1)!r}"
+        )
+
+    def test_registry_image_name_is_consistent_across_artefacts(self):
+        """A.9  Every artefact names the same registry repository.
+
+        If the workflow pushes one image name and the Kubernetes manifests
+        reference another, a digest pin rendered into the overlay silently
+        does not apply to the image that was actually published, and the
+        rollout silently deploys a different (mutable, tag-based) reference.
+        """
+        canonical = "ghcr.io/vinhphan812/opsswarm-enterprise"
+
+        # Every registry reference in the tree must be the canonical name.
+        # Match whole registry paths so a prefix of the canonical name (for
+        # example a stale "opsswarm-enterprise" repository) cannot pass.
+        pattern = re.compile(r"ghcr\.io/vinhphan812/[A-Za-z0-9._-]+")
+        artefacts = [
+            WORKFLOWS_DIR / "container-delivery.yml",
+            # WORKFLOWS_DIR / "release.yml",
+            K8S_DIR / "base" / "deployment.yaml",
+            K8S_DIR / "base" / "kustomization.yaml",
+            K8S_DIR / "overlays" / "dev" / "kustomization.yaml",
+            K8S_DIR / "overlays" / "prod" / "kustomization.yaml",
+        ]
+        for artefact in artefacts:
+            if not artefact.is_file():
+                continue
+            found = set(pattern.findall(read(artefact)))
+            assert found, f"{artefact.name} should reference the registry image"
+            for ref in found:
+                assert ref == canonical, (
+                    f"{artefact.name} references {ref!r} but the canonical "
+                    f"registry repository is {canonical!r}"
+                )
 
     def test_dockerfile_copies_canonical_version_module(self):
         """A.6  The build copies the canonical package version module, not dead VERSION data."""
@@ -268,18 +342,22 @@ class TestOCIDockerfile:
         # OpsSwarm's authoritative version is opsswarm/__version__.py.  The image
         # installs a wheel, so the runtime receives that module via the wheel rather
         # than a redundant top-level VERSION file.
-        assert re.search(r"COPY\s+opsswarm\s+/app/opsswarm", content), \
+        assert re.search(r"COPY\s+opsswarm\s+/app/opsswarm", content), (
             "Dockerfile must copy the opsswarm package, including __version__.py"
-        assert re.search(r"uv\s+pip\s+install.*\.whl", content), \
+        )
+        assert re.search(r"uv\s+pip\s+install.*\.whl", content), (
             "Runtime stage must install the built wheel containing __version__.py"
+        )
 
     def test_opsswarm_version_file_exists(self):
         """A.6  opsswarm/__version__.py exists and exports __version__."""
-        assert OPSSWARM_VERSION_FILE.is_file(), \
+        assert OPSSWARM_VERSION_FILE.is_file(), (
             f"opsswarm/__version__.py not found at {OPSSWARM_VERSION_FILE}"
+        )
         content = read(OPSSWARM_VERSION_FILE)
-        assert re.search(r'^__version__\s*=\s*["\']\d+\.\d+\.\d+', content, re.MULTILINE), \
+        assert re.search(r'^__version__\s*=\s*["\']\d+\.\d+\.\d+', content, re.MULTILINE), (
             "opsswarm/__version__.py must export __version__ = '<semver>'"
+        )
 
     def test_dockerfile_readonly_root_filesystem_dirs(self):
         """A.1  Explicitly writable directories are created and chowned to appuser."""
@@ -293,24 +371,25 @@ class TestOCIDockerfile:
                 re.search(r"--chown=appuser:appgroup", content),
             )
         )
-        assert has_chown, \
+        assert has_chown, (
             "Dockerfile must chown writable directories to appuser for read-only root fs"
+        )
 
     def test_healthcheck_configured(self):
         """A.3  HEALTHCHECK instruction targets /health endpoint."""
         content = read(DOCKERFILE)
-        assert "HEALTHCHECK" in content, \
-            "Dockerfile must include a HEALTHCHECK instruction"
-        assert "/health" in content, \
-            "HEALTHCHECK must probe the /health endpoint"
+        assert "HEALTHCHECK" in content, "Dockerfile must include a HEALTHCHECK instruction"
+        assert "/health" in content, "HEALTHCHECK must probe the /health endpoint"
 
     def test_dockerfile_installs_only_hash_locked_requirements(self):
         """A.1  Locked dependency installation fails closed without a resolver fallback."""
         content = read(DOCKERFILE)
-        assert "uv pip install --no-cache --require-hashes -r /app/requirements.lock" in content, \
+        assert "uv pip install --no-cache --require-hashes -r /app/requirements.lock" in content, (
             "Dockerfile must install exactly the hash-locked requirements"
-        assert "||" not in content, \
+        )
+        assert "||" not in content, (
             "Dockerfile must not fall back to an unpinned dependency installation"
+        )
 
 
 class TestOCIReleaseWorkflow:
@@ -318,8 +397,7 @@ class TestOCIReleaseWorkflow:
 
     def test_release_workflow_exists(self):
         """A.6  release.yml workflow exists."""
-        assert RELEASE_WORKFLOW.is_file(), \
-            f"Release workflow not found at {RELEASE_WORKFLOW}"
+        assert RELEASE_WORKFLOW.is_file(), f"Release workflow not found at {RELEASE_WORKFLOW}"
 
     def test_sbom_generated_in_release(self):
         """A.7  Release workflow generates SPDX/CycloneDX SBOM JSON artifact."""
@@ -332,8 +410,9 @@ class TestOCIReleaseWorkflow:
         has_json_output = "spdx" in content.lower() or "json" in content.lower()
         has_sbom_artifact = "sbom" in content.lower() and ".json" in content
 
-        assert has_sbom_action and (has_json_output or has_sbom_artifact), \
+        assert has_sbom_action and (has_json_output or has_sbom_artifact), (
             "release.yml must generate SPDX/CycloneDX SBOM JSON artifact"
+        )
 
     def test_release_publishes_and_verifies_registry_digest(self):
         """A.6  A registry push output, not a local image ID, drives evidence."""
@@ -341,14 +420,18 @@ class TestOCIReleaseWorkflow:
         assert "packages: write" in content, "release must grant GHCR package-write permission"
         assert "docker/login-action" in content, "release must authenticate to GHCR"
         assert "push: true" in content, "release must publish rather than load locally"
-        assert "steps.build_image.outputs.digest" in content, \
+        assert "steps.build_image.outputs.digest" in content, (
             "release must capture the build/push action manifest digest"
-        assert re.search(r"\^sha256:\[a-f0-9\]\{64\}\$", content), \
+        )
+        assert re.search(r"\^sha256:\[a-f0-9\]\{64\}\$", content), (
             "release must reject an absent or malformed manifest digest"
-        assert "docker pull \"$IMAGE@$digest\"" in content, \
+        )
+        assert 'docker pull "$IMAGE@$digest"' in content, (
             "release must verify the published image can be pulled by digest"
-        assert "load: true" not in content, \
+        )
+        assert "load: true" not in content, (
             "release evidence must not derive from a local Docker image"
+        )
 
     def test_trivy_fail_closed_in_release_workflow(self):
         """A.7  release.yml runs Trivy at HIGH/CRITICAL with exit-code 1 (fail-closed)."""
@@ -356,12 +439,13 @@ class TestOCIReleaseWorkflow:
             pytest.skip("release.yml not found")
 
         content = read(RELEASE_WORKFLOW)
-        assert "trivy" in content.lower(), \
-            "release.yml must run Trivy security scanning"
-        assert re.search(r"severity:\s*(?:CRITICAL,HIGH|HIGH,CRITICAL)", content), \
+        assert "trivy" in content.lower(), "release.yml must run Trivy security scanning"
+        assert re.search(r"severity:\s*(?:CRITICAL,HIGH|HIGH,CRITICAL)", content), (
             "Trivy must scan for HIGH and CRITICAL severities"
-        assert re.search(r"exit-code:\s*[\"']?1", content), \
+        )
+        assert re.search(r"exit-code:\s*[\"']?1", content), (
             "Trivy must fail-closed (exit-code 1 on HIGH/CRITICAL)"
+        )
 
     def test_sbom_artifact_uploaded_in_release(self):
         """A.7  SBOM JSON is uploaded as a workflow artifact."""
@@ -369,16 +453,17 @@ class TestOCIReleaseWorkflow:
             pytest.skip("release.yml not found")
 
         content = read(RELEASE_WORKFLOW)
-        assert "upload-artifact" in content, \
-            "release.yml must upload artifacts"
+        assert "upload-artifact" in content, "release.yml must upload artifacts"
         # SBOM should be listed in the upload.
-        assert re.search(r"sbom.*\.json|spdx.*json", content, re.IGNORECASE), \
+        assert re.search(r"sbom.*\.json|spdx.*json", content, re.IGNORECASE), (
             "release.yml must upload the SBOM JSON artifact"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # B. Docker Compose
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestDockerCompose:
     """Acceptance criteria B.1 – B.5 for Docker Compose."""
@@ -402,46 +487,50 @@ class TestDockerCompose:
             check=False,
             timeout=30,
         )
-        assert result.returncode == 0, \
-            f"docker compose config failed:\n{result.stderr}"
+        assert result.returncode == 0, f"docker compose config failed:\n{result.stderr}"
 
     def test_compose_defines_healthcheck(self):
         """B.2  Service has a healthcheck defined."""
         content = read(DOCKER_COMPOSE)
-        assert "healthcheck" in content, \
-            "docker-compose.yml must define a healthcheck"
-        assert "health" in content.lower(), \
-            "healthcheck must probe the /health endpoint"
+        assert "healthcheck" in content, "docker-compose.yml must define a healthcheck"
+        assert "health" in content.lower(), "healthcheck must probe the /health endpoint"
 
     def test_compose_injects_token_via_file_mount(self):
         """B.3  GitHub token injected via read-only file mount, not baked in image."""
         content = read(DOCKER_COMPOSE)
         # Look for GITHUB_TOKEN_FILE env var pointing to /run/secrets/.
-        assert "GITHUB_TOKEN_FILE" in content, \
+        assert "GITHUB_TOKEN_FILE" in content, (
             "docker-compose.yml must use GITHUB_TOKEN_FILE for token injection"
-        assert "/run/secrets/" in content, \
+        )
+        assert "/run/secrets/" in content, (
             "Token file must be mounted at /run/secrets/ inside container"
+        )
         # read_only: true on the token volume mount.
-        assert "read_only" in content or "read_only: true" in content or "readOnly" in content, \
+        assert "read_only" in content or "read_only: true" in content or "readOnly" in content, (
             "Token file mount must be read-only"
+        )
 
     def test_compose_uses_named_volumes(self):
         """B.4  Named volumes preserve runtime-data across restarts."""
         content = read(DOCKER_COMPOSE)
         # Must have opsswarm-runtime-data or similar named volume.
-        assert re.search(r"opsswarm-runtime-data|runtime-data", content, re.IGNORECASE), \
+        assert re.search(r"opsswarm-runtime-data|runtime-data", content, re.IGNORECASE), (
             "docker-compose.yml must use a named volume for runtime-data"
+        )
         # Volume should be declared in the volumes: section.
-        assert re.search(r"^volumes:\s*$", content, re.MULTILINE), \
+        assert re.search(r"^volumes:\s*$", content, re.MULTILINE), (
             "docker-compose.yml must have a volumes: section"
+        )
 
     def test_compose_has_sigterm_graceful_shutdown(self):
         """B.2  Compose configures SIGTERM graceful shutdown (30s grace period)."""
         content = read(DOCKER_COMPOSE)
-        assert "SIGTERM" in content or "stop_signal" in content, \
+        assert "SIGTERM" in content or "stop_signal" in content, (
             "docker-compose.yml must configure stop_signal: SIGTERM"
-        assert "stop_grace_period" in content or "30s" in content, \
+        )
+        assert "stop_grace_period" in content or "30s" in content, (
             "docker-compose.yml must have stop_grace_period (recommend 30s)"
+        )
 
     def test_compose_prometheus_scrape_annotations(self):
         """B.5  Compose documents Prometheus scrape configuration for /metrics."""
@@ -450,8 +539,9 @@ class TestDockerCompose:
         # Check if the guide or comments mention Prometheus.
         if CONTAINER_DEPLOYMENT_GUIDE.is_file():
             guide = read(CONTAINER_DEPLOYMENT_GUIDE)
-            assert "prometheus" in guide.lower() and "metrics" in guide.lower(), \
+            assert "prometheus" in guide.lower() and "metrics" in guide.lower(), (
                 "CONTAINER_DEPLOYMENT.md must document Prometheus scrape for /metrics"
+            )
 
     def test_compose_openclaw_profile_available(self):
         """B.1  docker compose --profile openclaw config validates."""
@@ -464,8 +554,9 @@ class TestDockerCompose:
             check=False,
             timeout=30,
         )
-        assert result.returncode == 0, \
+        assert result.returncode == 0, (
             f"docker compose --profile openclaw config failed:\n{result.stderr}"
+        )
 
     def test_compose_openclaw_sidecar_topology(self):
         """B.1  openclaw sidecar profile wires OPSWARM_OPENCLAW_BIN and openclaw-data volume.
@@ -484,24 +575,29 @@ class TestDockerCompose:
             check=False,
             timeout=30,
         )
-        assert result.returncode == 0, \
+        assert result.returncode == 0, (
             f"docker compose --profile openclaw config failed:\n{result.stderr}"
+        )
 
         config = result.stdout
 
         # (a) openclaw service must set OPSWARM_OPENCLAW_BIN to the shared volume path.
-        assert "OPSWARM_OPENCLAW_BIN" in config, \
+        assert "OPSWARM_OPENCLAW_BIN" in config, (
             "openclaw service must set OPSWARM_OPENCLAW_BIN in environment"
-        assert "/opt/openclaw/openclaw" in config, \
+        )
+        assert "/opt/openclaw/openclaw" in config, (
             "OPSWARM_OPENCLAW_BIN must point to /opt/openclaw/openclaw (openclaw-data mount)"
+        )
 
         # (b) openclaw-data named volume must be declared.
-        assert "openclaw-data" in config, \
+        assert "openclaw-data" in config, (
             "docker-compose.yml must declare openclaw-data named volume for sidecar"
+        )
 
         # (c) opsswarm must mount openclaw-data to reach the OpenClaw binary.
-        assert "openclaw-data" in config, \
+        assert "openclaw-data" in config, (
             "opsswarm service must mount openclaw-data volume to reach the OpenClaw binary"
+        )
 
     def test_compose_example_env_file_documents_token_injection(self):
         """B.3  .env.compose.example documents the token injection pattern."""
@@ -509,13 +605,15 @@ class TestDockerCompose:
             pytest.skip(f".env.compose.example not found at {ENV_EXAMPLE}")
 
         content = read(ENV_EXAMPLE)
-        assert "GITHUB_TOKEN" in content or "GITHUB_TOKEN_FILE" in content, \
+        assert "GITHUB_TOKEN" in content or "GITHUB_TOKEN_FILE" in content, (
             ".env.compose.example must document GITHUB_TOKEN or GITHUB_TOKEN_FILE"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # C. Kubernetes
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestKubernetes:
     """Acceptance criteria C.1 – C.7 for Kubernetes manifests."""
@@ -526,8 +624,9 @@ class TestKubernetes:
 
     def test_kustomize_root_exists(self):
         """C.1  k8s/kustomization.yaml exists."""
-        assert K8S_KUSTOMIZATION.is_file(), \
+        assert K8S_KUSTOMIZATION.is_file(), (
             f"k8s/kustomization.yaml not found at {K8S_KUSTOMIZATION}"
+        )
 
     def test_kustomize_renders(self):
         """C.1  kubectl kustomize k8s/ renders without errors or warnings."""
@@ -540,12 +639,10 @@ class TestKubernetes:
             check=False,
             timeout=30,
         )
-        assert result.returncode == 0, \
-            f"kustomize build failed:\n{result.stderr}"
+        assert result.returncode == 0, f"kustomize build failed:\n{result.stderr}"
         # Output must contain Kubernetes resource kinds.
         output = result.stdout
-        assert "kind:" in output, \
-            "kustomize output must contain Kubernetes resource manifests"
+        assert "kind:" in output, "kustomize output must contain Kubernetes resource manifests"
 
     def test_kubectl_dry_run_passes(self):
         """C.2  kubectl apply --dry-run=server -k k8s/ passes."""
@@ -570,8 +667,7 @@ class TestKubernetes:
             check=False,
             timeout=30,
         )
-        assert result.returncode == 0, \
-            f"kubectl dry-run failed:\n{result.stderr}"
+        assert result.returncode == 0, f"kubectl dry-run failed:\n{result.stderr}"
 
     def test_deployment_non_root_security_context(self):
         """C.3  Deployment securityContext runs as non-root (uid 10001)."""
@@ -580,10 +676,12 @@ class TestKubernetes:
             pytest.skip(f"deployment.yaml not found at {deployment_file}")
 
         content = read(deployment_file)
-        assert "runAsNonRoot" in content or "runAsNonRoot: true" in content, \
+        assert "runAsNonRoot" in content or "runAsNonRoot: true" in content, (
             "deployment.yaml must set runAsNonRoot: true"
-        assert "runAsUser: 10001" in content, \
+        )
+        assert "runAsUser: 10001" in content, (
             "deployment.yaml must set runAsUser: 10001 (matches Dockerfile uid)"
+        )
 
     def test_deployment_liveness_probe(self):
         """C.4  Liveness probe configured on /health."""
@@ -592,10 +690,8 @@ class TestKubernetes:
             pytest.skip(f"deployment.yaml not found at {deployment_file}")
 
         content = read(deployment_file)
-        assert "livenessProbe" in content, \
-            "deployment.yaml must define a livenessProbe"
-        assert "/health" in content, \
-            "livenessProbe must target /health endpoint"
+        assert "livenessProbe" in content, "deployment.yaml must define a livenessProbe"
+        assert "/health" in content, "livenessProbe must target /health endpoint"
 
     def test_configmap_secret_separated(self):
         """C.5  ConfigMap and Secret are separate resources (no secrets in ConfigMap)."""
@@ -610,16 +706,15 @@ class TestKubernetes:
         configmap_content = read(configmap_file)
         secret_content = read(secret_file)
 
-        assert "kind: ConfigMap" in configmap_content, \
-            "configmap.yaml must be a ConfigMap resource"
-        assert "kind: Secret" in secret_content, \
-            "secret.yaml must be a Secret resource"
+        assert "kind: ConfigMap" in configmap_content, "configmap.yaml must be a ConfigMap resource"
+        assert "kind: Secret" in secret_content, "secret.yaml must be a Secret resource"
 
         # ConfigMap must NOT contain sensitive values.
         forbidden = ["ghp_", "ghs_", "ghu_", "gho_", "ghr_", "GITHUB_TOKEN"]
         for pattern in forbidden:
-            assert pattern not in configmap_content, \
+            assert pattern not in configmap_content, (
                 f"configmap.yaml must not contain secret pattern: {pattern}"
+            )
 
     def test_pdb_allows_single_replica_safe_operation(self):
         """C.6  PodDisruptionBudget uses minAvailable: 1 (safe for replicas=1)."""
@@ -628,8 +723,9 @@ class TestKubernetes:
             pytest.skip(f"pdb.yaml not found at {pdb_file}")
 
         content = read(pdb_file)
-        assert "minAvailable: 1" in content or "minAvailable:\"1\"" in content, \
+        assert "minAvailable: 1" in content or 'minAvailable:"1"' in content, (
             "pdb.yaml must use minAvailable: 1 for single-replica safe operation"
+        )
 
     def test_network_policy_exists_with_egress_allowlist(self):
         """C.7  NetworkPolicy exists with GitHub/OpenClaw egress allowlist."""
@@ -638,17 +734,19 @@ class TestKubernetes:
             pytest.skip(f"network-policy.yaml not found at {netpol_file}")
 
         content = read(netpol_file)
-        assert "kind: NetworkPolicy" in content, \
+        assert "kind: NetworkPolicy" in content, (
             "network-policy.yaml must be a NetworkPolicy resource"
+        )
         # Must allow egress to GitHub API.
-        assert "api.github.com" in content or "140.82" in content, \
+        assert "api.github.com" in content or "140.82" in content, (
             "NetworkPolicy must allow egress to GitHub API"
+        )
         # Must allow egress for OpenClaw.
-        assert "openclaw" in content.lower(), \
-            "NetworkPolicy must allow egress for OpenClaw runtime"
+        assert "openclaw" in content.lower(), "NetworkPolicy must allow egress for OpenClaw runtime"
         # Must allow DNS (kube-dns) for service discovery.
-        assert "53" in content or "dns" in content.lower(), \
+        assert "53" in content or "dns" in content.lower(), (
             "NetworkPolicy must allow DNS (kube-dns) egress"
+        )
 
     def test_k8s_namespace_exists(self):
         """C.1  namespace.yaml defines the opsswarm namespace."""
@@ -657,10 +755,8 @@ class TestKubernetes:
             pytest.skip(f"namespace.yaml not found at {ns_file}")
 
         content = read(ns_file)
-        assert "kind: Namespace" in content, \
-            "namespace.yaml must be a Namespace resource"
-        assert "opsswarm" in content, \
-            "namespace must be named 'opsswarm'"
+        assert "kind: Namespace" in content, "namespace.yaml must be a Namespace resource"
+        assert "opsswarm" in content, "namespace must be named 'opsswarm'"
 
     def test_k8s_service_exists(self):
         """C.1  service.yaml defines the opsswarm ClusterIP/LoadBalancer service."""
@@ -669,43 +765,47 @@ class TestKubernetes:
             pytest.skip(f"service.yaml not found at {svc_file}")
 
         content = read(svc_file)
-        assert "kind: Service" in content, \
-            "service.yaml must be a Service resource"
-        assert "8080" in content, \
-            "Service must expose port 8080"
+        assert "kind: Service" in content, "service.yaml must be a Service resource"
+        assert "8080" in content, "Service must expose port 8080"
 
     def test_k8s_overlays_exist(self):
         """C.1  overlays/dev and overlays/prod kustomizations exist."""
         dev_overlay = K8S_DIR / "overlays" / "dev" / "kustomization.yaml"
         prod_overlay = K8S_DIR / "overlays" / "prod" / "kustomization.yaml"
 
-        assert dev_overlay.is_file(), \
-            f"overlays/dev/kustomization.yaml not found at {dev_overlay}"
-        assert prod_overlay.is_file(), \
+        assert dev_overlay.is_file(), f"overlays/dev/kustomization.yaml not found at {dev_overlay}"
+        assert prod_overlay.is_file(), (
             f"overlays/prod/kustomization.yaml not found at {prod_overlay}"
+        )
 
     def test_deployment_has_openclaw_runtime_check(self):
         """C.7  Base validates the image-provisioned OpenClaw CLI before startup."""
         deployment_file = K8S_BASE / "deployment.yaml"
         content = read(deployment_file)
         assert "initContainers" in content, "deployment.yaml must define an init container"
-        assert "openclaw-runtime-check" in content, \
+        assert "openclaw-runtime-check" in content, (
             "init container must validate the shipped OpenClaw runtime"
-        assert 'value: /usr/local/bin/openclaw' in content, \
+        )
+        assert "value: /usr/local/bin/openclaw" in content, (
             "the supported container mode must use the image-provisioned CLI"
-        assert '"$bin" --version' in content, \
+        )
+        assert '"$bin" --version' in content, (
             "init container must invoke OpenClaw rather than merely inspect a mount"
-        assert "-x \"$bin\"" in content and "exit 1" in content, \
+        )
+        assert '-x "$bin"' in content and "exit 1" in content, (
             "init container must fail closed if the shipped CLI is not executable"
-        assert "openclaw-bin" not in content, \
+        )
+        assert "openclaw-bin" not in content, (
             "embedded CLI mode must not retain a dangling executable volume"
+        )
 
     def test_deployment_uses_pod_fs_group_and_ready_probe(self):
         """C.3/C.4  Pod-level fsGroup and canonical /ready gate are rendered."""
         content = read(K8S_BASE / "deployment.yaml")
         assert "fsGroup: 10001" in content, "fsGroup must be in the Pod spec securityContext"
-        assert "readinessProbe:" in content and "path: /ready" in content, \
+        assert "readinessProbe:" in content and "path: /ready" in content, (
             "production readiness must use /ready, never /health"
+        )
 
     def test_network_policy_has_no_public_ingress(self):
         """C.7  NetworkPolicy base has no 0.0.0.0/0 ingress rule.
@@ -743,16 +843,20 @@ class TestKubernetes:
             pytest.skip(f"overlays/prod/network-policy.yaml not found at {prod_netpol_file}")
 
         content = read(prod_netpol_file)
-        assert "kind: NetworkPolicy" in content, \
+        assert "kind: NetworkPolicy" in content, (
             "overlays/prod/network-policy.yaml must be a NetworkPolicy"
+        )
         # Must document the GitHub CIDR verification source.
-        assert "api.github.com/meta" in content or "meta" in content.lower(), \
+        assert "api.github.com/meta" in content or "meta" in content.lower(), (
             "Production NetworkPolicy overlay must document GitHub CIDR verification source"
+        )
         # Must document model-provider egress.
-        assert "openai" in content.lower() or "model" in content.lower(), \
+        assert "openai" in content.lower() or "model" in content.lower(), (
             "Production NetworkPolicy overlay must document model-provider egress"
-        assert "opsswarm.io/production-ingress" in content, \
+        )
+        assert "opsswarm.io/production-ingress" in content, (
             "Production ingress must use an explicitly labelled namespace"
+        )
 
         # The broad-CIDR check is scoped to the *ingress* section only.  The
         # file documents a commented-out Anthropic egress example that
@@ -761,10 +865,10 @@ class TestKubernetes:
         # the ingress assertion.  Parse the rendered structure rather than
         # grepping the raw text.
         ingress_block = _extract_top_level_block(content, "ingress:")
-        assert ingress_block, \
-            "Production NetworkPolicy must define an ingress section"
-        assert "cidr: 0.0.0.0/0" not in ingress_block, \
+        assert ingress_block, "Production NetworkPolicy must define an ingress section"
+        assert "cidr: 0.0.0.0/0" not in ingress_block, (
             "Production NetworkPolicy must not allow broad public ingress"
+        )
 
         # The rendered production overlay must likewise not enable broad
         # public ingress once the manifest is actually applied.
@@ -772,74 +876,80 @@ class TestKubernetes:
         if rendered is not None:
             rendered_ingress = _extract_top_level_block(rendered, "ingress:")
             if rendered_ingress:
-                assert "cidr: 0.0.0.0/0" not in rendered_ingress, \
+                assert "cidr: 0.0.0.0/0" not in rendered_ingress, (
                     "Rendered production overlay must not allow broad public ingress"
+                )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # D. Documentation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestDocumentation:
     """Acceptance criteria D.1 – D.3 for documentation."""
 
     def test_container_deployment_guide_exists(self):
         """D.1  CONTAINER_DEPLOYMENT.md covers OCI, Compose, and K8s deployment."""
-        assert CONTAINER_DEPLOYMENT_GUIDE.is_file(), \
+        assert CONTAINER_DEPLOYMENT_GUIDE.is_file(), (
             f"CONTAINER_DEPLOYMENT.md not found at {CONTAINER_DEPLOYMENT_GUIDE}"
+        )
 
     def test_container_deployment_guide_covers_oci(self):
         """D.1  Guide covers OCI image build and run."""
         content = read(CONTAINER_DEPLOYMENT_GUIDE)
-        assert "docker build" in content.lower(), \
+        assert "docker build" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must document docker build"
-        assert "docker run" in content.lower(), \
-            "CONTAINER_DEPLOYMENT.md must document docker run"
+        )
+        assert "docker run" in content.lower(), "CONTAINER_DEPLOYMENT.md must document docker run"
 
     def test_container_deployment_guide_covers_compose(self):
         """D.1  Guide covers Docker Compose deployment."""
         content = read(CONTAINER_DEPLOYMENT_GUIDE)
-        assert "compose" in content.lower(), \
+        assert "compose" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must cover Docker Compose deployment"
-        assert "docker compose up" in content.lower(), \
+        )
+        assert "docker compose up" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must document docker compose up"
+        )
 
     def test_container_deployment_guide_covers_k8s(self):
         """D.1  Guide covers Kubernetes deployment."""
         content = read(CONTAINER_DEPLOYMENT_GUIDE)
-        assert "kubernetes" in content.lower() or "k8s" in content.lower(), \
+        assert "kubernetes" in content.lower() or "k8s" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must cover Kubernetes deployment"
-        assert "kustomize" in content.lower() or "kubectl" in content.lower(), \
+        )
+        assert "kustomize" in content.lower() or "kubectl" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must document kustomize or kubectl usage"
+        )
 
     def test_security_doc_covers_container_security(self):
         """D.2  SECURITY.md has container security notes (non-root, secret injection)."""
-        assert SECURITY_DOC.is_file(), \
-            f"SECURITY.md not found at {SECURITY_DOC}"
+        assert SECURITY_DOC.is_file(), f"SECURITY.md not found at {SECURITY_DOC}"
 
         content = read(SECURITY_DOC)
         # Non-root container security.
-        assert "non-root" in content.lower() or "nonroot" in content.lower() or "10001" in content, \
-            "SECURITY.md must document non-root container security"
+        assert (
+            "non-root" in content.lower() or "nonroot" in content.lower() or "10001" in content
+        ), "SECURITY.md must document non-root container security"
         # Secret injection.
-        assert "secret" in content.lower(), \
-            "SECURITY.md must cover secret injection patterns"
+        assert "secret" in content.lower(), "SECURITY.md must cover secret injection patterns"
         # Trivy fail-closed policy.
-        assert "trivy" in content.lower() or "CRITICAL" in content or "HIGH" in content, \
+        assert "trivy" in content.lower() or "CRITICAL" in content or "HIGH" in content, (
             "SECURITY.md must document the Trivy fail-closed policy"
+        )
 
     def test_operations_doc_has_container_runbook(self):
         """D.3  OPERATIONS.md has operations runbook for container deployment."""
-        assert OPERATIONS_DOC.is_file(), \
-            f"OPERATIONS.md not found at {OPERATIONS_DOC}"
+        assert OPERATIONS_DOC.is_file(), f"OPERATIONS.md not found at {OPERATIONS_DOC}"
 
         content = read(OPERATIONS_DOC)
         # Should mention health endpoint for container probes.
-        assert "health" in content.lower(), \
-            "OPERATIONS.md must cover health endpoint usage"
+        assert "health" in content.lower(), "OPERATIONS.md must cover health endpoint usage"
         # Should mention telemetry / metrics.
-        assert "metrics" in content.lower() or "telemetry" in content.lower(), \
+        assert "metrics" in content.lower() or "telemetry" in content.lower(), (
             "OPERATIONS.md must cover metrics/telemetry"
+        )
 
     def test_container_deployment_guide_documents_trivy_policy(self):
         """D.2  CONTAINER_DEPLOYMENT.md documents the Trivy fail-closed policy."""
@@ -847,13 +957,13 @@ class TestDocumentation:
             pytest.skip("CONTAINER_DEPLOYMENT.md not found")
 
         content = read(CONTAINER_DEPLOYMENT_GUIDE)
-        assert "trivy" in content.lower(), \
+        assert "trivy" in content.lower(), (
             "CONTAINER_DEPLOYMENT.md must document Trivy fail-closed policy"
+        )
 
     def test_security_workflow_exists(self):
         """A.7  security.yml exists with Trivy HIGH/CRITICAL scanning."""
-        assert SECURITY_WORKFLOW.is_file(), \
-            f"security.yml not found at {SECURITY_WORKFLOW}"
+        assert SECURITY_WORKFLOW.is_file(), f"security.yml not found at {SECURITY_WORKFLOW}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

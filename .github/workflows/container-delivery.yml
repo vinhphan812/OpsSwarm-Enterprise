@@ -47,7 +47,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_REPO: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  IMAGE_REPO: ghcr.io/vinhphan812/opsswarm-enterprise
 
 jobs:
   push:
@@ -328,8 +328,8 @@ jobs:
           resources:
             - ../../../k8s/overlays/dev
           images:
-            - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
-              newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
+            - name: ghcr.io/vinhphan812/opsswarm-enterprise
+              newName: ghcr.io/vinhphan812/opsswarm-enterprise
               digest: ${IMAGE_REF##*@}
           EOF
           kubectl kustomize evidence/overlay > evidence/dev-overlay.yaml

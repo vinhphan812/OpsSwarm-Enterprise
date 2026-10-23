@@ -20,9 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     evidence_subparsers = evidence.add_subparsers(dest="evidence_command", required=True)
     verify = evidence_subparsers.add_parser("verify", help="Verify an evidence hash chain")
     verify.add_argument("run_id")
-    verify.add_argument(
-        "--data-dir", default=os.environ.get("OPSWARM_DATA_DIR", "runtime-data")
-    )
+    verify.add_argument("--data-dir", default=os.environ.get("OPSWARM_DATA_DIR", "runtime-data"))
     return parser
 
 

@@ -111,6 +111,7 @@ Skills are invoked via **direct import** from `opsswarm.skill_logic`. No per-ski
 ```python
 # S1 invocation
 from opsswarm import skill_logic as S
+
 incident = S.parse_issue(issue_number, issue_dict)
 
 # S2 invocation
@@ -178,9 +179,10 @@ opsswarm/
 ```python
 # opsswarm/validators.py
 
+
 class SkillValidator:
     """Validates skill-related inputs and outputs."""
-    
+
     @staticmethod
     def validate_issue(issue: dict) -> list[str]:
         """Validate issue dict, return list of validation errors."""
@@ -189,7 +191,7 @@ class SkillValidator:
             errors.append("issue.title is required")
         # ... more checks
         return errors
-    
+
     @staticmethod
     def validate_incident_context(ctx: IncidentContext) -> list[str]:
         """Validate parsed incident context."""

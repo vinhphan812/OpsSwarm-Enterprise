@@ -44,8 +44,12 @@ def run_ruff() -> tuple[int, list[str]]:
     """Run Ruff Stage-2 and return (returncode, error_lines)."""
     result = subprocess.run(
         [
-            sys.executable, "-m", "ruff", "check",
-            "opsswarm/", "tests/",
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "opsswarm/",
+            "tests/",
             f"--select={','.join(RUFF_SELECT)}",
             "--output-format=concise",
         ],
@@ -55,7 +59,8 @@ def run_ruff() -> tuple[int, list[str]]:
         timeout=180,
     )
     errors = [
-        line for line in result.stdout.splitlines()
+        line
+        for line in result.stdout.splitlines()
         if "opsswarm/" in line and ":" in line and "error" not in line.lower()
     ]
     # If ruff itself crashes, surface that immediately.

@@ -9,14 +9,20 @@ import tempfile
 import time
 from typing import Any
 
-from .errors import new_correlation_id, sanitize_for_comment, sanitize_for_log, OpenClawErrorSanitized
+from .errors import (
+    new_correlation_id,
+    sanitize_for_comment,
+    sanitize_for_log,
+    OpenClawErrorSanitized,
+)
 from .metrics import metrics
 from .tool_allowlist import ToolAllowlist, ToolDenyError
 
 logger = logging.getLogger(__name__)
 
 
-class OpenClawError(RuntimeError): pass
+class OpenClawError(RuntimeError):
+    pass
 
 
 class OpenClawClient:
@@ -119,16 +125,27 @@ class OpenClawClient:
             self._check_tool_access(agent, agent)
 
         with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False, encoding="utf-8") as f:
-            f.write(prompt);
+            f.write(prompt)
             path = f.name
         # Instrument call duration + error/timeout metrics (G2 / Issue #30)
         start_time = time.monotonic()
         error_hit = False
         try:
             proc = await asyncio.create_subprocess_exec(
-                self.binary, "agent", "--agent", agent, "--session-key", session_key,
-                "--message-file", path, "--json", "--timeout", str(self.timeout),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                self.binary,
+                "agent",
+                "--agent",
+                agent,
+                "--session-key",
+                session_key,
+                "--message-file",
+                path,
+                "--json",
+                "--timeout",
+                str(self.timeout),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
             out, err = await asyncio.wait_for(proc.communicate(), timeout=self.timeout + 30)
             elapsed = time.monotonic() - start_time
             if proc.returncode != 0:
@@ -149,7 +166,8 @@ class OpenClawClient:
                     is_stderr=True,
                 )
             envelope = json.loads(out.decode())
-            if not envelope.get("ok", True): raise OpenClawError(str(envelope.get("error")))
+            if not envelope.get("ok", True):
+                raise OpenClawError(str(envelope.get("error")))
             if isinstance(envelope.get("final"), str):
                 metrics.record_openclaw_call(agent)
                 metrics.record_openclaw_duration(agent, elapsed)
@@ -197,20 +215,22 @@ class OpenClawClient:
     def _extract_json(text: str) -> Any:
         s = text.strip()
         if s.startswith("```"):
-            s = re.sub(r"^```(?:json)?\s*", "", s);
+            s = re.sub(r"^```(?:json)?\s*", "", s)
             s = re.sub(r"\s*```$", "", s)
         try:
             return json.loads(s)
         except json.JSONDecodeError:
             # bounded salvage: first object or array only
-            starts = [i for i in (s.find('{'), s.find('[')) if i >= 0]
-            if not starts: raise
-            start = min(starts);
-            opening = s[start];
-            closing = '}' if opening == '{' else ']'
+            starts = [i for i in (s.find("{"), s.find("[")) if i >= 0]
+            if not starts:
+                raise
+            start = min(starts)
+            opening = s[start]
+            closing = "}" if opening == "{" else "]"
             end = s.rfind(closing)
-            if end <= start: raise
-            return json.loads(s[start:end + 1])
+            if end <= start:
+                raise
+            return json.loads(s[start : end + 1])
 
     async def run_json(
         self,

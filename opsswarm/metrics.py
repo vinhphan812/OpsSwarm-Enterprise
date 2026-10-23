@@ -10,7 +10,12 @@ class Metrics:
     VALID_EVIDENCE_FAILURES: set[str] = {"duplicate", "corrupt", "write_error"}
     VALID_BUDGET_TYPES: set[str] = {"tasks", "execution_seconds", "openclaw_calls"}
     VALID_HUMAN_GATE_KINDS: set[str] = {"approval", "decision", "input"}
-    VALID_RECONCILIATION_OUTCOMES: set[str] = {"clean_recovery", "ambiguous", "impossible", "no_evidence"}
+    VALID_RECONCILIATION_OUTCOMES: set[str] = {
+        "clean_recovery",
+        "ambiguous",
+        "impossible",
+        "no_evidence",
+    }
     VALID_WEBHOOK_DELIVERY_KINDS: set[str] = {"processed", "dedup_skipped", "rejected"}
 
     def __init__(self):
@@ -27,19 +32,19 @@ class Metrics:
         self._active_runs_gauge: dict[str, int] = {}
 
         # State-transition latency — histogram (count + sum per transition)
-        self.transition_count = Counter()   # (from_state, to_state): count
-        self.transition_sum = Counter()       # (from_state, to_state): seconds
+        self.transition_count = Counter()  # (from_state, to_state): count
+        self.transition_sum = Counter()  # (from_state, to_state): seconds
 
         # OpenClaw calls by profile
         self.openclaw_calls = Counter()  # profile: count
 
         # OpenClaw call duration histogram (per-profile seconds)
         self.openclaw_duration_count = Counter()  # profile: count
-        self.openclaw_duration_sum = Counter()     # profile: seconds
+        self.openclaw_duration_sum = Counter()  # profile: seconds
 
         # OpenClaw timeout / error counters (per-profile)
         self.openclaw_timeouts = Counter()  # profile: count
-        self.openclaw_errors = Counter()    # profile: count
+        self.openclaw_errors = Counter()  # profile: count
 
         # Policy classification outcomes
         self.policy_actions = Counter()  # action: count (AUTO / APPROVAL / DECISION / INPUT / DENY)
@@ -239,11 +244,11 @@ class Metrics:
         for profile in sorted(self.openclaw_duration_count.keys()):
             lines.append(
                 f'opsswarm_openclaw_call_seconds{{profile="{profile}"}}_count '
-                f'{self.openclaw_duration_count[profile]}'
+                f"{self.openclaw_duration_count[profile]}"
             )
             lines.append(
                 f'opsswarm_openclaw_call_seconds{{profile="{profile}"}}_sum '
-                f'{self.openclaw_duration_sum[profile]:.6f}'
+                f"{self.openclaw_duration_sum[profile]:.6f}"
             )
 
         for profile, count in sorted(self.openclaw_timeouts.items()):
@@ -258,7 +263,7 @@ class Metrics:
 
         # ── NEW: ambiguous writes ─────────────────────────────────────────────────
         if self.ambiguous_writes:
-            lines.append(f'opsswarm_execution_ambiguous_total {self.ambiguous_writes["total"]}')
+            lines.append(f"opsswarm_execution_ambiguous_total {self.ambiguous_writes['total']}")
 
         # ── NEW: reconciliation outcomes ─────────────────────────────────────────
         for outcome, count in sorted(self.reconciliation_outcomes.items()):
@@ -276,9 +281,7 @@ class Metrics:
 
         # ── NEW: budget utilisation ─────────────────────────────────────────────
         for budget_type, utilization in sorted(self._budget_gauge.items()):
-            lines.append(
-                f'opsswarm_budget_utilization{{type="{budget_type}"}} {utilization:.4f}'
-            )
+            lines.append(f'opsswarm_budget_utilization{{type="{budget_type}"}} {utilization:.4f}')
 
         return "\n".join(lines)
 

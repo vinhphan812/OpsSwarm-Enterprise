@@ -73,9 +73,7 @@ class DuplicateTaskIdError(TaskGraphError):
     def __init__(self, task_id: str, count: int):
         self.task_id = task_id
         self.count = count
-        super().__init__(
-            f"Duplicate task ID '{task_id}' appears {count} times in the graph"
-        )
+        super().__init__(f"Duplicate task ID '{task_id}' appears {count} times in the graph")
 
 
 class DanglingDependencyError(TaskGraphError):
@@ -84,9 +82,7 @@ class DanglingDependencyError(TaskGraphError):
     def __init__(self, task_id: str, missing_id: str):
         self.task_id = task_id
         self.missing_id = missing_id
-        super().__init__(
-            f"Task '{task_id}' depends on non-existent task '{missing_id}'"
-        )
+        super().__init__(f"Task '{task_id}' depends on non-existent task '{missing_id}'")
 
 
 class CycleError(TaskGraphError):
@@ -94,9 +90,7 @@ class CycleError(TaskGraphError):
 
     def __init__(self, cycle: list[str]):
         self.cycle = cycle
-        super().__init__(
-            f"Task graph contains a cycle: {' -> '.join(cycle + [cycle[0]])}"
-        )
+        super().__init__(f"Task graph contains a cycle: {' -> '.join(cycle + [cycle[0]])}")
 
 
 class DepthExceededError(TaskGraphError):
@@ -107,8 +101,7 @@ class DepthExceededError(TaskGraphError):
         self.actual_depth = actual_depth
         self.task_id = task_id
         super().__init__(
-            f"Dependency depth {actual_depth} exceeds max depth {max_depth} "
-            f"(task '{task_id}')"
+            f"Dependency depth {actual_depth} exceeds max depth {max_depth} (task '{task_id}')"
         )
 
 

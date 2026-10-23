@@ -24,6 +24,7 @@ from opsswarm.logging_config import (
 # StructuredLogFormatter
 # -----------------------------------------------------------------------
 
+
 def test_formatter_includes_corr_id(caplog):
     """StructuredLogFormatter includes corr_id in JSON output."""
     formatter = StructuredLogFormatter()
@@ -111,6 +112,7 @@ def test_formatter_extra_fields_omitted_when_absent():
 # setup_logging
 # -----------------------------------------------------------------------
 
+
 def test_setup_logging_configures_root_logger(caplog):
     """setup_logging configures the opsswarm root logger with a structured handler."""
     setup_logging(level="DEBUG")
@@ -151,6 +153,7 @@ def test_setup_logging_silences_third_party_loggers(caplog):
 # get_corr_id
 # -----------------------------------------------------------------------
 
+
 def test_get_corr_id_returns_existing_when_set(caplog):
     """get_corr_id() returns the current context value when already bound."""
     set_corr_id("existing-id-123")
@@ -170,6 +173,7 @@ def test_get_corr_id_generates_new_when_unset(caplog):
 # set_corr_id
 # -----------------------------------------------------------------------
 
+
 def test_set_corr_id_updates_context(caplog):
     """set_corr_id() binds a value to the corr_id context variable."""
     set_corr_id("custom-corr-id")
@@ -179,6 +183,7 @@ def test_set_corr_id_updates_context(caplog):
 # -----------------------------------------------------------------------
 # bind_request_context
 # -----------------------------------------------------------------------
+
 
 def test_bind_request_context_returns_and_sets_cid(caplog):
     """bind_request_context() generates a CID, binds it, and returns it."""

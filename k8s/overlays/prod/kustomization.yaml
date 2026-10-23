@@ -85,6 +85,6 @@ patches:
 
 # ── Images ────────────────────────────────────────────────────────────────────
 images:
-  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
     newTag: "2.2.0"
-    newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
+    newName: ghcr.io/vinhphan812/opsswarm-enterprise

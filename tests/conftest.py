@@ -54,6 +54,7 @@ def pytest_runtest_teardown(item, nextitem):
     """Reset auth module state after every test to avoid cross-test pollution."""
     try:
         import opsswarm.auth as _auth_mod
+
         _auth_mod._monitoring_limiter._hits.clear()
         _auth_mod.reset_replay_store()
     except (ImportError, AttributeError):

@@ -262,7 +262,10 @@ class TestGitHubClient:
             mock_source_r.raise_for_status = MagicMock()
             # PUT /repos/owner/repo/git/refs
             mock_branch_r = MagicMock()
-            mock_branch_r.json.return_value = {"ref": "refs/heads/fix/x", "object": {"sha": "abc123"}}
+            mock_branch_r.json.return_value = {
+                "ref": "refs/heads/fix/x",
+                "object": {"sha": "abc123"},
+            }
             mock_branch_r.content = b'{"ref":"refs/heads/fix/x"}'
             mock_branch_r.raise_for_status = MagicMock()
             mock_request.side_effect = [mock_source_r, mock_branch_r]
@@ -286,7 +289,10 @@ class TestGitHubClient:
             mock_source_r.content = b'{"object":{"sha":"abc123"}}'
             mock_source_r.raise_for_status = MagicMock()
             mock_branch_r = MagicMock()
-            mock_branch_r.json.return_value = {"ref": "refs/heads/fix/x", "object": {"sha": "abc123"}}
+            mock_branch_r.json.return_value = {
+                "ref": "refs/heads/fix/x",
+                "object": {"sha": "abc123"},
+            }
             mock_branch_r.content = b'{"ref":"refs/heads/fix/x"}'
             mock_branch_r.raise_for_status = MagicMock()
             mock_request.side_effect = [mock_source_r, mock_branch_r]
@@ -301,17 +307,28 @@ class TestGitHubClient:
         """open_pr posts a draft PR and returns PR data."""
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_r = MagicMock()
-            mock_r.json.return_value = {"number": 42, "html_url": "https://github.com/owner/repo/pull/42"}
+            mock_r.json.return_value = {
+                "number": 42,
+                "html_url": "https://github.com/owner/repo/pull/42",
+            }
             mock_r.content = b'{"number":42}'
             mock_r.raise_for_status = MagicMock()
             mock_request.return_value = mock_r
 
-            result = await client.open_pr("fix: resolve 500", "Fixes #1", "fix/x", "main", draft=True)
+            result = await client.open_pr(
+                "fix: resolve 500", "Fixes #1", "fix/x", "main", draft=True
+            )
 
             mock_request.assert_called_once_with(
                 "POST",
                 "/repos/owner/repo/pulls",
-                json={"title": "fix: resolve 500", "body": "Fixes #1", "head": "fix/x", "base": "main", "draft": True},
+                json={
+                    "title": "fix: resolve 500",
+                    "body": "Fixes #1",
+                    "head": "fix/x",
+                    "base": "main",
+                    "draft": True,
+                },
             )
             assert result["number"] == 42
 
@@ -336,7 +353,10 @@ class TestGitHubClient:
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_pr_r = MagicMock()
             mock_pr_r.json.return_value = {
-                "state": "open", "merged": False, "mergeable": True, "head": {"sha": "abc123"}
+                "state": "open",
+                "merged": False,
+                "mergeable": True,
+                "head": {"sha": "abc123"},
             }
             mock_pr_r.content = b'{"state":"open"}'
             mock_pr_r.raise_for_status = MagicMock()
@@ -364,7 +384,10 @@ class TestGitHubClient:
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_pr_r = MagicMock()
             mock_pr_r.json.return_value = {
-                "state": "open", "merged": False, "mergeable": True, "head": {"sha": "abc123"}
+                "state": "open",
+                "merged": False,
+                "mergeable": True,
+                "head": {"sha": "abc123"},
             }
             mock_pr_r.content = b'{"state":"open"}'
             mock_pr_r.raise_for_status = MagicMock()
@@ -386,14 +409,15 @@ class TestGitHubClient:
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_pr_r = MagicMock()
             mock_pr_r.json.return_value = {
-                "state": "open", "merged": False, "mergeable": True, "head": {"sha": "abc123"}
+                "state": "open",
+                "merged": False,
+                "mergeable": True,
+                "head": {"sha": "abc123"},
             }
             mock_pr_r.content = b'{"state":"open"}'
             mock_pr_r.raise_for_status = MagicMock()
             mock_checks_r = MagicMock()
-            mock_checks_r.json.return_value = {
-                "check_runs": [{"conclusion": "cancelled"}]
-            }
+            mock_checks_r.json.return_value = {"check_runs": [{"conclusion": "cancelled"}]}
             mock_checks_r.content = b'{"check_runs":[...]}'
             mock_checks_r.raise_for_status = MagicMock()
             mock_request.side_effect = [mock_pr_r, mock_checks_r]
@@ -408,7 +432,10 @@ class TestGitHubClient:
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_pr_r = MagicMock()
             mock_pr_r.json.return_value = {
-                "state": "open", "merged": False, "mergeable": True, "head": {"sha": "abc123"}
+                "state": "open",
+                "merged": False,
+                "mergeable": True,
+                "head": {"sha": "abc123"},
             }
             mock_pr_r.content = b'{"state":"open"}'
             mock_pr_r.raise_for_status = MagicMock()
@@ -429,7 +456,12 @@ class TestGitHubClient:
         """get_pr_status handles PR with no head SHA gracefully."""
         with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
             mock_pr_r = MagicMock()
-            mock_pr_r.json.return_value = {"state": "open", "merged": False, "mergeable": None, "head": None}
+            mock_pr_r.json.return_value = {
+                "state": "open",
+                "merged": False,
+                "mergeable": None,
+                "head": None,
+            }
             mock_pr_r.content = b'{"state":"open"}'
             mock_pr_r.raise_for_status = MagicMock()
             mock_request.return_value = mock_pr_r
@@ -581,9 +613,7 @@ class TestGitHubClientSSRF:
 
     def test_init_custom_base_url_follow_redirects_false(self):
         """Even with a custom whitelisted base_url, redirects are disabled."""
-        client = GitHubClient(
-            token="tok", repo="owner/repo", base_url="https://github.com/api/v3"
-        )
+        client = GitHubClient(token="tok", repo="owner/repo", base_url="https://github.com/api/v3")
         assert client.client.follow_redirects is False
 
     # ----- transport limits -----
@@ -622,9 +652,7 @@ class TestGitHubClientLogInjection:
     def client(self):
         return GitHubClient(token="test-token", repo="owner/repo")
 
-    def _make_mock_error_response(
-        self, status_code: int, text: str, exc_cls=Exception
-    ):
+    def _make_mock_error_response(self, status_code: int, text: str, exc_cls=Exception):
         """Return (mock_request, mock_response) for a 4xx/5xx HTTP error.
 
         HTTPStatusError (httpx >= 0.27) requires message=, request=, response= kwargs.
@@ -689,8 +717,8 @@ class TestGitHubClientLogInjection:
             assert "\x00" not in msg
             assert "\x7f" not in msg
             assert "\x80" not in msg  # C1 block stripped
-            assert "\x85" not in msg  #NEL control char stripped
-            assert "\xe1" in msg     # Vietnamese CJK high bytes preserved
+            assert "\x85" not in msg  # NEL control char stripped
+            assert "\xe1" in msg  # Vietnamese CJK high bytes preserved
             assert "\xef" in msg
             # No log-line breaks
             assert "\n" not in msg
@@ -722,7 +750,9 @@ class TestGitHubClientLogInjection:
         )
         with patch.object(client.client, "request", new_callable=AsyncMock) as p:
             p.return_value = mock_r
-            with pytest.raises(PermissionError, match=r"GitHub API returned 403 for POST /repos/owner/repo/issues"):
+            with pytest.raises(
+                PermissionError, match=r"GitHub API returned 403 for POST /repos/owner/repo/issues"
+            ):
                 await client._req("POST", "/repos/owner/repo/issues")
 
     @pytest.mark.asyncio

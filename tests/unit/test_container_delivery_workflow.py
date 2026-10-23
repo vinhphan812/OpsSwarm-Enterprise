@@ -41,7 +41,7 @@ K8S_BASE = K8S_DIR / "base"
 DEV_OVERLAY = K8S_DIR / "overlays" / "dev"
 PROD_OVERLAY = K8S_DIR / "overlays" / "prod"
 
-CANONICAL_IMAGE_REPO = "ghcr.io/vinhphan812/opsswarm-openclaw-github"
+CANONICAL_IMAGE_REPO = "ghcr.io/vinhphan812/opsswarm-enterprise"
 DIGEST_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
 
 # Matches "uses: owner/repo@<ref>" in a workflow file.
@@ -155,7 +155,7 @@ class TestImageRepositoryAlignment:
             "container-delivery.yml must publish to the canonical image "
             f"repository {CANONICAL_IMAGE_REPO}"
         )
-        assert "opsswarm-enterprise" not in content, (
+        assert "opsswarm-openclaw-github" not in content, (
             "container-delivery.yml must not reference a stale image repository "
             "name; kustomize would silently drop the digest pin"
         )
@@ -186,9 +186,7 @@ class TestImageRepositoryAlignment:
         if rendered is None:
             pytest.skip("no kustomize implementation available")
 
-        assert ":latest" not in rendered, (
-            "the dev overlay must not reference a mutable :latest tag"
-        )
+        assert ":latest" not in rendered, "the dev overlay must not reference a mutable :latest tag"
         assert CANONICAL_IMAGE_REPO in rendered, (
             "the rendered dev overlay must reference the canonical repository"
         )
@@ -209,8 +207,7 @@ class TestDigestAssertion:
 
         content = _read(CONTAINER_DELIVERY_WORKFLOW)
         assert re.search(r"\^sha256:\[a-f0-9\]\{64\}\$", content), (
-            "container-delivery.yml must assert the manifest digest against "
-            "^sha256:[a-f0-9]{64}$"
+            "container-delivery.yml must assert the manifest digest against ^sha256:[a-f0-9]{64}$"
         )
 
     def test_workflow_pulls_by_digest_not_by_tag(self):
@@ -274,9 +271,7 @@ class TestRenderedManifestPolicy:
         if rendered is None:
             pytest.skip("no kustomize implementation available")
 
-        policies = [
-            doc for doc in rendered.split("\n---\n") if "kind: NetworkPolicy" in doc
-        ]
+        policies = [doc for doc in rendered.split("\n---\n") if "kind: NetworkPolicy" in doc]
         assert policies, "the production overlay must render a NetworkPolicy"
         for policy in policies:
             ingress = policy.split("ingress:", 1)
@@ -284,8 +279,7 @@ class TestRenderedManifestPolicy:
                 continue
             block = ingress[1].split("egress:")[0]
             assert "cidr: 0.0.0.0/0" not in block, (
-                "the rendered production NetworkPolicy must not allow broad "
-                "public ingress"
+                "the rendered production NetworkPolicy must not allow broad public ingress"
             )
 
     def test_prod_overlay_gates_readiness_on_ready_not_health(self):

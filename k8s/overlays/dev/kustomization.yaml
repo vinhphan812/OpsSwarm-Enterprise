@@ -104,6 +104,6 @@ secretGenerator:
 
 # ── Images ────────────────────────────────────────────────────────────────────
 images:
-  - name: ghcr.io/vinhphan812/opsswarm-openclaw-github
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
     newTag: dev
-    newName: ghcr.io/vinhphan812/opsswarm-openclaw-github
+    newName: ghcr.io/vinhphan812/opsswarm-enterprise

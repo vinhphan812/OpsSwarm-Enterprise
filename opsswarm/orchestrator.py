@@ -40,10 +40,17 @@ HUMAN_GATE_STATES: set[RunState] = {
 class RunBudget:
     """Per-run counters with fail-closed limits."""
 
-    def __init__(self, run_id: str, max_tasks: int, max_openclaw_calls: int,
-                 max_wall_clock_seconds: float, max_corrective_actions: int,
-                 max_depth: int, max_token_budget: int = 1_000_000,
-                 max_steps_per_agent: int = 50):
+    def __init__(
+        self,
+        run_id: str,
+        max_tasks: int,
+        max_openclaw_calls: int,
+        max_wall_clock_seconds: float,
+        max_corrective_actions: int,
+        max_depth: int,
+        max_token_budget: int = 1_000_000,
+        max_steps_per_agent: int = 50,
+    ):
         self.run_id = run_id
         self.max_tasks = max_tasks
         self.max_openclaw_calls = max_openclaw_calls
@@ -83,8 +90,10 @@ class RunBudget:
 
     def snapshot(self) -> dict:
         return {
-            "run_id": self.run_id, "tasks_executed": self.tasks_executed,
-            "max_tasks": self.max_tasks, "openclaw_calls": self.openclaw_calls,
+            "run_id": self.run_id,
+            "tasks_executed": self.tasks_executed,
+            "max_tasks": self.max_tasks,
+            "openclaw_calls": self.openclaw_calls,
             "max_openclaw_calls": self.max_openclaw_calls,
             "wall_clock_seconds": round(self.wall_clock_seconds, 2),
             "max_wall_clock_seconds": self.max_wall_clock_seconds,
@@ -97,18 +106,23 @@ class RunBudget:
         }
 
     def check(self) -> tuple[bool, str | None]:
-        checks = ((self.tasks_executed, self.max_tasks, "max_tasks"),
-                  (self.openclaw_calls, self.max_openclaw_calls, "max_openclaw_calls"),
-                  (self.wall_clock_seconds, self.max_wall_clock_seconds, "max_wall_clock_seconds"),
-                  (self.corrective_actions, self.max_corrective_actions, "max_corrective_actions"),
-                  (self.tokens_used, self.max_token_budget, "max_token_budget"))
+        checks = (
+            (self.tasks_executed, self.max_tasks, "max_tasks"),
+            (self.openclaw_calls, self.max_openclaw_calls, "max_openclaw_calls"),
+            (self.wall_clock_seconds, self.max_wall_clock_seconds, "max_wall_clock_seconds"),
+            (self.corrective_actions, self.max_corrective_actions, "max_corrective_actions"),
+            (self.tokens_used, self.max_token_budget, "max_token_budget"),
+        )
         for current, limit, name in checks:
             if current >= limit:
                 return True, f"{name} ({limit}) exceeded"
         # Check per-agent step budget
         for agent, steps in self._agent_steps.items():
             if steps >= self.max_steps_per_agent:
-                return True, f"max_steps_per_agent ({self.max_steps_per_agent}) exceeded for {agent}"
+                return (
+                    True,
+                    f"max_steps_per_agent ({self.max_steps_per_agent}) exceeded for {agent}",
+                )
         return False, None
 
     def check_agent_steps(self, agent: str) -> tuple[bool, str | None]:
@@ -141,12 +155,14 @@ class ConcurrencyLimiter:
 
 
 class Orchestrator:
-    def __init__(self, cfg: dict, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True):
-        self.cfg = cfg;
-        self.github = github;
-        self.oc = openclaw;
-        self.store = RunStore(data_dir);
-        self.ev = EvidenceStore(data_dir);
+    def __init__(
+        self, cfg: dict, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True
+    ):
+        self.cfg = cfg
+        self.github = github
+        self.oc = openclaw
+        self.store = RunStore(data_dir)
+        self.ev = EvidenceStore(data_dir)
         self.policy = PolicyEngine(cfg)
         self.reconciliation = ReconciliationManager(data_dir)
         self.runs = {r.issue_number: r for r in self.store.load_all()}
@@ -174,16 +190,23 @@ class Orchestrator:
                     self._tool_allowlist.profile_names(),
                 )
             else:
-                logger.warning("[ADR-027] Tool allowlist enabled but failed to load — all tools permitted")
+                logger.warning(
+                    "[ADR-027] Tool allowlist enabled but failed to load — all tools permitted"
+                )
         else:
             logger.debug("[ADR-027] Tool allowlist is disabled in config — all tools permitted")
 
         budget_cfg = get_budget(cfg)
-        self.budget = RunBudget("", budget_cfg["max_tasks_per_run"], budget_cfg["max_openclaw_calls"],
-                                budget_cfg["max_wall_clock_seconds"], budget_cfg["max_corrective_actions"],
-                                budget_cfg["max_dependency_depth"],
-                                budget_cfg.get("max_token_budget", 1_000_000),
-                                budget_cfg.get("max_steps_per_agent", 50))
+        self.budget = RunBudget(
+            "",
+            budget_cfg["max_tasks_per_run"],
+            budget_cfg["max_openclaw_calls"],
+            budget_cfg["max_wall_clock_seconds"],
+            budget_cfg["max_corrective_actions"],
+            budget_cfg["max_dependency_depth"],
+            budget_cfg.get("max_token_budget", 1_000_000),
+            budget_cfg.get("max_steps_per_agent", 50),
+        )
         self._max_parallel = get_concurrency(cfg)["max_parallel_specialists"]
         self._active_budgets: dict[str, RunBudget] = {}
         self._command_locks: dict[int, asyncio.Lock] = {}
@@ -211,14 +234,16 @@ class Orchestrator:
         for nr in non_terminal_runs:
             # Get the exact instance from self.runs
             run = self.runs.get(nr.issue_number)
-            if not run: # Should not happen
+            if not run:  # Should not happen
                 run = nr
 
             # Check for commands in crash window (EXECUTING -> UNKNOWN)
             changed = False
             for cmd_id, outcome in run.command_outcomes.items():
                 if outcome == CommandOutcome.EXECUTING.value:
-                    logger.warning(f"Run {run.run_id}: found command {cmd_id} in EXECUTING state. Marking UNKNOWN (crash window).")
+                    logger.warning(
+                        f"Run {run.run_id}: found command {cmd_id} in EXECUTING state. Marking UNKNOWN (crash window)."
+                    )
                     run.mark_command_unknown(cmd_id)
                     changed = True
             if changed:
@@ -227,16 +252,14 @@ class Orchestrator:
             recovery_result = self.reconciliation.recover_run(run)
 
             if recovery_result.recovered:
-                logger.info(
-                    f"Recovered run {run.run_id}: {recovery_result.message}"
-                )
+                logger.info(f"Recovered run {run.run_id}: {recovery_result.message}")
                 recovered_count += 1
             else:
-                logger.warning(
-                    f"Could not recover run {run.run_id}: {recovery_result.message}"
-                )
+                logger.warning(f"Could not recover run {run.run_id}: {recovery_result.message}")
 
-        logger.info(f"Run recovery complete: {recovered_count}/{len(non_terminal_runs)} runs recovered")
+        logger.info(
+            f"Run recovery complete: {recovered_count}/{len(non_terminal_runs)} runs recovered"
+        )
 
     def get_reconciliation_report(self, issue_number: int) -> dict | None:
         """Get a reconciliation report for a run.
@@ -303,10 +326,10 @@ class Orchestrator:
         # Checkpoint state transition
         self.ev.checkpoint(run.run_id, CheckpointType.STATE_TRANSITION, {"state": state.value})
 
-        cfg = self.cfg.get("labels", {});
-        lifecycle = list((cfg.get("lifecycle") or {}).values());
+        cfg = self.cfg.get("labels", {})
+        lifecycle = list((cfg.get("lifecycle") or {}).values())
         current = (cfg.get("lifecycle") or {}).get(state.value)
-        base = cfg.get("base", ["opsswarm", "incident"]);
+        base = cfg.get("base", ["opsswarm", "incident"])
         labels = base + ([current] if current else [])
         if run.incident and run.incident.severity.startswith("SEV"):
             labels.append("sev:" + run.incident.severity[3:])
@@ -321,9 +344,12 @@ class Orchestrator:
         exceeded, reason = budget.check()
         if not exceeded:
             return True
-        run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
-                                       reason=f"Execution budget exceeded: {reason}",
-                                       question="The investigation consumed its full execution budget.")
+        run.decision = DecisionRequest(
+            id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
+            kind="DECISION",
+            reason=f"Execution budget exceeded: {reason}",
+            question="The investigation consumed its full execution budget.",
+        )
         await self._set_state(run, RunState.WAITING_DECISION)
         await self.github.comment(run.issue_number, decision_request(run))
         return False
@@ -362,10 +388,15 @@ class Orchestrator:
     def _budget_for(self, run: RunRecord) -> RunBudget:
         if run.run_id not in self._active_budgets:
             self._active_budgets[run.run_id] = RunBudget(
-                run.run_id, self.budget.max_tasks, self.budget.max_openclaw_calls,
-                self.budget.max_wall_clock_seconds, self.budget.max_corrective_actions,
-                self.budget.max_depth, self.budget.max_token_budget,
-                self.budget.max_steps_per_agent)
+                run.run_id,
+                self.budget.max_tasks,
+                self.budget.max_openclaw_calls,
+                self.budget.max_wall_clock_seconds,
+                self.budget.max_corrective_actions,
+                self.budget.max_depth,
+                self.budget.max_token_budget,
+                self.budget.max_steps_per_agent,
+            )
         return self._active_budgets[run.run_id]
 
     async def start_issue(self, number: int, delivery_id: str | None = None) -> RunRecord:
@@ -376,22 +407,27 @@ class Orchestrator:
             if existing and delivery_id and delivery_id in existing.idempotency_keys:
                 logger.info(
                     "Skipping duplicate webhook delivery",
-                    extra={"delivery_id": sanitize_for_log_key(delivery_id), "issue_number": number},
+                    extra={
+                        "delivery_id": sanitize_for_log_key(delivery_id),
+                        "issue_number": number,
+                    },
                 )
                 return existing
-            if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}: return existing
+            if existing and existing.state not in {RunState.FAILED, RunState.ABORTED}:
+                return existing
             issue = await self.github.get_issue(number)
             req = self.cfg.get("required_issue_label", "opsswarm")
             names = [x.get("name", "") for x in issue.get("labels", []) if isinstance(x, dict)]
-            if req and req not in names: raise RuntimeError(f"Issue #{number} lacks required label {req}")
+            if req and req not in names:
+                raise RuntimeError(f"Issue #{number} lacks required label {req}")
             run = RunRecord(run_id=f"RUN-GH-{number}-{uuid.uuid4().hex[:8]}", issue_number=number)
             # Store delivery ID for idempotency if provided
             if delivery_id:
                 run.idempotency_keys.add(delivery_id)
-            self.runs[number] = run;
+            self.runs[number] = run
             metrics.record_run("started")
             await self._set_state(run, RunState.TRIAGE)
-            run.incident = S.parse_issue(number, issue);
+            run.incident = S.parse_issue(number, issue)
             await self._save(run, "S1.incident", run.incident.model_dump())
             await self._investigate(run)
             return run
@@ -404,7 +440,8 @@ class Orchestrator:
             run.tasks.append(extra_task)
         elif not run.tasks:
             run.tasks = await S.build_tasks(self.oc, main, run.run_id, run.incident)
-            if not run.tasks: raise RuntimeError("S2 produced no investigation tasks")
+            if not run.tasks:
+                raise RuntimeError("S2 produced no investigation tasks")
             await self.github.comment(run.issue_number, investigation_started(run))
             # Issue #26: validate task graph before execution
             task_dicts = [t.model_dump() for t in run.tasks]
@@ -419,7 +456,8 @@ class Orchestrator:
         # Execute dependency-ready tasks in waves.
         while pending:
             ready = [t for t in pending if all(dep in done for dep in t.depends_on)]
-            if not ready: raise RuntimeError("Task graph has unsatisfied/cyclic dependencies")
+            if not ready:
+                raise RuntimeError("Task graph has unsatisfied/cyclic dependencies")
 
             async def one(t):
                 if not await self._budget_preflight(run, budget):
@@ -456,20 +494,27 @@ class Orchestrator:
             return
         self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
-        run.root_cause = await S.synthesize_root_cause(self.oc, main, run.run_id, run.incident, run.findings,
-                                                       run.human_inputs)
-        await self._set_state(run, RunState.DIAGNOSED);
+        run.root_cause = await S.synthesize_root_cause(
+            self.oc, main, run.run_id, run.incident, run.findings, run.human_inputs
+        )
+        await self._set_state(run, RunState.DIAGNOSED)
         await self._save(run, "RCA.root_cause", run.root_cause.model_dump())
         await self.github.comment(run.issue_number, diagnosis(run))
         rca_threshold = float(self.cfg.get("root_cause_confidence_threshold", 0.80))
         if run.root_cause.status == "uncertain" or run.root_cause.confidence < rca_threshold:
-            question = run.root_cause.human_input_question or "Root-cause confidence is below the autonomous threshold. Provide relevant operational/business context, or use `/opsswarm investigate <request>` to request more read-only evidence."
-            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="INPUT",
-                                           reason="Root-cause analysis is not sufficiently certain for autonomous remediation",
-                                           question=question)
+            question = (
+                run.root_cause.human_input_question
+                or "Root-cause confidence is below the autonomous threshold. Provide relevant operational/business context, or use `/opsswarm investigate <request>` to request more read-only evidence."
+            )
+            run.decision = DecisionRequest(
+                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
+                kind="INPUT",
+                reason="Root-cause analysis is not sufficiently certain for autonomous remediation",
+                question=question,
+            )
             metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
-            await self._set_state(run, RunState.WAITING_INPUT);
-            await self.github.comment(run.issue_number, decision_request(run));
+            await self._set_state(run, RunState.WAITING_INPUT)
+            await self.github.comment(run.issue_number, decision_request(run))
             return
         metrics.record_duration("investigate_seconds", time.monotonic() - _t0_investigate)
         await self._plan(run)
@@ -482,83 +527,114 @@ class Orchestrator:
             return
         self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
-        run.recovery_plan = await S.make_recovery_plan(self.oc, main, run.run_id, run.incident, run.root_cause,
-                                                       run.human_inputs)
+        run.recovery_plan = await S.make_recovery_plan(
+            self.oc, main, run.run_id, run.incident, run.root_cause, run.human_inputs
+        )
         await self._save(run, "S3.recovery_plan", run.recovery_plan.model_dump())
         action, reason = self.policy.classify_plan(run.recovery_plan)
         metrics.record_policy_action(action)
         if action == "AUTO":
-            option = run.recovery_plan.options[0];
-            await self._execute_option(run, option);
+            option = run.recovery_plan.options[0]
+            await self._execute_option(run, option)
             return
         if action in {"APPROVAL", "DECISION", "INPUT"}:
             kind = {"APPROVAL": "APPROVAL", "DECISION": "DECISION", "INPUT": "INPUT"}[action]
-            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind=kind,
-                                           reason=reason,
-                                           options=run.recovery_plan.options if action != "INPUT" else [],
-                                           recommended_option=run.recovery_plan.recommended_option,
-                                           question=run.recovery_plan.business_input_question)
+            run.decision = DecisionRequest(
+                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
+                kind=kind,
+                reason=reason,
+                options=run.recovery_plan.options if action != "INPUT" else [],
+                recommended_option=run.recovery_plan.recommended_option,
+                question=run.recovery_plan.business_input_question,
+            )
             # Checkpoint before human gate
-            target_state = {"APPROVAL": RunState.WAITING_APPROVAL, "DECISION": RunState.WAITING_DECISION,
-                            "INPUT": RunState.WAITING_INPUT}[action]
-            self.ev.checkpoint(run.run_id, CheckpointType.HUMAN_GATE, {
-                "state": target_state.value,
-                "decision_id": run.decision.id,
-                "kind": kind,
-            })
+            target_state = {
+                "APPROVAL": RunState.WAITING_APPROVAL,
+                "DECISION": RunState.WAITING_DECISION,
+                "INPUT": RunState.WAITING_INPUT,
+            }[action]
+            self.ev.checkpoint(
+                run.run_id,
+                CheckpointType.HUMAN_GATE,
+                {
+                    "state": target_state.value,
+                    "decision_id": run.decision.id,
+                    "kind": kind,
+                },
+            )
             await self._set_state(run, target_state)
-            await self._save(run, "S6.human_gate", run.decision.model_dump());
-            await self.github.comment(run.issue_number, decision_request(run));
+            await self._save(run, "S6.human_gate", run.decision.model_dump())
+            await self.github.comment(run.issue_number, decision_request(run))
             return
-        run.error = reason;
-        await self._set_state(run, RunState.FAILED);
+        run.error = reason
+        await self._set_state(run, RunState.FAILED)
         corr_id = new_correlation_id()
         safe_reason = sanitize_for_comment(reason)
         logger.error(f"Plan failed [{corr_id}]: {sanitize_for_log(reason)}")
-        await self.github.comment(run.issue_number,
-                                 f"## OpsSwarm — Failed\n\n{safe_reason}\n\nRef: {corr_id}")
+        await self.github.comment(
+            run.issue_number, f"## OpsSwarm — Failed\n\n{safe_reason}\n\nRef: {corr_id}"
+        )
 
     async def _execute_option(self, run: RunRecord, option: RemediationOption):
         # Checkpoint before execution
-        self.ev.checkpoint(run.run_id, CheckpointType.EXECUTION, {
-            "phase": "pre_execution",
-            "option_id": option.id,
-            "state": RunState.EXECUTING.value,
-        })
+        self.ev.checkpoint(
+            run.run_id,
+            CheckpointType.EXECUTION,
+            {
+                "phase": "pre_execution",
+                "option_id": option.id,
+                "state": RunState.EXECUTING.value,
+            },
+        )
         await self._set_state(run, RunState.EXECUTING)
         budget = self._budget_for(run)
         if not await self._budget_preflight(run, budget):
             return
         self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
-        run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
-                                                 run.root_cause, option)
+        run.execution = await S.execute_recovery(
+            self.oc,
+            self.profile("recovery-responder"),
+            run.run_id,
+            run.incident,
+            run.root_cause,
+            option,
+        )
         await self._save(run, "S5.execution", run.execution.model_dump())
         # Checkpoint after execution
-        self.ev.checkpoint(run.run_id, CheckpointType.EXECUTION, {
-            "phase": "post_execution",
-            "option_id": option.id,
-            "success": run.execution.success,
-            "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
-        })
+        self.ev.checkpoint(
+            run.run_id,
+            CheckpointType.EXECUTION,
+            {
+                "phase": "post_execution",
+                "option_id": option.id,
+                "success": run.execution.success,
+                "state": RunState.VERIFYING.value if run.execution.success else run.state.value,
+            },
+        )
         if run.execution.ambiguous:
             metrics.record_ambiguous_write()
-            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
-                                           reason="The write outcome is ambiguous. Blind retry is prohibited.",
-                                           options=[],
-                                           question="Use /opsswarm investigate <read-only verification request>, /opsswarm abort, or /opsswarm resume after external confirmation.")
-            await self._set_state(run, RunState.WAITING_DECISION);
-            await self.github.comment(run.issue_number, decision_request(run));
+            run.decision = DecisionRequest(
+                id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}",
+                kind="DECISION",
+                reason="The write outcome is ambiguous. Blind retry is prohibited.",
+                options=[],
+                question="Use /opsswarm investigate <read-only verification request>, /opsswarm abort, or /opsswarm resume after external confirmation.",
+            )
+            await self._set_state(run, RunState.WAITING_DECISION)
+            await self.github.comment(run.issue_number, decision_request(run))
             return
         if not run.execution.success:
-            run.error = run.execution.summary;
+            run.error = run.execution.summary
             metrics.record_run("failed")
-            await self._set_state(run, RunState.FAILED);
+            await self._set_state(run, RunState.FAILED)
             corr_id = new_correlation_id()
             safe_summary = sanitize_for_comment(run.execution.summary)
             logger.error(f"Recovery failed [{corr_id}]: {sanitize_for_log(run.execution.summary)}")
-            await self.github.comment(run.issue_number,
-                                     f"## OpsSwarm — Recovery failed\n\n{safe_summary}\n\nRef: {corr_id}");
+            await self.github.comment(
+                run.issue_number,
+                f"## OpsSwarm — Recovery failed\n\n{safe_summary}\n\nRef: {corr_id}",
+            )
             return
         await self._verify(run)
 
@@ -618,7 +694,9 @@ class Orchestrator:
         await self._save_governed_execution(run, execution)
         return execution
 
-    async def _save_governed_execution(self, run: RunRecord, execution: RemediationExecution) -> None:
+    async def _save_governed_execution(
+        self, run: RunRecord, execution: RemediationExecution
+    ) -> None:
         """Persist governed remediation state and its evidence."""
         run.governed_remediation = execution
         await self._save(run, "S5.governed_remediation", execution.model_dump())
@@ -631,8 +709,13 @@ class Orchestrator:
             return
         self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
-        run.verification = await S.verify_recovery(self.oc, self.profile("observability-investigator"), run.run_id,
-                                                   run.incident, run.execution)
+        run.verification = await S.verify_recovery(
+            self.oc,
+            self.profile("observability-investigator"),
+            run.run_id,
+            run.incident,
+            run.execution,
+        )
         await self._save(run, "S7.verification", run.verification.model_dump())
         metrics.record_verification(run.verification.verified)
         threshold = float(self.cfg.get("verification_confidence_threshold", 0.85))
@@ -644,23 +727,31 @@ class Orchestrator:
                 await self._set_state(run, RunState.ABORTED)
                 corr_id = new_correlation_id()
                 safe_summary = sanitize_for_comment(run.verification.summary)
-                logger.error(f"Verification aborted by S7 [{corr_id}]: {sanitize_for_log(run.verification.summary)}")
-                await self.github.comment(run.issue_number,
-                                          f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nAborted by S7 (veto).");
+                logger.error(
+                    f"Verification aborted by S7 [{corr_id}]: {sanitize_for_log(run.verification.summary)}"
+                )
+                await self.github.comment(
+                    run.issue_number,
+                    f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nAborted by S7 (veto).",
+                )
                 return
-            run.error = "Independent recovery verification failed or confidence below threshold";
+            run.error = "Independent recovery verification failed or confidence below threshold"
             metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
             await self._set_state(run, RunState.FAILED)
             corr_id = new_correlation_id()
             safe_summary = sanitize_for_comment(run.verification.summary)
-            logger.error(f"Verification failed [{corr_id}]: {sanitize_for_log(run.verification.summary)}")
-            await self.github.comment(run.issue_number,
-                                      f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nIssue remains open.");
+            logger.error(
+                f"Verification failed [{corr_id}]: {sanitize_for_log(run.verification.summary)}"
+            )
+            await self.github.comment(
+                run.issue_number,
+                f"## OpsSwarm — Verification failed\n\n{safe_summary}\n\nRef: {corr_id}\n\nIssue remains open.",
+            )
             return
         metrics.record_duration("verify_seconds", time.monotonic() - _t0_verify)
-        await self._set_state(run, RunState.RESOLVED);
+        await self._set_state(run, RunState.RESOLVED)
         metrics.record_run("resolved")
-        await self.github.comment(run.issue_number, resolved(run));
+        await self.github.comment(run.issue_number, resolved(run))
         await self.github.close_issue(run.issue_number)
         # ADR-015: kick off Phase 2 RCA (Plan_RCA) after close
         if self.cfg.get("rca_enabled", True):
@@ -695,8 +786,7 @@ class Orchestrator:
         budget = self._budget_for(run)
         budget.mark_openclaw_call()
         run.rca_report = await S.synthesize_rca(
-            self.oc, main, run.run_id, run.incident, run.root_cause,
-            run.findings, run.human_inputs
+            self.oc, main, run.run_id, run.incident, run.root_cause, run.findings, run.human_inputs
         )
         run.rca_budget_snapshot = {
             "tokens_used": budget.tokens_used,
@@ -727,15 +817,28 @@ class Orchestrator:
                     ca["status"] = "filed"
         self.store.save(run)
 
-    async def handle_comment(self, number: int, actor: str, body: str, permission: str, command,
-                             comment_id: str | None = None, delivery_id: str | None = None):
+    async def handle_comment(
+        self,
+        number: int,
+        actor: str,
+        body: str,
+        permission: str,
+        command,
+        comment_id: str | None = None,
+        delivery_id: str | None = None,
+    ):
         run = self.runs.get(number)
-        if not run: return
+        if not run:
+            return
         # Check terminal state: reject all commands if run is in terminal state
         if run.state in TERMINAL_STATES and (command is None or command.name != "resume"):
-            logger.info(f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}")
-            await self.github.comment(number,
-                                      f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.")
+            logger.info(
+                f"Rejecting command for issue #{number}: run is in terminal state {run.state.value}"
+            )
+            await self.github.comment(
+                number,
+                f"OpsSwarm cannot process commands on a closed incident (state: {run.state.value}). Please open a new issue if needed.",
+            )
             return
 
         # Migrate legacy executed_commands to command_outcomes for backward compatibility
@@ -754,11 +857,19 @@ class Orchestrator:
                     extra={"comment_id": sanitize_for_log_key(comment_id), "issue_number": number},
                 )
                 return
-            elif outcome == CommandOutcome.RECEIVED.value or outcome == CommandOutcome.EXECUTING.value or outcome == CommandOutcome.UNKNOWN.value:
+            elif (
+                outcome == CommandOutcome.RECEIVED.value
+                or outcome == CommandOutcome.EXECUTING.value
+                or outcome == CommandOutcome.UNKNOWN.value
+            ):
                 # Command was received but not confirmed - can retry safely
                 logger.info(
                     "Resuming incomplete command",
-                    extra={"comment_id": sanitize_for_log_key(comment_id), "outcome": outcome, "issue_number": number},
+                    extra={
+                        "comment_id": sanitize_for_log_key(comment_id),
+                        "outcome": outcome,
+                        "issue_number": number,
+                    },
                 )
 
         if delivery_id and delivery_id in run.idempotency_keys:
@@ -779,17 +890,21 @@ class Orchestrator:
         if comment_id or delivery_id:
             self.store.save(run)
         if not command:
-            run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"});
-            await self._save(run, "human.free_text", run.human_inputs[-1]);
+            run.human_inputs.append({"actor": actor, "text": body, "authority": "information-only"})
+            await self._save(run, "human.free_text", run.human_inputs[-1])
             return
         rank = {"none": 0, "read": 1, "triage": 2, "write": 3, "maintain": 4, "admin": 5}
         min_input = self.cfg.get("human_authority", {}).get("minimum_permission_for_input", "read")
-        min_approval = self.cfg.get("human_authority", {}).get("minimum_permission_for_approval", "maintain")
-        min_abort = self.cfg.get("human_authority", {}).get("minimum_permission_for_abort", "maintain")
+        min_approval = self.cfg.get("human_authority", {}).get(
+            "minimum_permission_for_approval", "maintain"
+        )
+        min_abort = self.cfg.get("human_authority", {}).get(
+            "minimum_permission_for_abort", "maintain"
+        )
 
         def require(level):
-            if rank.get(permission, 0) < rank.get(level, 99): raise PermissionError(
-                f"@{actor} has {permission}; requires {level}")
+            if rank.get(permission, 0) < rank.get(level, 99):
+                raise PermissionError(f"@{actor} has {permission}; requires {level}")
 
         if command.name in {"provide", "investigate", "resume"}:
             require(min_input)
@@ -802,8 +917,8 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            run.error = f"Aborted by @{actor}";
-            await self._set_state(run, RunState.ABORTED);
+            run.error = f"Aborted by @{actor}"
+            await self._set_state(run, RunState.ABORTED)
             metrics.record_command("abort")
             await self.github.comment(number, f"## OpsSwarm — Aborted\n\nBy `@{actor}`.")
             # Mark command as executed
@@ -816,8 +931,10 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            run.human_inputs.append({"actor": actor, "text": command.argument, "authority": "provided-input"});
-            run.decision = None;
+            run.human_inputs.append(
+                {"actor": actor, "text": command.argument, "authority": "provided-input"}
+            )
+            run.decision = None
             await self._save(run, "human.input", run.human_inputs[-1])
             metrics.record_command("provide")
             # Re-synthesize root cause then plan.
@@ -832,11 +949,16 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            extra = await S.make_extra_task(self.oc, self.profile("incident-manager"), run.run_id, run.incident,
-                                            command.argument)
+            extra = await S.make_extra_task(
+                self.oc,
+                self.profile("incident-manager"),
+                run.run_id,
+                run.incident,
+                command.argument,
+            )
             # Unique task ID for repeated investigations.
             extra.id = f"HX{len([t for t in run.tasks if t.id.startswith('HX')]) + 1}"
-            run.decision = None;
+            run.decision = None
             metrics.record_command("investigate")
             await self._investigate(run, extra_task=extra)
             # Mark command as executed
@@ -849,12 +971,15 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            if run.decision: run.decision.status = "REJECTED"
-            run.error = f"Proposed remediation rejected by @{actor}";
-            await self._set_state(run, RunState.WAITING_DECISION);
+            if run.decision:
+                run.decision.status = "REJECTED"
+            run.error = f"Proposed remediation rejected by @{actor}"
+            await self._set_state(run, RunState.WAITING_DECISION)
             metrics.record_command("reject")
-            await self.github.comment(number,
-                                      "OpsSwarm recorded the rejection. Use `/opsswarm investigate ...`, `/opsswarm provide ...`, or `/opsswarm abort`.")
+            await self.github.comment(
+                number,
+                "OpsSwarm recorded the rejection. Use `/opsswarm investigate ...`, `/opsswarm provide ...`, or `/opsswarm abort`.",
+            )
             # Mark command as executed
             if comment_id:
                 run.mark_command_confirmed(comment_id)
@@ -865,9 +990,11 @@ class Orchestrator:
             if comment_id:
                 run.mark_command_executing(comment_id)
                 self.store.save(run)
-            if not run.recovery_plan: raise RuntimeError("No recovery plan exists")
+            if not run.recovery_plan:
+                raise RuntimeError("No recovery plan exists")
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
-            if not option: raise ValueError(f"Unknown option id: {command.argument}")
+            if not option:
+                raise ValueError(f"Unknown option id: {command.argument}")
 
             # ADR-013: resolve effective risk via trusted registry first.
             # Precedence: registry match (always wins) → classify_operation (escalation only)
@@ -890,16 +1017,18 @@ class Orchestrator:
                     "option_description": option.description,
                 }
                 if registry_result is not None:
-                    evidence_payload.update({
-                        "canonical_operation": registry_result.canonical_operation,
-                        "rule_id": registry_result.rule_id,
-                        "registry_risk": registry_result.registry_risk.value
-                        if registry_result.registry_risk
-                        else None,
-                        "pattern_matched": registry_result.pattern_matched,
-                        "pattern_mode": registry_result.pattern_mode,
-                        "approved_by": registry_result.approved_by,
-                    })
+                    evidence_payload.update(
+                        {
+                            "canonical_operation": registry_result.canonical_operation,
+                            "rule_id": registry_result.rule_id,
+                            "registry_risk": registry_result.registry_risk.value
+                            if registry_result.registry_risk
+                            else None,
+                            "pattern_matched": registry_result.pattern_matched,
+                            "pattern_mode": registry_result.pattern_mode,
+                            "approved_by": registry_result.approved_by,
+                        }
+                    )
                 else:
                     evidence_payload["classified_risk"] = (
                         classified_risk.value if classified_risk else None
@@ -914,7 +1043,11 @@ class Orchestrator:
                 )
             if run.decision:
                 run.decision.status = "ANSWERED"
-            await self._save(run, "human.approval", {"actor": actor, "option": option.id, "permission": permission})
+            await self._save(
+                run,
+                "human.approval",
+                {"actor": actor, "option": option.id, "permission": permission},
+            )
             metrics.record_command("approve")
             await self._execute_option(run, option)
             # Mark command as executed (after execution completes)
@@ -928,12 +1061,16 @@ class Orchestrator:
             if checkpoint:
                 checkpoint_type = checkpoint.get("payload", {}).get("checkpoint_type", "unknown")
                 checkpoint_state = checkpoint.get("payload", {}).get("state", "unknown")
-                logger.info(f"Resuming from checkpoint: type={checkpoint_type}, state={checkpoint_state}")
+                logger.info(
+                    f"Resuming from checkpoint: type={checkpoint_type}, state={checkpoint_state}"
+                )
 
                 # Resume from human gate checkpoint
                 if checkpoint_type == CheckpointType.HUMAN_GATE.value:
-                    await self.github.comment(number,
-                                              f"Resuming from checkpoint (type: {checkpoint_type}, state: {checkpoint_state}). Use `/opsswarm approve <option>` or `/opsswarm provide <input>` to continue.")
+                    await self.github.comment(
+                        number,
+                        f"Resuming from checkpoint (type: {checkpoint_type}, state: {checkpoint_state}). Use `/opsswarm approve <option>` or `/opsswarm provide <input>` to continue.",
+                    )
                     return
 
                 # Resume from execution checkpoint - verify or retry
@@ -943,8 +1080,10 @@ class Orchestrator:
                         await self._verify(run)
                         return
                     elif phase == "pre_execution":
-                        await self.github.comment(number,
-                                                  "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.")
+                        await self.github.comment(
+                            number,
+                            "Resuming from pre-execution checkpoint. Use `/opsswarm approve <option>` to continue execution.",
+                        )
                         return
 
                 # Resume from state transition checkpoint - continue workflow
@@ -963,5 +1102,7 @@ class Orchestrator:
             if run.state == RunState.FAILED and run.execution and run.execution.success:
                 await self._verify(run)
             else:
-                await self.github.comment(number,
-                                          "`/opsswarm resume` is only accepted when a safe checkpoint exists. Use an explicit approve/investigate/provide command.")
+                await self.github.comment(
+                    number,
+                    "`/opsswarm resume` is only accepted when a safe checkpoint exists. Use an explicit approve/investigate/provide command.",
+                )

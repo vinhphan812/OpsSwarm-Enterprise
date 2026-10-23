@@ -42,6 +42,7 @@ def _env_secret():
     old = os.environ.get("OPSWARM_RUNTIME_SECRET")
     os.environ["OPSWARM_RUNTIME_SECRET"] = "test-secret"  # noqa: B105
     import opsswarm.auth as auth_module
+
     auth_module.reload_auth_config()
     yield
     if old is None:
@@ -237,10 +238,12 @@ def test_make_admin_token_valid_for_metrics(_env_secret):
 
     # Verify it matches the expected payload
     import time
+
     ts = int(time.time())
     payload = f"GET:/metrics:{ts}"
     import hashlib
     import hmac as hmac_lib
+
     expected = hmac_lib.new(
         secret.encode("ascii"),
         payload.encode("ascii"),

@@ -6,6 +6,7 @@ skill_logic.py call-sites that call model_validate() on OpenClaw output.
 Acceptance: malformed JSON from OpenClaw is handled gracefully — never propagates
 as an unhandled exception that would abort incident processing.
 """
+
 import pytest
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -27,6 +28,7 @@ from opsswarm import skill_logic as S
 # --------------------------------------------------------------------------- #
 # Fixtures
 # --------------------------------------------------------------------------- #
+
 
 @pytest.fixture
 def mock_incident() -> IncidentContext:
@@ -54,6 +56,7 @@ def mock_task() -> Task:
 # --------------------------------------------------------------------------- #
 # build_tasks — malformed OpenClaw JSON
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -109,12 +112,14 @@ async def test_build_tasks_tasks_is_string(mock_incident):
 async def test_build_tasks_invalid_task_item(mock_incident):
     """OpenClaw returns a list with an item that violates Task Pydantic contract."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "tasks": [
-            {"id": "t1"},  # missing required 'type', 'objective', 'profile'
-            {"type": "not_a_tasktype"},  # invalid enum
-        ]
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "tasks": [
+                {"id": "t1"},  # missing required 'type', 'objective', 'profile'
+                {"type": "not_a_tasktype"},  # invalid enum
+            ]
+        }
+    )
 
     result = await S.build_tasks(oc_mock, "agent", "run-1", mock_incident)
 
@@ -125,6 +130,7 @@ async def test_build_tasks_invalid_task_item(mock_incident):
 # --------------------------------------------------------------------------- #
 # execute_task — malformed OpenClaw JSON (existing try/except coverage)
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -147,10 +153,12 @@ async def test_execute_task_non_dict_response(mock_incident, mock_task):
 async def test_execute_task_missing_required_fields(mock_incident, mock_task):
     """OpenClaw returns a dict missing required Finding fields — gracefully degrades."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "finding": "something",
-        # missing task_id, evidence
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "finding": "something",
+            # missing task_id, evidence
+        }
+    )
 
     result = await S.execute_task(oc_mock, "agent", "run-1", mock_incident, mock_task)
 
@@ -161,6 +169,7 @@ async def test_execute_task_missing_required_fields(mock_incident, mock_task):
 # --------------------------------------------------------------------------- #
 # execute_recovery — malformed OpenClaw JSON (no prior try/except)
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -189,11 +198,13 @@ async def test_execute_recovery_non_dict_response(mock_incident):
 async def test_execute_recovery_invalid_fields(mock_incident):
     """OpenClaw returns a dict with wrong field types — must not crash."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "option_id": "opt-1",
-        "success": "yes",  # should be bool
-        "summary": 12345,  # should be str
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "option_id": "opt-1",
+            "success": "yes",  # should be bool
+            "summary": 12345,  # should be str
+        }
+    )
 
     root = RootCauseArtifact(proximate_cause="test", root_cause="test")
     option = MagicMock()
@@ -229,6 +240,7 @@ async def test_execute_recovery_missing_required_fields(mock_incident):
 # verify_recovery — malformed OpenClaw JSON (no prior try/except)
 # --------------------------------------------------------------------------- #
 
+
 @pytest.mark.fault
 @pytest.mark.asyncio
 async def test_verify_recovery_non_dict_response(mock_incident):
@@ -250,10 +262,12 @@ async def test_verify_recovery_non_dict_response(mock_incident):
 async def test_verify_recovery_invalid_fields(mock_incident):
     """OpenClaw returns a dict with wrong field types — must not crash."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "verified": "yes",  # should be bool
-        "summary": 999,     # should be str
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "verified": "yes",  # should be bool
+            "summary": 999,  # should be str
+        }
+    )
 
     execution = MagicMock()
     execution.model_dump_json = MagicMock(return_value="{}")
@@ -285,6 +299,7 @@ async def test_verify_recovery_missing_required_fields(mock_incident):
 # synthesize_root_cause — malformed OpenClaw JSON (existing try/except)
 # --------------------------------------------------------------------------- #
 
+
 @pytest.mark.fault
 @pytest.mark.asyncio
 async def test_synthesize_root_cause_non_dict_response(mock_incident):
@@ -303,11 +318,13 @@ async def test_synthesize_root_cause_non_dict_response(mock_incident):
 async def test_synthesize_root_cause_invalid_fields(mock_incident):
     """OpenClaw returns a dict with wrong field types — must not crash."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "status": "confirmed",
-        "confidence": "high",  # should be float
-        "causal_chain": "not a list",  # should be list
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "status": "confirmed",
+            "confidence": "high",  # should be float
+            "causal_chain": "not a list",  # should be list
+        }
+    )
 
     result = await S.synthesize_root_cause(oc_mock, "agent", "run-1", mock_incident, [], [])
 
@@ -317,6 +334,7 @@ async def test_synthesize_root_cause_invalid_fields(mock_incident):
 # --------------------------------------------------------------------------- #
 # make_recovery_plan — malformed OpenClaw JSON (existing try/except)
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -337,10 +355,12 @@ async def test_make_recovery_plan_non_dict_response(mock_incident):
 async def test_make_recovery_plan_invalid_fields(mock_incident):
     """OpenClaw returns a dict with wrong field types — must not crash."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "options": "not a list",
-        "confidence": "high",
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "options": "not a list",
+            "confidence": "high",
+        }
+    )
 
     root = RootCauseArtifact(proximate_cause="test", root_cause="test")
     result = await S.make_recovery_plan(oc_mock, "agent", "run-1", mock_incident, root, [])
@@ -352,6 +372,7 @@ async def test_make_recovery_plan_invalid_fields(mock_incident):
 # --------------------------------------------------------------------------- #
 # make_extra_task — malformed OpenClaw JSON (no prior try/except)
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -381,12 +402,14 @@ async def test_make_extra_task_non_dict_response(mock_incident):
 async def test_make_extra_task_invalid_task_fields(mock_incident):
     """OpenClaw returns a dict with invalid Task field values."""
     oc_mock = AsyncMock()
-    oc_mock.run_json = AsyncMock(return_value={
-        "id": "xt1",
-        "type": "not_a_task_type",
-        "objective": 123,
-        "profile": "unknown-profile",
-    })
+    oc_mock.run_json = AsyncMock(
+        return_value={
+            "id": "xt1",
+            "type": "not_a_task_type",
+            "objective": 123,
+            "profile": "unknown-profile",
+        }
+    )
 
     try:
         result = await S.make_extra_task(oc_mock, "agent", "run-1", mock_incident, "do something")
@@ -398,6 +421,7 @@ async def test_make_extra_task_invalid_task_fields(mock_incident):
 # --------------------------------------------------------------------------- #
 # Edge cases: OpenClawClient._extract_json fallback itself can fail
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.fault
 @pytest.mark.asyncio
@@ -417,7 +441,10 @@ async def test_openclaw_returns_completely_empty_response():
             await client.run_text("agent", "session", "prompt")
         # Either OpenClawError (no assistant text) or JSONDecodeError is acceptable
         # as this is genuinely malformed output
-        assert "No assistant text" in str(exc_info.value) or "JSONDecodeError" in type(exc_info.value).__name__
+        assert (
+            "No assistant text" in str(exc_info.value)
+            or "JSONDecodeError" in type(exc_info.value).__name__
+        )
 
 
 @pytest.mark.fault

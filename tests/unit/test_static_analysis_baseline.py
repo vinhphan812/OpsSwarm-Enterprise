@@ -44,7 +44,12 @@ def test_ruff_stage1_zero_errors():
     # Use sys.executable -m ruff so the test works in CI (no uv required).
     result = subprocess.run(
         [
-            sys.executable, "-m", "ruff", "check", "opsswarm/", "tests/",
+            sys.executable,
+            "-m",
+            "ruff",
+            "check",
+            "opsswarm/",
+            "tests/",
             "--select=E9,F63,F7,F82",
             "--output-format=concise",
         ],
@@ -55,10 +60,7 @@ def test_ruff_stage1_zero_errors():
     )
     # E9/F63/F7/F82 are correctness-only rules; any violation is a CI failure.
     # Filter to real hits (skip warnings about incompatible docstring rules).
-    errors = [
-        line for line in result.stdout.splitlines()
-        if SCRUB_SENTINEL in line and ":" in line
-    ]
+    errors = [line for line in result.stdout.splitlines() if SCRUB_SENTINEL in line and ":" in line]
     assert result.returncode in (0, 1), (
         f"Ruff check crashed (returncode={result.returncode}):\n"
         f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
@@ -98,8 +100,7 @@ def test_ruff_stage2_via_ci_script():
     # Exit 0 = within baseline. Exit 1 = over baseline (or internal error).
     # Exit 2 = no baseline file found (degraded but not a hard failure).
     assert result.returncode in (0, 2), (
-        f"scripts/check_ruff_full.py failed:\n"
-        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        f"scripts/check_ruff_full.py failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
 
 
@@ -136,10 +137,7 @@ def test_mypy_stage1_clean():
         timeout=300,
     )
     # mypy returns 0 on success, 1 on errors found.
-    errors = [
-        line for line in result.stdout.splitlines()
-        if SCRUB_SENTINEL in line and ":" in line
-    ]
+    errors = [line for line in result.stdout.splitlines() if SCRUB_SENTINEL in line and ":" in line]
     assert result.returncode == 0, (
         f"mypy found {len(errors)} error(s):\n"
         + "\n".join(errors[:30])
@@ -177,6 +175,8 @@ def test_bandit_high_severity_baseline():
     high_severity = [f for f in findings if f.get("issue_severity") == "HIGH"]
     assert len(high_severity) <= BANDIT_ALLOWED_HIGH_SEVERITY, (
         f"Bandit found {len(high_severity)} HIGH-severity finding(s):\n"
-        + "\n".join(f"  [{f['issue_severity']}] {f['issue_text']} ({f['filename']}:{f['line']})"
-                   for f in high_severity[:10])
+        + "\n".join(
+            f"  [{f['issue_severity']}] {f['issue_text']} ({f['filename']}:{f['line']})"
+            for f in high_severity[:10]
+        )
     )

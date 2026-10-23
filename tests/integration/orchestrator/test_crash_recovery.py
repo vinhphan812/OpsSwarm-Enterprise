@@ -25,17 +25,17 @@ from tests.fakes import FakeGitHub, FakeOpenClaw
 
 @pytest.fixture
 def cfg():
-    return yaml.safe_load(open('config/test.yaml'))
+    return yaml.safe_load(open("config/test.yaml"))
 
 
 @pytest.fixture
 def issue():
     return {
-        'number': 1,
-        'title': '[Incident] booking fails',
-        'body': '## Incident\n\n### Service\nbooking-api\n\n### Symptoms\nHTTP 500\n\n### Customer impact\nCheckout blocked\n\n### Environment\nproduction\n',
-        'labels': [{'name': 'opsswarm'}, {'name': 'sev:2'}],
-        'user': {'login': 'dev'}
+        "number": 1,
+        "title": "[Incident] booking fails",
+        "body": "## Incident\n\n### Service\nbooking-api\n\n### Symptoms\nHTTP 500\n\n### Customer impact\nCheckout blocked\n\n### Environment\nproduction\n",
+        "labels": [{"name": "opsswarm"}, {"name": "sev:2"}],
+        "user": {"login": "dev"},
     }
 
 
@@ -43,20 +43,44 @@ def investigation_and_rca():
     """Standard investigation + RCA response sequence."""
     return [
         # S1: Parse incident
-        {'tasks': [
-            {'id': 'T1', 'type': 'OBSERVE', 'objective': 'inspect metrics',
-             'profile': 'observability-investigator', 'required_capabilities': ['metrics.read'],
-             'risk': 'read', 'depends_on': [], 'parallelizable': True, 'expected_output': 'Finding',
-             'status': 'PENDING'}
-        ]},
+        {
+            "tasks": [
+                {
+                    "id": "T1",
+                    "type": "OBSERVE",
+                    "objective": "inspect metrics",
+                    "profile": "observability-investigator",
+                    "required_capabilities": ["metrics.read"],
+                    "risk": "read",
+                    "depends_on": [],
+                    "parallelizable": True,
+                    "expected_output": "Finding",
+                    "status": "PENDING",
+                }
+            ]
+        },
         # S4: Finding
-        {'task_id': 'T1', 'finding': 'errors rose after deploy', 'evidence': ['metric:5xx', 'deploy:v3'],
-         'hypothesis': 'bad deploy', 'confidence': 0.95, 'recommended_next_action': 'rollback', 'raw': {}},
+        {
+            "task_id": "T1",
+            "finding": "errors rose after deploy",
+            "evidence": ["metric:5xx", "deploy:v3"],
+            "hypothesis": "bad deploy",
+            "confidence": 0.95,
+            "recommended_next_action": "rollback",
+            "raw": {},
+        },
         # RCA: Root cause
-        {'status': 'confirmed', 'proximate_cause': 'bad deploy', 'root_cause': 'missing regression gate',
-         'causal_chain': ['v3 deploy', 'connection leak', '5xx'], 'evidence_refs': ['metric:5xx', 'deploy:v3'],
-         'confidence': 0.93, 'remediation_options': ['rollback'], 'human_input_question': None,
-         'corrective_actions': ['add regression gate']},
+        {
+            "status": "confirmed",
+            "proximate_cause": "bad deploy",
+            "root_cause": "missing regression gate",
+            "causal_chain": ["v3 deploy", "connection leak", "5xx"],
+            "evidence_refs": ["metric:5xx", "deploy:v3"],
+            "confidence": 0.93,
+            "remediation_options": ["rollback"],
+            "human_input_question": None,
+            "corrective_actions": ["add regression gate"],
+        },
     ]
 
 
@@ -64,12 +88,23 @@ def waiting_approval_responses():
     """Response sequence that ends in WAITING_APPROVAL state."""
     return investigation_and_rca() + [
         # S3: Recovery plan with risky option that requires approval
-        {'options': [
-            {'id': 'rollback', 'description': 'rollback', 'profile': 'recovery-responder',
-             'risk': 'risky_write', 'estimated_recovery': '3m', 'rationale': 'best',
-             'capabilities': ['deploy.rollback']}
-        ], 'recommended_option': 'rollback', 'confidence': 0.9,
-            'requires_business_input': False, 'business_input_question': None},
+        {
+            "options": [
+                {
+                    "id": "rollback",
+                    "description": "rollback",
+                    "profile": "recovery-responder",
+                    "risk": "risky_write",
+                    "estimated_recovery": "3m",
+                    "rationale": "best",
+                    "capabilities": ["deploy.rollback"],
+                }
+            ],
+            "recommended_option": "rollback",
+            "confidence": 0.9,
+            "requires_business_input": False,
+            "business_input_question": None,
+        },
     ]
 
 
@@ -94,12 +129,14 @@ class TestCrashRecovery:
         run1 = await orch1.start_issue(1)
 
         # Verify we're in WAITING_APPROVAL state
-        assert run1.state == RunState.WAITING_APPROVAL, f"Expected WAITING_APPROVAL, got {run1.state}"
+        assert run1.state == RunState.WAITING_APPROVAL, (
+            f"Expected WAITING_APPROVAL, got {run1.state}"
+        )
         run_id = run1.run_id
 
         # Capture state for verification
         initial_evidence = orch1.ev.list(run_id)
-        initial_evidence_kinds = [e['kind'] for e in initial_evidence]
+        initial_evidence_kinds = [e["kind"] for e in initial_evidence]
 
         # Phase 2: Simulate process crash - create new Orchestrator instance
         # This is what happens after a process restart
@@ -111,16 +148,19 @@ class TestCrashRecovery:
         recovered_run = orch2.runs.get(1)
         assert recovered_run is not None, "Run should be recovered after restart"
         assert recovered_run.run_id == run_id, "Run ID should be preserved"
-        assert recovered_run.state == RunState.WAITING_APPROVAL, \
+        assert recovered_run.state == RunState.WAITING_APPROVAL, (
             f"State should be WAITING_APPROVAL after recovery, got {recovered_run.state}"
+        )
 
         # Verify evidence is preserved (not duplicated)
         recovered_evidence = orch2.ev.list(run_id)
-        assert len(recovered_evidence) == len(initial_evidence), \
+        assert len(recovered_evidence) == len(initial_evidence), (
             "Evidence count should be preserved after recovery (no duplicates)"
-        recovered_kinds = [e['kind'] for e in recovered_evidence]
-        assert recovered_kinds == initial_evidence_kinds, \
+        )
+        recovered_kinds = [e["kind"] for e in recovered_evidence]
+        assert recovered_kinds == initial_evidence_kinds, (
             "Evidence kinds should match after recovery"
+        )
 
         print(f"✓ Run {run_id} recovered to WAITING_APPROVAL state")
 
@@ -141,7 +181,7 @@ class TestCrashRecovery:
 
         # Get initial evidence count
         initial_count = len(orch1.ev.list(run_id))
-        initial_evidence_keys = {e.get('signature') for e in orch1.ev.list(run_id)}
+        initial_evidence_keys = {e.get("signature") for e in orch1.ev.list(run_id)}
 
         # Phase 2: Simulate restart
         gh2 = FakeGitHub(issue)
@@ -151,15 +191,17 @@ class TestCrashRecovery:
         # Phase 3: Check for duplicates
         recovered_evidence = orch2.ev.list(run_id)
         recovered_count = len(recovered_evidence)
-        recovered_signatures = {e.get('signature') for e in recovered_evidence}
+        recovered_signatures = {e.get("signature") for e in recovered_evidence}
 
         # Verify no duplicate signatures
-        assert recovered_signatures == initial_evidence_keys, \
+        assert recovered_signatures == initial_evidence_keys, (
             "Evidence signatures should match (no duplicates)"
+        )
 
         # Verify evidence count is unchanged
-        assert recovered_count == initial_count, \
+        assert recovered_count == initial_count, (
             f"Evidence count should not increase after restart: {initial_count} -> {recovered_count}"
+        )
 
         print(f"✓ No duplicate side effects: {recovered_count} evidence records preserved")
 
@@ -198,13 +240,15 @@ class TestCrashRecovery:
         assert recovered_run is not None, "Run should be recovered"
 
         # Command should still be marked as confirmed after restart
-        assert recovered_run.is_command_confirmed(comment_id), \
+        assert recovered_run.is_command_confirmed(comment_id), (
             "Command outcome should persist across restart"
+        )
         assert recovered_run.get_command_outcome(comment_id) == CommandOutcome.CONFIRMED.value
 
         # Also verify legacy field for backward compatibility
-        assert comment_id in recovered_run.executed_commands, \
+        assert comment_id in recovered_run.executed_commands, (
             "Legacy executed_commands should also persist"
+        )
 
         print(f"✓ Command outcome persisted across restart: {comment_id}")
 
@@ -287,7 +331,9 @@ class TestCrashRecovery:
         assert "non-terminal-2" in non_terminal_ids, "EXECUTING should be non-terminal"
         # ADR-015: RESOLVED remains recoverable until deferred RCA reaches
         # PLAN_RCA_RESOLVED, so it is intentionally included here.
-        assert "terminal-resolved" in non_terminal_ids, "RESOLVED should remain recoverable until RCA completes"
+        assert "terminal-resolved" in non_terminal_ids, (
+            "RESOLVED should remain recoverable until RCA completes"
+        )
         assert "terminal-aborted" not in non_terminal_ids, "ABORTED should be terminal"
 
         print(f"✓ Non-terminal runs identified correctly: {non_terminal_ids}")
@@ -317,8 +363,8 @@ class TestCrashRecovery:
         # Verify content is valid JSON
         with open(run_file) as f:
             loaded = json.load(f)
-        assert loaded['run_id'] == run.run_id, "Run ID should match"
-        assert loaded['state'] == 'WAITING_APPROVAL', "State should match"
+        assert loaded["run_id"] == run.run_id, "Run ID should match"
+        assert loaded["state"] == "WAITING_APPROVAL", "State should match"
 
         print(f"✓ Atomic write verified: no temp file leftover")
 
@@ -331,11 +377,22 @@ class TestCrashRecovery:
         # Create responses that go all the way to RESOLVED
         full_responses = waiting_approval_responses() + [
             # S5: Execution result
-            {'option_id': 'rollback', 'success': True, 'summary': 'rolled back',
-             'evidence': ['receipt:2'], 'ambiguous': False, 'raw': {}},
+            {
+                "option_id": "rollback",
+                "success": True,
+                "summary": "rolled back",
+                "evidence": ["receipt:2"],
+                "ambiguous": False,
+                "raw": {},
+            },
             # S7: Verification
-            {'verified': True, 'summary': 'service restored', 'evidence': ['sli:ok'],
-             'confidence': 0.98, 'raw': {}},
+            {
+                "verified": True,
+                "summary": "service restored",
+                "evidence": ["sli:ok"],
+                "confidence": 0.98,
+                "raw": {},
+            },
         ]
 
         # Create a full run through multiple states
@@ -351,8 +408,11 @@ class TestCrashRecovery:
 
         # Approve and continue to completion
         await orch1.handle_comment(
-            1, 'dev', '/opsswarm approve rollback', 'maintain',
-            parse_command('/opsswarm approve rollback')
+            1,
+            "dev",
+            "/opsswarm approve rollback",
+            "maintain",
+            parse_command("/opsswarm approve rollback"),
         )
         state_sequence.append(orch1.runs[1].state)
 
@@ -367,8 +427,9 @@ class TestCrashRecovery:
         # Verify final state persisted
         recovered_run = orch2.runs.get(1)
         assert recovered_run is not None, "Run should be recovered"
-        assert recovered_run.state == state_sequence[-1], \
+        assert recovered_run.state == state_sequence[-1], (
             f"Final state should persist: expected {state_sequence[-1]}, got {recovered_run.state}"
+        )
 
         print(f"✓ State sequence persisted: {[s.value for s in state_sequence]}")
 
@@ -394,12 +455,12 @@ class TestEvidenceDedupAfterRestart:
         # Add a custom evidence (different from those created by the workflow)
         # Using a unique kind and payload to ensure it's new
         custom_payload = {
-            'task_id': 'T-custom',
-            'finding': 'custom crash recovery test finding',
-            'evidence': ['test:evidence'],
-            'confidence': 0.99
+            "task_id": "T-custom",
+            "finding": "custom crash recovery test finding",
+            "evidence": ["test:evidence"],
+            "confidence": 0.99,
         }
-        eid1, is_dup1 = orch1.ev.append(run_id, 'test.custom_finding', custom_payload)
+        eid1, is_dup1 = orch1.ev.append(run_id, "test.custom_finding", custom_payload)
         assert is_dup1 is False, "First evidence should not be duplicate"
 
         # Phase 2: Simulate restart
@@ -409,7 +470,7 @@ class TestEvidenceDedupAfterRestart:
 
         # Phase 3: Try to add same evidence (should be deduplicated)
         # The evidence store should load existing signatures from disk
-        eid2, is_dup2 = orch2.ev.append(run_id, 'test.custom_finding', custom_payload)
+        eid2, is_dup2 = orch2.ev.append(run_id, "test.custom_finding", custom_payload)
 
         assert is_dup2 is True, "Same evidence should be detected as duplicate after restart"
 
