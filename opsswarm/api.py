@@ -1,13 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-import enum
 import logging
 import os
-import signal
-import threading
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -39,124 +34,11 @@ from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
+from .runtime import check_draining
+from .runtime import get_readiness
 from .webhook import verify_signature
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Application lifecycle state (Issue #73: /ready endpoint + graceful drain)
-# ---------------------------------------------------------------------------
-
-
-class AppState(enum.Enum):
-    """Application lifecycle states for readiness probe."""
-
-    STARTING = "starting"
-    READY = "ready"
-    DRAINING = "draining"
-    FAILED = "failed"
-
-
-class LifecycleManager:
-    """Thread-safe lifecycle state manager for graceful shutdown.
-
-    Tracks application state and coordinates graceful drain on SIGTERM.
-    The /ready endpoint reflects this state: 200 when READY, 503 otherwise.
-    """
-
-    _instance: "LifecycleManager | None" = None
-    _lock = threading.Lock()
-
-    def __new__(cls) -> "LifecycleManager":
-        with cls._lock:
-            if cls._instance is None:
-                cls._instance = super().__new__(cls)
-                cls._instance._state = AppState.STARTING
-                cls._instance._startup_error: str | None = None
-                cls._instance._drain_timeout = 30  # seconds - bounded by OpenClaw timeout
-                cls._instance._background_tasks: list[asyncio.Task] = []
-                cls._instance._drain_event = threading.Event()
-            return cls._instance
-
-    @property
-    def state(self) -> AppState:
-        with self._lock:
-            return self._state
-
-    @property
-    def startup_error(self) -> str | None:
-        with self._lock:
-            return self._startup_error
-
-    def set_ready(self) -> None:
-        """Mark application as ready to serve traffic."""
-        with self._lock:
-            self._state = AppState.READY
-            logger.info("Application marked as READY")
-
-    def set_failed(self, error: str | None = None) -> None:
-        """Mark application as failed (startup or runtime failure)."""
-        with self._lock:
-            self._state = AppState.FAILED
-            self._startup_error = error
-            logger.error(f"Application marked as FAILED: {error}")
-
-    def set_draining(self) -> None:
-        """Mark application as draining (SIGTERM received)."""
-        with self._lock:
-            if self._state == AppState.READY:
-                self._state = AppState.DRAINING
-                logger.info("Application marked as DRAINING (SIGTERM received)")
-
-    @property
-    def is_accepting_work(self) -> bool:
-        """Returns True if the application is ready to accept new mutation work."""
-        with self._lock:
-            return self._state == AppState.READY
-
-    def register_background_task(self, task: asyncio.Task) -> None:
-        """Register a background task for tracking during drain."""
-        with self._lock:
-            self._background_tasks.append(task)
-
-    async def drain(self, timeout: int | None = None) -> None:
-        """Gracefully drain the application.
-
-        Wait for background tasks to complete (with timeout), then mark as drained.
-        This is called when SIGTERM is received.
-        """
-        timeout = timeout or self._drain_timeout
-        self.set_draining()
-
-        # Wait for background tasks with timeout
-        if self._background_tasks:
-            logger.info(f"Waiting for {len(self._background_tasks)} background tasks (timeout={timeout}s)")
-            done, pending = await asyncio.wait(
-                self._background_tasks,
-                timeout=timeout,
-                return_when=asyncio.ALL_COMPLETED,
-            )
-            if pending:
-                logger.warning(f"{len(pending)} background tasks did not complete within {timeout}s")
-                # Cancel pending tasks
-                for task in pending:
-                    if not task.done():
-                        task.cancel()
-        else:
-            logger.info("No background tasks to wait for")
-
-        self._drain_event.set()
-        logger.info("Drain complete")
-
-    def wait_for_drain(self, timeout: int | None = None) -> bool:
-        """Block until drain is complete (for sync context)."""
-        timeout = timeout or self._drain_timeout
-        return self._drain_event.wait(timeout=timeout)
-
-
-# Global lifecycle manager instance
-lifecycle = LifecycleManager()
 
 cfg = load_config()
 
@@ -248,122 +130,23 @@ app.add_middleware(CorrelationMiddleware)
 
 
 # ---------------------------------------------------------------------------
-# Lifespan: fail-closed production startup check + graceful SIGTERM drain (Issue #73)
+# Lifespan: fail-closed production startup check (ADR-014 D4)
 # ---------------------------------------------------------------------------
 
 
-async def _startup_checks() -> None:
-    """Run all startup validation checks.
-
-    Validates:
-    1. Logging setup
-    2. Auth configuration
-    3. Config file loading
-    4. Data directory accessibility
-
-    Raises an exception on any failure (fail-closed).
-    On success, marks the application as READY.
-    """
+@app.on_event("startup")
+async def _startup_auth_check():
     from .logging_config import setup_logging
 
-    # 1. Setup logging
     setup_logging()
-
-    # 2. Validate and reload auth config
     reload_auth_config()
     _ensure_production_auth_config()
-
-    # 3. Validate data directory exists and is writable
-    data_dir = os.environ.get("OPSWARM_DATA_DIR", "runtime-data")
-    data_path = _validate_data_path(data_dir)
-
-    # All checks passed - mark as ready
-    lifecycle.set_ready()
-    logger.info(
-        "Startup checks passed: auth=%s, config=%s, data_dir=%s",
-        "ok",
-        "ok",
-        data_path,
-    )
+    await get_readiness().startup_complete()
 
 
-def _validate_data_path(data_dir: str) -> str:
-    """Validate that the data directory is accessible.
-
-    Returns the validated path on success.
-    Raises ValueError if the path is inaccessible.
-    """
-    import pathlib
-
-    path = pathlib.Path(data_dir)
-    try:
-        # Try to create the directory if it doesn't exist
-        path.mkdir(parents=True, exist_ok=True)
-        # Verify we can write to it
-        test_file = path / ".write_test"
-        test_file.touch()
-        test_file.unlink()
-        return str(path.resolve())
-    except OSError as e:
-        raise ValueError(f"Data directory not accessible: {data_dir}") from e
-
-
-async def _shutdown() -> None:
-    """Graceful shutdown handler.
-
-    Called by FastAPI lifespan on shutdown. Initiates drain but does not wait
-    for it to complete (the OS will terminate the process after the shutdown
-    timeout). Background tasks are given a bounded time to complete.
-    """
-    logger.info("Shutdown initiated")
-    try:
-        await lifecycle.drain(timeout=30)
-    except Exception:
-        logger.exception("Error during graceful shutdown")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """FastAPI lifespan context manager for startup/shutdown.
-
-    - On startup: runs validation checks and marks app as READY on success.
-    - On shutdown: initiates graceful drain of background tasks.
-    - Sets up SIGTERM handler for container/orchestrator graceful shutdown.
-    """
-    # Set up SIGTERM handler
-    def _sigterm_handler(signum, frame):
-        logger.info(f"Received signal {signum}, initiating graceful drain")
-        # Schedule drain in the event loop
-        asyncio.create_task(lifecycle.drain())
-
-    # Install signal handler (only works on Unix-like systems; no-op on Windows)
-    try:
-        signal.signal(signal.SIGTERM, _sigterm_handler)
-    except (ValueError, OSError):
-        # Windows doesn't support SIGTERM handler in the same way
-        logger.debug("SIGTERM handler not available on this platform")
-
-    # Run startup checks
-    try:
-        await _startup_checks()
-    except Exception:
-        lifecycle.set_failed(str(Exception))
-        logger.exception("Startup checks failed")
-        # Don't raise - let FastAPI start so /health still works
-        # but /ready will return 503
-
-    yield
-
-    # Run shutdown
-    await _shutdown()
-
-
-# Replace the default app lifespan with our custom one
-app = FastAPI(
-    title="OpsSwarm Enterprise OpenClaw+GitHub",
-    version=__version__,
-    lifespan=lifespan,
-)
+@app.on_event("shutdown")
+async def _shutdown_drain():
+    await get_readiness().initiate_drain()
 
 
 # ---------------------------------------------------------------------------
@@ -373,43 +156,18 @@ app = FastAPI(
 
 @app.get("/health")
 async def health():
-    """Liveness probe - returns 200 if the process is alive.
-
-    Does NOT check whether the application is ready to serve traffic.
-    Use /ready for readiness checks.
-    """
     return {"ok": True, "version": __version__, "architecture": "openclaw+github"}
 
 
 @app.get("/ready")
 async def ready():
-    """Readiness probe - returns 200 only when fully initialized and accepting work.
-
-    Returns:
-    - 200: Application is ready to serve traffic (startup checks passed)
-    - 503: Application is not ready (still starting, failed, or draining)
-
-    The response body does not leak sensitive information such as
-    authentication tokens, file paths, or raw dependency errors.
-    """
-    state = lifecycle.state
-
-    if state == AppState.READY:
-        return {
-            "ready": True,
-            "state": state.value,
-            "accepting_work": True,
-        }
-    else:
-        # Return 503 with generic message - no sensitive info leaked
+    """Readiness endpoint. 200 if OK, else 503."""
+    if not get_readiness().ready:
         raise HTTPException(
             status_code=503,
-            detail={
-                "ready": False,
-                "state": state.value,
-                "accepting_work": False,
-            },
+            detail="Startup incomplete or service is draining",
         )
+    return {"ok": True}
 
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])
@@ -475,6 +233,7 @@ async def get_checkpoint(issue_number: int):
 
 
 @app.post("/runs/{issue_number}/resume", dependencies=[Depends(write_scope)])
+@check_draining
 async def resume_run(issue_number: int):
     """Resume a run from its last checkpoint."""
     r = engine.runs.get(issue_number)
@@ -502,6 +261,7 @@ async def resume_run(issue_number: int):
 
 
 @app.post("/webhooks/github")
+@check_draining
 async def github_webhook(
     request: Request,
     x_github_event: str | None = Header(None),
@@ -515,8 +275,9 @@ async def github_webhook(
     data = await request.json()
     if x_github_event == "issues" and data.get("action") == "opened":
         number = int(data["issue"]["number"])
-        task = asyncio.create_task(engine.start_issue(number, x_github_delivery))
-        lifecycle.register_background_task(task)
+        await get_readiness().start_background_dispatch(
+            engine.start_issue(number, x_github_delivery)
+        )
         return {"accepted": True, "issue": number}
     if x_github_event == "issue_comment" and data.get("action") == "created":
         number = int(data["issue"]["number"])
@@ -561,6 +322,7 @@ async def github_webhook(
 
 
 @app.post("/hooks/monitoring")
+@check_draining
 async def monitoring_event(request: Request):
     # --- Body size check (before any auth — large body is a DoS vector) ---
     content_length = request.headers.get("content-length")
@@ -647,6 +409,5 @@ async def monitoring_event(request: Request):
     )
     issue = await gh.create_issue(title, body, labels)
     number = int(issue["number"])
-    task = asyncio.create_task(engine.start_issue(number))
-    lifecycle.register_background_task(task)
+    asyncio.create_task(engine.start_issue(number))
     return {"accepted": True, "issue_number": number}

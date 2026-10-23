@@ -17,11 +17,17 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def _setup_env():
     """Ensure OPSWARM_RUNTIME_SECRET is present and auth module is loaded."""
+    import asyncio
+
     import opsswarm.auth as auth_module
+    import opsswarm.runtime as runtime_module
 
     os.environ.setdefault("OPSWARM_RUNTIME_SECRET", "test-secret")
     auth_module.reload_auth_config()
     auth_module._monitoring_limiter._hits.clear()
+    # Mirror production startup: mark the process ready so @check_draining does not
+    # block tests that exercise the mutation endpoints.
+    asyncio.run(runtime_module.readiness.startup_complete())
     yield
     auth_module.reload_auth_config()
     auth_module._monitoring_limiter._hits.clear()

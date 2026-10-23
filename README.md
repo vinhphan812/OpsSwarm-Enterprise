@@ -264,7 +264,7 @@ export OPSWARM_CONFIG=config/production.yaml
 uvicorn opsswarm.api:app --host 0.0.0.0 --port 8088
 ```
 
-Health check (liveness):
+Health check:
 
 ```bash
 curl http://localhost:8088/health
@@ -274,24 +274,6 @@ Expected shape:
 
 ```json
 { "ok": true, "version": "2.2.0", "architecture": "openclaw+github" }
-```
-
-Readiness check (liveness + initialization):
-
-```bash
-curl http://localhost:8088/ready
-```
-
-Expected shape (when ready):
-
-```json
-{ "ready": true, "state": "ready", "accepting_work": true }
-```
-
-When not ready (starting, failed, or draining), returns HTTP 503 with:
-
-```json
-{ "ready": false, "state": "starting|draining|failed", "accepting_work": false }
 ```
 
 ## GitHub webhook setup
@@ -340,7 +322,6 @@ Current FastAPI endpoints include:
 
 ```text
 GET  /health
-GET  /ready
 GET  /runs
 GET  /runs/{issue_number}
 GET  /runs/{issue_number}/evidence
