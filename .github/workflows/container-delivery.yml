@@ -350,6 +350,12 @@ jobs:
           grep -n -A3 "readinessProbe:" evidence/dev-overlay.yaml | tee evidence/readiness-probe.txt
           grep -q "path: /ready" evidence/dev-overlay.yaml
 
+      - name: Apply the dev overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
+
       - name: Create the registry pull secret
         shell: bash
         run: |
@@ -366,12 +372,6 @@ jobs:
           kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.template.spec.imagePullSecrets}' \
             | tee evidence/pull-secret.txt
           echo
-
-      - name: Apply the dev overlay
-        shell: bash
-        run: |
-          set -euo pipefail
-          kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
 
       - name: Wait for the rollout to become ready
         shell: bash
