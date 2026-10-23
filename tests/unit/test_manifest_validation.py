@@ -102,3 +102,62 @@ def test_manifest_policy_violations_fail_closed(
 
     with pytest.raises(ManifestValidationError, match=expected_error):
         validate_manifest_file(manifest)
+
+
+def _write_network_policy(path: Path, *, namespace: str = "opsswarm", cidr: str = "10.0.0.0/16", except_list: list[str] | None = None) -> Path:
+    except_yaml = ""
+    if except_list is not None:
+        except_items = "\n".join(f"              - {exc}" for exc in except_list)
+        except_yaml = f"            except:\n{except_items}"
+    path.write_text(
+        f"""
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: test-netpol
+  namespace: {namespace}
+spec:
+  podSelector:
+    matchLabels:
+      app: opsswarm
+  egress:
+    - to:
+        - ipBlock:
+            cidr: {cidr}
+{except_yaml}
+      ports:
+        - protocol: TCP
+          port: 443
+""".strip(),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_valid_network_policy_passes(tmp_path: Path) -> None:
+    manifest = _write_network_policy(tmp_path / "netpol.yaml", cidr="10.0.0.0/16", except_list=["10.0.1.0/24"])
+    assert validate_manifest_file(manifest) == []
+
+
+def test_network_policy_invalid_namespace_fails(tmp_path: Path) -> None:
+    manifest = _write_network_policy(tmp_path / "netpol.yaml", namespace="default")
+    with pytest.raises(ManifestValidationError, match="NetworkPolicy namespace must be 'opsswarm'"):
+        validate_manifest_file(manifest)
+
+
+def test_network_policy_disjoint_except_fails(tmp_path: Path) -> None:
+    manifest = _write_network_policy(tmp_path / "netpol.yaml", cidr="140.82.112.0/22", except_list=["192.30.252.0/22"])
+    with pytest.raises(ManifestValidationError, match="ipBlock except '192.30.252.0/22' must be a strict subset"):
+        validate_manifest_file(manifest)
+
+
+def test_network_policy_equal_except_fails(tmp_path: Path) -> None:
+    manifest = _write_network_policy(tmp_path / "netpol.yaml", cidr="10.0.0.0/16", except_list=["10.0.0.0/16"])
+    with pytest.raises(ManifestValidationError, match="ipBlock except '10.0.0.0/16' must be a strict subset"):
+        validate_manifest_file(manifest)
+
+
+def test_network_policy_invalid_cidr_fails(tmp_path: Path) -> None:
+    manifest = _write_network_policy(tmp_path / "netpol.yaml", cidr="not-a-cidr")
+    with pytest.raises(ManifestValidationError, match="invalid cidr"):
+        validate_manifest_file(manifest)

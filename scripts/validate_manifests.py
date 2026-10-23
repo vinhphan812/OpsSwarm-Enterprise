@@ -53,6 +53,7 @@ The validator is read-only: it never contacts a cluster or a registry.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -481,6 +482,73 @@ def validate_configmap(configmap: dict[str, Any], context: str, profile: Profile
             )
 
 
+def validate_network_policy(network_policy: dict[str, Any], context: str, profile: Profile) -> None:
+    """Enforce NetworkPolicy validation rules (namespace and ipBlock except strict subset).
+
+    Raises:
+        ManifestValidationError: if the NetworkPolicy violates the policy.
+    """
+    metadata = _metadata_of(network_policy)
+    namespace = metadata.get("namespace")
+    if namespace != EXPECTED_NAMESPACE:
+        raise ManifestValidationError(
+            f"{context}: NetworkPolicy namespace must be {EXPECTED_NAMESPACE!r}, got {namespace!r}"
+        )
+
+    spec = _spec_of(network_policy)
+    for section_name in ("ingress", "egress"):
+        rules = spec.get(section_name)
+        if not isinstance(rules, list):
+            continue
+        for rule_idx, rule in enumerate(rules):
+            if not isinstance(rule, dict):
+                continue
+            endpoints = rule.get("from") if section_name == "ingress" else rule.get("to")
+            if not isinstance(endpoints, list):
+                continue
+            for ep_idx, ep in enumerate(endpoints):
+                if not isinstance(ep, dict):
+                    continue
+                ip_block = ep.get("ipBlock")
+                if not isinstance(ip_block, dict):
+                    continue
+                cidr = ip_block.get("cidr")
+                if not cidr or not isinstance(cidr, str):
+                    raise ManifestValidationError(
+                        f"{context}: {section_name}[{rule_idx}] ipBlock must declare a valid cidr string"
+                    )
+                try:
+                    ip_net = ipaddress.ip_network(cidr, strict=False)
+                except ValueError as exc:
+                    raise ManifestValidationError(
+                        f"{context}: {section_name}[{rule_idx}] invalid cidr {cidr!r}: {exc}"
+                    ) from exc
+
+                excepts = ip_block.get("except")
+                if excepts is not None:
+                    if not isinstance(excepts, list):
+                        raise ManifestValidationError(
+                            f"{context}: {section_name}[{rule_idx}] ipBlock except must be a list"
+                        )
+                    for exc_item in excepts:
+                        if not isinstance(exc_item, str):
+                            raise ManifestValidationError(
+                                f"{context}: {section_name}[{rule_idx}] ipBlock except entry must be a string"
+                            )
+                        try:
+                            exc_net = ipaddress.ip_network(exc_item, strict=False)
+                        except ValueError as exc:
+                            raise ManifestValidationError(
+                                f"{context}: {section_name}[{rule_idx}] invalid except CIDR {exc_item!r}: {exc}"
+                            ) from exc
+
+                        if not exc_net.subnet_of(ip_net) or exc_net == ip_net:
+                            raise ManifestValidationError(
+                                f"{context}: {section_name}[{rule_idx}] ipBlock except {exc_item!r} "
+                                f"must be a strict subset of cidr {cidr!r}"
+                            )
+
+
 def validate_document(document: dict[str, Any], context: str, profile: Profile) -> None:
     """Dispatch a single rendered manifest to its kind-specific validator.
 
@@ -499,6 +567,8 @@ def validate_document(document: dict[str, Any], context: str, profile: Profile) 
         validate_secret(document, context, profile)
     elif kind == "ConfigMap":
         validate_configmap(document, context, profile)
+    elif kind == "NetworkPolicy":
+        validate_network_policy(document, context, profile)
 
 
 def validate_manifest_file(path: Path, profile: Profile | None = None) -> list[str]:

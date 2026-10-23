@@ -114,12 +114,6 @@ spec:
     - to:
         - ipBlock:
             cidr: 140.82.112.0/22
-            # Exclude GitHub-hosted runner egress — defence-in-depth only.
-            # The runner's own egress rules should already block outbound calls;
-            # this exclusion prevents accidental OpsSwarm → runner callback even
-            # if a runner IP falls within GitHub's AS16033 range.
-            except:
-              - 192.30.252.0/22  # GitHub Actions runner IPs (verify at runner.yaml)
       ports:
         - protocol: TCP
           port: 443
