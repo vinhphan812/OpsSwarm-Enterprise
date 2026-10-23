@@ -481,7 +481,13 @@ subject to the same `owner_id` / `epoch` validation.
 
 ### 3. Failure-Injection Test Case: The Paused Leader Race
 
-To verify this contract, the test suite includes a failure-injection scenario (`test_paused_leader_external_side_effect_reconciliation.py`):
+The acceptance-test contract requires a failure-injection scenario for this contract. It is to be
+implemented as `test_paused_leader_external_side_effect_reconciliation.py` and is owned by Kanban task
+`t_5968c86a` (Phase 5 — HA Integration Tests), which must implement and verify it before this ADR can
+be considered for review or acceptance. No such test exists in the repository today — see
+"Explicit Acceptance-Test Contract & Kanban Ownership", Test 4.
+
+The scenario is specified as follows:
 
 ```
 Setup:
@@ -870,7 +876,7 @@ The following tests are specified as formal acceptance criteria. Each test is ow
 
 ## Source Code Anchors
 
-|| Concern | File | Current State |
+| Concern | File | Current State |
 |---|---|---|
 | Run persistence | `opsswarm/store.py` | Atomic JSON files; no cross-process coordination |
 | Evidence persistence | `opsswarm/evidence.py` | JSONL + per-run file lock; no cross-host safety |
@@ -901,7 +907,7 @@ side effects, or a replacement for the runtime-owned drain lifecycle.
 
 ## Alternatives Considered
 
-|| Option | Description | Rejection Rationale |
+| Option | Description | Rejection Rationale |
 |---|---|---|
 | A — Postgres-backed coordination | This ADR — chosen | Best fit for the required cross-host transactional CAS and durable fencing; requires a managed PostgreSQL deployment dependency that does not exist in this repository today |
 | B — Redis / BullMQ | Distributed queue + state | Not present in codebase; introduces new operational dependency |
