@@ -34,6 +34,7 @@ from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
+from .runtime import check_draining, get_readiness
 from .webhook import verify_signature
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,14 @@ async def _startup_auth_check():
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
+    await get_readiness().startup_complete()
+
+
+@app.on_event("shutdown")
+async def _shutdown_drain():
+    await get_readiness().initiate_drain()
+    # Also ensure any background tasks or in-flight operations are awaited or cleaned up
+    await asyncio.sleep(0.05)
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +158,17 @@ async def _startup_auth_check():
 @app.get("/health")
 async def health():
     return {"ok": True, "version": __version__, "architecture": "openclaw+github"}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness endpoint. 200 if OK, else 503."""
+    if not get_readiness().ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Startup incomplete or service is draining",
+        )
+    return {"ok": True}
 
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])
@@ -241,6 +261,7 @@ async def resume_run(issue_number: int):
 
 
 @app.post("/webhooks/github")
+@check_draining
 async def github_webhook(
     request: Request,
     x_github_event: str | None = Header(None),
@@ -299,6 +320,7 @@ async def github_webhook(
 
 
 @app.post("/hooks/monitoring")
+@check_draining
 async def monitoring_event(request: Request):
     # --- Body size check (before any auth — large body is a DoS vector) ---
     content_length = request.headers.get("content-length")
