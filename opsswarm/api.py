@@ -322,6 +322,69 @@ async def _shutdown() -> None:
         logger.exception("Error during graceful shutdown")
 
 
+def _make_sigterm_handler(previous_sigterm):
+    """Build the SIGTERM handler that chains to the server's own handler.
+
+    The handler must not *replace* the server's own SIGTERM handling: uvicorn
+    installs a handler that flips its ``should_exit`` flag, which is what makes
+    the process stop accepting connections and shut the event loop down.
+    Overwriting it without chaining leaves the process running until the
+    orchestrator escalates to SIGKILL, which breaks the graceful-drain
+    contract documented in ADR-030.
+
+    The chain is therefore: mark DRAINING (so /ready starts returning 503),
+    schedule the bounded background-task drain, then delegate to the previous
+    handler so uvicorn performs its own graceful shutdown.
+
+    Args:
+        previous_sigterm: The handler that was installed before this one —
+            typically uvicorn's.  ``None`` means "nothing was installed".
+
+    Returns:
+        A ``(signum, frame)`` callable suitable for ``signal.signal``.
+    """
+
+    def _sigterm_handler(signum, frame):
+        logger.info(f"Received signal {signum}, initiating graceful drain")
+        lifecycle.set_draining()
+        try:
+            asyncio.get_running_loop().call_soon_threadsafe(
+                lambda: asyncio.ensure_future(lifecycle.drain())
+            )
+        except RuntimeError:
+            # No running loop (e.g. signal delivered during shutdown).
+            pass
+        # Delegate to the previous handler so the server exits gracefully.
+        if callable(previous_sigterm):
+            previous_sigterm(signum, frame)
+        elif previous_sigterm == signal.SIG_DFL:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    return _sigterm_handler
+
+
+def _install_sigterm_handler():
+    """Install the chained SIGTERM handler for the running process.
+
+    Installing the handler is a no-op on platforms that do not support
+    ``signal.signal`` for SIGTERM (Windows), so the container path is the
+    only one that changes behaviour.
+
+    Returns:
+        The installed handler, or ``None`` when installation was not possible.
+    """
+    try:
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+        handler = _make_sigterm_handler(previous_sigterm)
+        signal.signal(signal.SIGTERM, handler)
+        return handler
+    except (ValueError, OSError):
+        # Windows doesn't support SIGTERM handler in the same way
+        logger.debug("SIGTERM handler not available on this platform")
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """FastAPI lifespan context manager for startup/shutdown.
@@ -330,24 +393,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     - On shutdown: initiates graceful drain of background tasks.
     - Sets up SIGTERM handler for container/orchestrator graceful shutdown.
     """
-    # Set up SIGTERM handler
-    def _sigterm_handler(signum, frame):
-        logger.info(f"Received signal {signum}, initiating graceful drain")
-        # Schedule drain in the event loop
-        asyncio.create_task(lifecycle.drain())
-
-    # Install signal handler (only works on Unix-like systems; no-op on Windows)
-    try:
-        signal.signal(signal.SIGTERM, _sigterm_handler)
-    except (ValueError, OSError):
-        # Windows doesn't support SIGTERM handler in the same way
-        logger.debug("SIGTERM handler not available on this platform")
+    # Install the SIGTERM handler (only works on Unix-like systems; no-op on
+    # Windows).  See `_install_sigterm_handler` for the chaining contract.
+    _install_sigterm_handler()
 
     # Run startup checks
     try:
         await _startup_checks()
-    except Exception:
-        lifecycle.set_failed(str(Exception))
+    except Exception as exc:
+        lifecycle.set_failed(str(exc))
         logger.exception("Startup checks failed")
         # Don't raise - let FastAPI start so /health still works
         # but /ready will return 503
