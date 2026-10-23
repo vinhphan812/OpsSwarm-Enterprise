@@ -203,3 +203,36 @@ class TestGitHubClientResilienceWiring:
 
             # POST request must not be retried automatically
             assert mock_request.call_count == 1
+
+    def test_jitter_bounds(self):
+        policy = RetryPolicy(base_delay=4.0, max_delay=10.0, jitter_ratio=0.5)
+        for _ in range(50):
+            d = policy.delay_for(1)
+            assert 2.0 <= d <= 4.0
+
+    def test_parse_retry_after_headers(self):
+        headers = MagicMock()
+        headers.get = lambda k: "12" if k == "retry-after" else None
+        secs, reset = parse_retry_after(headers)
+        assert secs == 12.0
+
+    @pytest.mark.asyncio
+    async def test_circuit_half_open_concurrency(self):
+        cb = CircuitBreaker("probe-dep", failure_threshold=1, recovery_timeout=0.01, half_open_max_calls=1)
+        await cb.record_failure()
+        assert cb.is_open
+        await asyncio.sleep(0.02)
+        await cb.acquire()
+        assert cb.state == "HALF_OPEN"
+        with pytest.raises(DependencyCircuitOpen):
+            await cb.acquire()
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_write_handling(self, client):
+        with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = httpx.ReadTimeout("Read timed out")
+            client.retry_policy = RetryPolicy(max_attempts=3, base_delay=0.01, sleep=AsyncMock())
+            with pytest.raises(AmbiguousWriteOutcome) as exc_info:
+                await client.comment(1, "hello")
+            assert "ambiguous_write" in exc_info.value.error_slug
+            assert mock_request.call_count == 1
