@@ -166,7 +166,9 @@ jobs:
           fail_ci_if_error: false
 
   skill-gates:
-    name: Skill gate ${{ matrix.skill }}
+    # These checks supplement CI. Canonical required skill checks are emitted
+    # by skill-gates.yml; distinct names prevent an ambiguous duplicate match.
+    name: CI skill gate ${{ matrix.skill }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
