@@ -13,3 +13,5 @@ def test_explicit_command_only():
 @pytest.mark.unit
 def test_unknown_command_is_not_authority():
     assert parse_command("/opsswarm maybe rollback") is None
+    assert parse_command("/opsswarm   ") is None
+

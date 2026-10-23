@@ -203,3 +203,81 @@ class TestGitHubClientResilienceWiring:
 
             # POST request must not be retried automatically
             assert mock_request.call_count == 1
+
+
+class TestResilienceAdditionalCoverage:
+    def test_dependency_error_for_log(self):
+        err = DependencyUnavailable("error message", operation="GET:/test", status_code=503, correlation_id="corr-123")
+        log_str = err.for_log()
+        assert "corr-123" in log_str
+        assert "op=GET:/test" in log_str
+        assert "status=503" in log_str
+        comment_str = err.for_comment()
+        assert "dependency_unavailable" in comment_str
+        assert "corr-123" in comment_str
+
+    def test_classify_http_error_other_status(self):
+        from opsswarm.resilience import classify_http_error
+        resp = MagicMock(status_code=400, headers={}, text="Bad Request")
+        err = classify_http_error(resp, method="GET", path="/test")
+        assert isinstance(err, InvalidDependencyResponse)
+
+
+    def test_header_value_edge_cases(self):
+        from opsswarm.resilience import _header_value
+        assert _header_value(None, "foo") is None
+        assert _header_value(object(), "foo") is None
+
+    def test_parse_retry_after_invalid(self):
+        # Invalid float in retry-after and x-ratelimit-reset
+        headers1 = {"retry-after": "not-a-float"}
+        assert parse_retry_after(headers1) == (None, None)
+
+        headers2 = {"x-ratelimit-reset": "not-a-float"}
+        assert parse_retry_after(headers2) == (None, None)
+
+    def test_parse_retry_after_valid_reset(self):
+        # Valid x-ratelimit-reset epoch timestamp
+        now = datetime.now(timezone.utc)
+        epoch = (now.timestamp() + 10)
+        headers = {"x-ratelimit-reset": str(epoch)}
+        delta, reset_at = parse_retry_after(headers, now=now)
+        assert delta is not None
+        assert reset_at is not None
+
+
+    def test_has_rate_limit_evidence_invalid_remaining(self):
+        from opsswarm.resilience import _has_rate_limit_evidence
+        headers = {"x-ratelimit-remaining": "invalid"}
+        assert _has_rate_limit_evidence(headers, "some body") is False
+
+    def test_circuit_breaker_validation_and_half_open_limits(self):
+        with pytest.raises(ValueError):
+            CircuitBreaker("cb", failure_threshold=0)
+        with pytest.raises(ValueError):
+            CircuitBreaker("cb", recovery_timeout=0.0)
+        with pytest.raises(ValueError):
+            CircuitBreaker("cb", half_open_max_calls=0)
+
+        cb = CircuitBreaker("cb", failure_threshold=1, recovery_timeout=0.05, half_open_max_calls=1)
+        snapshot = cb.snapshot()
+        assert snapshot["name"] == "cb"
+        assert snapshot["state"] == "CLOSED"
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_half_open_max_calls_exceeded(self):
+        cb = CircuitBreaker("cb", failure_threshold=1, recovery_timeout=0.01, half_open_max_calls=1)
+        await cb.record_failure()
+        assert cb.state == "OPEN"
+        await asyncio.sleep(0.02)
+        # Transition to HALF_OPEN
+        await cb.acquire(operation="GET:/test")
+        assert cb.state == "HALF_OPEN"
+        # Second acquire in same half_open window should raise DependencyCircuitOpen
+        with pytest.raises(DependencyCircuitOpen):
+            await cb.acquire(operation="GET:/test")
+
+    def test_retry_policy_capped_zero_delay(self):
+        policy = RetryPolicy(base_delay=0.0)
+        assert policy.delay_for(1) == 0.0
+

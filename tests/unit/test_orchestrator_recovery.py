@@ -71,3 +71,29 @@ async def test_recover_runs_failed_recovery(cfg, tmp_path):
 
     # Verify recover_run was called
     eng.reconciliation.recover_run.assert_called_with(nr)
+
+
+@pytest.mark.asyncio
+async def test_execute_option_ambiguous_write_outcome(cfg, tmp_path):
+    from unittest.mock import patch
+    from opsswarm.models import RunRecord, RunState, RemediationOption
+    from opsswarm.resilience import AmbiguousWriteOutcome
+    from opsswarm import skill_logic as S
+
+    gh = FakeGitHub({"number": 1})
+    oc = FakeOpenClaw([])
+    eng = Orchestrator(cfg, gh, oc, str(tmp_path), enable_recovery=False)
+
+    run = RunRecord(run_id="run-ambig", issue_number=102)
+    run.state = RunState.EXECUTING
+    from opsswarm.models import Risk
+    option = RemediationOption(id="opt1", description="test", risk=Risk.SAFE_WRITE)
+
+    with patch.object(S, "execute_recovery", side_effect=AmbiguousWriteOutcome("Ambiguous write", operation="test_op")):
+        with patch.object(eng.github, "comment") as mock_comment:
+            await eng._execute_option(run, option)
+
+    assert run.state == RunState.WAITING_DECISION
+    assert run.decision is not None
+    mock_comment.assert_called_once()
+

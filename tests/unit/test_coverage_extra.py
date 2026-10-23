@@ -259,3 +259,106 @@ class TestEvidenceAdditionalCoverage:
             # (depends on whether it was already imported). Since it may already be imported
             # at test time, test the else branch by verifying metrics is available.
             assert result is not None  # metrics is available in the test env
+
+
+class TestMarkdownPostmortemNoRootCause:
+    def test_postmortem_no_root_cause(self):
+        from opsswarm.markdown import postmortem
+        from opsswarm.models import RunRecord
+        run = RunRecord(run_id="run-rc-none", issue_number=1)
+        run.root_cause = None
+        run.incident = None
+        text = postmortem(run)
+        assert "Postmortem" in text
+        assert "None proposed" in text
+
+
+class TestStoreExtraCoverage:
+    def test_store_corrupt_and_checkpoints(self, tmp_path):
+        from opsswarm.store import RunStore
+        from opsswarm.models import RunRecord
+        store = RunStore(data_dir=tmp_path, enable_atomic_writes=True, enable_checkpoints=True)
+        run = RunRecord(run_id="store-1", issue_number=1)
+        
+        # Stale tmp for save
+        tmp_path_file = tmp_path / "runs" / ".store-1.tmp"
+        tmp_path_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path_file.write_text("stale")
+        store.save(run)
+        assert not tmp_path_file.exists()
+
+        # Load all with corrupt file
+        corrupt_json = tmp_path / "runs" / "corrupt.json"
+        corrupt_json.write_text("not json")
+        runs = store.load_all()
+        assert len(runs) == 1
+
+        # Stale tmp for checkpoint
+        cp_tmp = tmp_path / "runs" / ".store-1.checkpoint.tmp"
+        cp_tmp.write_text("stale cp")
+        store.save_checkpoint(run, "data")
+        assert not cp_tmp.exists()
+
+        cp_file = tmp_path / "runs" / "store-1.checkpoint"
+        cp_file.write_text("bad checkpoint json")
+        assert store.load_checkpoint("store-1") is None
+
+        assert store.delete_checkpoint("store-1") is True
+        assert store.delete_checkpoint("nonexistent") is False
+
+
+class TestPolicyEngineExtraCoverage:
+    def test_resolve_effective_risk_registry_and_escalation(self):
+        from opsswarm.policy import PolicyEngine
+        from opsswarm.models import Risk
+        from opsswarm.registry import RegistryResult
+        registry = MagicMock()
+        registry.lookup.return_value = RegistryResult(matched=True, registry_risk=Risk.DESTRUCTIVE)
+        engine = PolicyEngine(cfg={})
+        engine._registry = registry
+        
+        plan = MagicMock()
+        plan.options = [MagicMock(description="patch /admin/users")]
+        risk, reg_res, class_risk = engine.resolve_effective_risk(plan, Risk.READ)
+        assert risk == Risk.DESTRUCTIVE
+        assert reg_res.matched is True
+
+        # Heuristic escalation
+        engine_no_reg = PolicyEngine(cfg={})
+        risk2, _, _ = engine_no_reg.resolve_effective_risk(plan, Risk.READ)
+        assert risk2 == Risk.DESTRUCTIVE
+
+
+class TestCliExtraCoverage:
+    def test_cli_unsupported_command_direct(self):
+        from opsswarm.cli import main, VERIFY_USAGE
+        with patch("opsswarm.cli._build_parser") as mock_build:
+            mock_parser = MagicMock()
+            mock_args = MagicMock(command="other", evidence_command=None)
+            mock_parser.parse_args.return_value = mock_args
+            mock_build.return_value = mock_parser
+            assert main([]) == VERIFY_USAGE
+            mock_parser.error.assert_called_once_with("unsupported command")
+
+
+class TestCommandsAndConfigExtraCoverage:
+    def test_parse_command_empty_rest(self):
+        from opsswarm.commands import parse_command
+        assert parse_command("/opsswarm   ") is None
+
+    def test_get_ha_env_database_url(self, monkeypatch):
+        from opsswarm.config import get_ha
+        monkeypatch.setenv("HA_DATABASE_URL", "postgresql://user:pass@localhost/db")
+        ha = get_ha({})
+        assert ha["database_url"] == "postgresql://user:pass@localhost/db"
+
+
+
+
+
+
+
+
+
+
+
