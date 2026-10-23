@@ -112,6 +112,10 @@ cp .env.example .env
 # 2. Edit .env — at minimum set:
 #    OPSWARM_OPENCLAW_BIN=/path/to/openclaw
 #    GITHUB_TOKEN_FILE_HOST=$(pwd)/.github-token
+#    GITHUB_REPO=owner/repo
+#
+#    GITHUB_REPO is mandatory: the compose file fails closed when it is unset,
+#    so the container is never handed an unresolved ${GITHUB_REPO} placeholder.
 
 # 3. Create the GitHub token file (0600 permissions required)
 echo -n "ghp_your_token_here" > .github-token
@@ -482,6 +486,26 @@ For production, use an approved secret manager, External Secrets, or Sealed Secr
 rather than literal values. The GitHub token itself belongs in the secret manager;
 never put it in `k8s/` files or Kustomize patches.
 
+`GITHUB_REPO` is **not** a secret, so it ships in the non-secret ConfigMap
+(`k8s/base/configmap.yaml`) and is injected into the application container from
+`opsswarm-config`. `config/production.yaml` references it as
+`repo: ${GITHUB_REPO}`, and the application refuses to start when the value is
+missing or is still an unresolved `${GITHUB_REPO}` placeholder — the pod
+crash-loops and the readiness probe never succeeds. Override the key in your
+overlay for a different target repository:
+
+```yaml
+# k8s/overlays/<env>/kustomization.yaml
+patches:
+  - target:
+      kind: ConfigMap
+      name: opsswarm-config
+    patch: |-
+      - op: replace
+        path: /data/GITHUB_REPO
+        value: your-org/your-repo
+```
+
 ### Render, validate, and deploy
 
 Render first and inspect the exact resources that Kustomize will apply:
@@ -550,6 +574,7 @@ are permitted for the chosen CNI.
 | `OPSWARM_OPENCLAW_BIN`     | Yes      | —                              | Absolute path to the OpenClaw binary          |
 | `GITHUB_TOKEN`             | Yes*     | —                              | GitHub PAT with repo and issue scopes         |
 | `GITHUB_TOKEN_FILE`        | No       | `/run/secrets/github-token`    | Path to mounted token file (preferred over env) |
+| `GITHUB_REPO`              | Yes      | —                              | Target repository in `owner/repo` form        |
 | `OPSWARM_CONFIG`           | No       | `config/production.yaml`       | Config file path inside the container         |
 | `OPSWARM_DATA_DIR`         | No       | `runtime-data`                 | Directory for run metadata and checkpoints     |
 | `OPSWARM_EVIDENCE_BACKEND` | No       | `file`                         | Evidence store backend (`file`, `memory`)     |

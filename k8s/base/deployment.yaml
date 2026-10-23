@@ -217,6 +217,14 @@ spec:
                 configMapKeyRef:
                   name: opsswarm-config
                   key: OPENCLAW_TIMEOUT_SECONDS
+            # Target GitHub repository in owner/repo form.  The application
+            # refuses to start when this is absent or still an unresolved
+            # ${GITHUB_REPO} placeholder (fail-closed at import time).
+            - name: GITHUB_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: GITHUB_REPO
 
             # References Secret values (sensitive).
             - name: GITHUB_TOKEN

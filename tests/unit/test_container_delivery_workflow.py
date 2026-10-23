@@ -233,6 +233,32 @@ class TestDigestAssertion:
             "container-delivery.yml must fail before Compose for an invalid repository"
         )
 
+    def test_kubernetes_evidence_overlay_supplies_a_concrete_repository(self):
+        """The Kubernetes path must deploy a concrete owner/repo, not a placeholder.
+
+        ``config/production.yaml`` carries ``repo: ${GITHUB_REPO}``.  When the
+        rendered manifest does not inject a concrete value the application
+        fails closed at import with
+        ``ValueError: repo must be in 'owner/repo' format``, the pod
+        crash-loops, ``/ready`` never returns 200 and the rollout times out.
+        """
+        if not CONTAINER_DELIVERY_WORKFLOW.is_file():
+            pytest.skip("container-delivery.yml not present")
+
+        content = _read(CONTAINER_DELIVERY_WORKFLOW)
+        assert "GITHUB_REPOSITORY: ${{ github.repository }}" in content, (
+            "container-delivery.yml must pass github.repository into the "
+            "Kubernetes overlay render step"
+        )
+        assert "path: /data/GITHUB_REPO" in content, (
+            "container-delivery.yml must patch the GITHUB_REPO ConfigMap key "
+            "with the concrete repository"
+        )
+        assert "still carries the unresolved GITHUB_REPO placeholder" in content, (
+            "container-delivery.yml must fail the render when the rendered "
+            "manifest still carries the unresolved ${GITHUB_REPO} placeholder"
+        )
+
     @pytest.mark.parametrize(
         "digest",
         [
@@ -324,6 +350,54 @@ class TestRenderedManifestPolicy:
         assert "fsGroup: 10001" in rendered, (
             "the production deployment must set fsGroup at Pod level"
         )
+
+    def test_base_configmap_declares_a_concrete_github_repository(self):
+        """The base ConfigMap must carry the target repository as owner/repo."""
+        configmap = K8S_BASE / "configmap.yaml"
+        if not configmap.is_file():
+            pytest.skip("k8s/base/configmap.yaml not present")
+
+        content = _read(configmap)
+        match = re.search(r"^\s*GITHUB_REPO:\s*(\S+)\s*$", content, re.MULTILINE)
+        assert match, "k8s/base/configmap.yaml must declare GITHUB_REPO"
+        repo = match.group(1)
+        assert re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9._-]+", repo), (
+            f"GITHUB_REPO must be a concrete owner/repo value; found {repo!r}"
+        )
+        assert "${" not in repo, (
+            "GITHUB_REPO must not be an unresolved interpolation placeholder"
+        )
+
+    def test_base_deployment_injects_the_repository_from_the_configmap(self):
+        """The application container must receive GITHUB_REPO."""
+        deployment = K8S_BASE / "deployment.yaml"
+        if not deployment.is_file():
+            pytest.skip("k8s/base/deployment.yaml not present")
+
+        content = _read(deployment)
+        assert "- name: GITHUB_REPO" in content, (
+            "k8s/base/deployment.yaml must inject GITHUB_REPO into the "
+            "application container"
+        )
+        assert re.search(
+            r"- name: GITHUB_REPO\s+valueFrom:\s+configMapKeyRef:\s+"
+            r"name: opsswarm-config\s+key: GITHUB_REPO",
+            content,
+        ), "GITHUB_REPO must be sourced from the opsswarm-config ConfigMap"
+
+    def test_rendered_overlays_carry_no_unresolved_repository_placeholder(self):
+        """Neither overlay may render an unresolved ${GITHUB_REPO} placeholder."""
+        for overlay in (DEV_OVERLAY, PROD_OVERLAY):
+            rendered = _render(overlay)
+            if rendered is None:
+                pytest.skip("no kustomize implementation available")
+            assert "${GITHUB_REPO}" not in rendered, (
+                f"the rendered {overlay.name} overlay still carries the "
+                "unresolved ${GITHUB_REPO} placeholder"
+            )
+            assert "GITHUB_REPO" in rendered, (
+                f"the rendered {overlay.name} overlay must set GITHUB_REPO"
+            )
 
     def test_single_kubernetes_tree_only(self):
         """There must be exactly one Kubernetes tree in the repository."""

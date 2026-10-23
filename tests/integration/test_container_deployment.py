@@ -766,6 +766,32 @@ class TestKubernetes:
                         f"ipBlock exception {child} must be a strict subset of {parent}"
                     )
 
+    def test_k8s_deployment_supplies_a_concrete_github_repository(self):
+        """The rendered deployment must inject a concrete owner/repo.
+
+        Without it the application fails closed at import time, the pod never
+        becomes ready and the single-replica rollout cannot succeed.
+        """
+        rendered = subprocess.run(
+            ["kubectl", "kustomize", "k8s/overlays/dev"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        if rendered.returncode != 0:
+            pytest.skip("kubectl kustomize unavailable")
+
+        docs = [d for d in rendered.stdout.split("\n---\n") if "kind: ConfigMap" in d]
+        assert docs, "the dev overlay must render the opsswarm-config ConfigMap"
+        configmap = yaml.safe_load(docs[0])
+        repo = configmap["data"].get("GITHUB_REPO", "")
+        assert re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._-]*/[a-zA-Z0-9._-]+", repo), (
+            f"the rendered ConfigMap must carry a concrete owner/repo; found {repo!r}"
+        )
+        assert "${" not in repo, "GITHUB_REPO must not be an unresolved placeholder"
+
     def test_k8s_namespace_exists(self):
         """C.1  namespace.yaml defines the opsswarm namespace."""
         ns_file = K8S_BASE / "namespace.yaml"

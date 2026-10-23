@@ -326,6 +326,7 @@ jobs:
         shell: bash
         env:
           IMAGE_REF: ${{ needs.push.outputs.image_ref }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p evidence/overlay
@@ -340,6 +341,17 @@ jobs:
             - name: ghcr.io/vinhphan812/opsswarm-enterprise
               newName: ghcr.io/vinhphan812/opsswarm-enterprise
               digest: ${IMAGE_REF##*@}
+          # The application fails closed at import when config/production.yaml
+          # still carries the unresolved GITHUB_REPO placeholder, so the
+          # evidence run must deploy a concrete owner/repo.
+          patches:
+            - target:
+                kind: ConfigMap
+                name: opsswarm-config
+              patch: |-
+                - op: replace
+                  path: /data/GITHUB_REPO
+                  value: ${GITHUB_REPOSITORY}
           EOF
           kubectl kustomize evidence/overlay > evidence/dev-overlay.yaml
           # The overlay must declare exactly one replica - no HA claims.
@@ -357,6 +369,13 @@ jobs:
           # The readiness probe must be present and point at /ready.
           grep -n -A3 "readinessProbe:" evidence/dev-overlay.yaml | tee evidence/readiness-probe.txt
           grep -q "path: /ready" evidence/dev-overlay.yaml
+          # The rendered manifest must carry a concrete owner/repo, never the
+          # unresolved config placeholder.
+          grep -n "GITHUB_REPO" evidence/dev-overlay.yaml | tee evidence/github-repo.txt
+          if grep -q '${GITHUB_REPO}' evidence/dev-overlay.yaml; then
+            echo "ERROR: rendered overlay still carries the unresolved GITHUB_REPO placeholder" >&2
+            exit 1
+          fi
 
       - name: Apply the dev overlay
         shell: bash
@@ -415,6 +434,11 @@ jobs:
             http://127.0.0.1:18080/ready | tee -a evidence/endpoint-probe.txt
           cat /tmp/ready.json | tee -a evidence/endpoint-probe.txt
           echo | tee -a evidence/endpoint-probe.txt
+          # The running pod must hold the concrete owner/repo it was deployed
+          # with, not the unresolved config placeholder.
+          echo "--- pod GITHUB_REPO ---" | tee -a evidence/endpoint-probe.txt
+          kubectl -n opsswarm exec "$pod" -- printenv GITHUB_REPO \
+            | tee -a evidence/endpoint-probe.txt
 
       - name: Demonstrate SIGTERM drain behaviour
         shell: bash

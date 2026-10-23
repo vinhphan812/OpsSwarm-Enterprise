@@ -23,6 +23,13 @@ data:
   # container and is copied from the image at build time.
   OPSWARM_CONFIG: /app/config/production.yaml
 
+  # ── GitHub target repository ──────────────────────────────────────────────
+  # Target repository in owner/repo form.  config/production.yaml references it
+  # as repo: ${GITHUB_REPO}; when this value is missing or still an unresolved
+  # placeholder the application fails closed at import and the readiness probe
+  # never succeeds.  Override this key in the overlay for your deployment.
+  GITHUB_REPO: vinhphan812/OpsSwarm-Enterprise
+
   # ── App environment ───────────────────────────────────────────────────────
   # development | production
   # Set to "production" in overlays/prod to enable fail-closed auth checks.
