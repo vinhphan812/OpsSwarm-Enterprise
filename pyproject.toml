@@ -28,11 +28,6 @@ dev = [
     "pytest-cov>=5,<8",
     "ruff>=0.6,<1",
 ]
-ha = [
-    "alembic>=1.13,<2",
-    "psycopg2-binary>=2.9,<3",
-    "sqlalchemy>=2.0,<3",
-]
 release = [
     "build==1.3.0",
     "cyclonedx-bom==7.4.0",
@@ -58,9 +53,6 @@ markers = [
 [tool.coverage.run]
 branch = true
 source = ["opsswarm"]
-omit = [
-    "opsswarm/ha_db.py",   # Phase 2-6 HA implementation; tested separately in those phases
-]
 
 [tool.coverage.report]
 fail_under = 90

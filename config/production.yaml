@@ -77,14 +77,3 @@ concurrency:
 tool_allowlist:
   path: config/tool-allowlist.yaml
   enabled: true
-
-# Issue #70 — HA Coordination (ADR-030)
-# High-availability multi-process coordination via PostgreSQL.
-# When disabled (default), uses in-memory rate limiter and unconditional /ready 200.
-ha:
-  enabled: false                      # default false — backward-compatible
-  database_url: ${HA_DATABASE_URL}   # psycopg2 connection string
-  lease_ttl_seconds: 30
-  heartbeat_interval_seconds: 10
-  standby_poll_interval_seconds: 5
-  rate_limit_table_enabled: false    # use postgres-backed rate limiting when true
