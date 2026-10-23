@@ -90,3 +90,50 @@ uvicorn opsswarm.api:app --host 0.0.0.0 --port 8088
 ```
 
 `GET /health` should return `ok: true`.
+
+## 5. Canonical Container and Kubernetes Profile (Issue #73)
+
+This documentation change does **not** introduce a second manifest tree. The
+canonical container-delivery implementation is the
+[`feature/pr93-remediation` branch / PR #104](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/104):
+
+- [`Dockerfile`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/Dockerfile)
+  and [`requirements.lock`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/requirements.lock)
+  define the image build inputs.
+- [`k8s/base/deployment.yaml`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/k8s/base/deployment.yaml),
+  [`pvc.yaml`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/k8s/base/pvc.yaml),
+  and [`secret.yaml`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/k8s/base/secret.yaml)
+  define the Kubernetes profile.
+- [`docs/guides/CONTAINER_DEPLOYMENT.md`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/docs/guides/CONTAINER_DEPLOYMENT.md)
+  is the operator runbook; follow it rather than copying a manifest from this page.
+
+### Deployment boundaries
+
+- The Deployment is deliberately `replicas: 1` with `strategy: Recreate`.
+  Scaling beyond one replica requires the distributed-state work tracked by Issue
+  #70.
+- Persistent state is supplied through the canonical PVCs: evidence at
+  `/var/lib/opsswarm` and runtime state at `/app/runtime-data`. Do not run more
+  than one writer against those stores.
+- The workload runs as UID/GID `10001`, disallows privilege escalation, drops all
+  Linux capabilities, and uses the runtime-default seccomp profile. The current
+  canonical manifest sets `readOnlyRootFilesystem: false` because the application
+  persists state in its writable mounts; do not represent a read-only-root profile
+  as the default Kubernetes configuration.
+- `GET /health` is the liveness endpoint. `GET /ready` is the dependency and
+  lifecycle gate used by the Kubernetes readiness probe; it returns `503` while
+  startup, draining, or failure checks are incomplete.
+- Create production credentials out of band using an approved secret manager,
+  External Secrets, or Sealed Secrets. The repository's Secret manifest is a
+  placeholder template and must never be populated with real values in Git.
+
+### Supply-chain evidence
+
+[`container-delivery.yml`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/.github/workflows/container-delivery.yml)
+configures SBOM/provenance generation, fail-closed Trivy scanning, immutable
+registry-digest capture, and a pull-by-digest check. Workflow configuration and
+CI success are not release or deployment acceptance evidence. For a specific
+image, retain the successful workflow artifacts, the exact `sha256` manifest
+digest, and the result of any applicable provenance/attestation verification;
+do not describe an image as signed or attested unless that verification actually
+succeeds.

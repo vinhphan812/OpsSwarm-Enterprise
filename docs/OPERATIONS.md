@@ -88,7 +88,7 @@ successful probe call.
 
 Monitor circuit state in Prometheus:
 
-```text
+```
 opsswarm_circuit_state_transitions{dependency="github:owner/repo",state="OPEN"}
 ```
 
@@ -113,70 +113,36 @@ opsswarm_dependency_retry_exhausted_total{operation="GET:/repos/..."}
 
 # Ambiguous writes (writes whose outcome is unknown — check GitHub)
 opsswarm_execution_ambiguous_total
-
-## Container deployment
-
-OpsSwarm ships as an OCI image (`Dockerfile` at repo root). The image is built
-from the canonical wheel, runs as non-root (uid 10001), and supports a read-only
-root filesystem with explicit write targets.
-
-### Building the image
-
-```bash
-docker build -f Dockerfile -t opsswarm:local .
 ```
 
-### Running with a read-only root filesystem
+## Canonical Kubernetes operations (Issue #73)
 
-```bash
-docker run --read-only \
-  --tmpfs /tmp:rw \
-  --tmpfs /var/run:rw \
-  -e OPSWARM_OPENCLAW_BIN=/path/to/openclaw \
-  -p 8080:8080 \
-  opsswarm:local
-```
+The canonical deployment assets are maintained in [PR #104](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/104)
+on `feature/pr93-remediation`, under [`k8s/`](https://github.com/vinhphan812/OpsSwarm-Enterprise/tree/feature/pr93-remediation/k8s).
+Use the [Container Deployment Guide](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/docs/guides/CONTAINER_DEPLOYMENT.md)
+for render, server-side dry-run, rollout, and rollback commands; this PR does not
+ship a competing `deploy/kubernetes/` tree.
 
-The pre-created `/app/runtime-data/` and `/var/lib/opsswarm/` directories inside the
-image are owned by `appuser` and survive on the read-only root. For persistent evidence
-store, bind a host volume:
+### Single-writer and lifecycle boundaries
 
-```bash
-docker run --read-only \
-  --tmpfs /tmp:rw --tmpfs /var/run:rw \
-  -v /data/opsswarm:/var/lib/opsswarm:rw \
-  -e OPSWARM_OPENCLAW_BIN=/path/to/openclaw \
-  -p 8080:8080 \
-  opsswarm:local
-```
+- Production is deliberately one replica with a `Recreate` strategy. Do not scale
+  the workload until the distributed-state contract tracked by Issue #70 exists.
+- The canonical PVCs hold evidence at `/var/lib/opsswarm` and runtime state at
+  `/app/runtime-data`; preserve their single-writer ownership during a rollout.
+- `/health` is a **liveness** signal: it confirms that the API process is alive.
+  It does not establish that startup validation, dependency checks, or draining
+  have completed.
+- `/ready` is the **readiness** lifecycle gate. The canonical Kubernetes Deployment
+  probes `/ready`; it is `200` only after startup validation and is `503` while
+  the service is starting, draining, or failed. Route traffic only after the
+  readiness probe succeeds.
+- The canonical pod uses a 60-second termination grace period. Before a restart or
+  rollback, inspect pod events and all-container logs; if readiness or health
+  verification fails, stop promotion and use `kubectl rollout undo` only after
+  diagnosing the failure.
 
-```
-
-### Environment variables
-
-| Variable                  | Default | Description                                          |
-|---------------------------|---------|------------------------------------------------------|
-| `PORT`                    | `8080`  | Port uvicorn binds                                  |
-| `OPSWARM_OPENCLAW_BIN`    | empty   | Absolute path to OpenClaw binary (required at runtime) |
-
-### OpenClaw runtime
-
-OpenClaw is NOT embedded in the image layers. Set `OPSWARM_OPENCLAW_BIN` to the
-absolute path of the OpenClaw binary on the host (bind mount) or in a Kubernetes
-sidecar volume. This allows OpenClaw to be upgraded independently of the OpsSwarm
-image without rebuilding the container.
-
-### Health endpoint
-
-`GET /health` returns `{"ok": true, "version": "2.2.0", "architecture": "openclaw+github"}`.
-The Docker `HEALTHCHECK` instruction probes this endpoint every 30 s. For Kubernetes,
-use an HTTP `GET` readiness probe on port 8080 path `/health` with a 10 s timeout.
-
-### Graceful shutdown
-
-The container entrypoint uses `exec "$@"` so that SIGTERM sent by `docker stop` or
-`kubectl delete pod` reaches uvicorn directly (PID 1). Set
-`--graceful-shutdown-timeout` on uvicorn or configure the pod's
-`terminationGracePeriodSeconds` if in-flight requests need more than the
-default 30 s Kubernetes termination grace period.
-```
+The workload runs as UID/GID `10001`, disallows privilege escalation, drops all
+capabilities, and applies the runtime-default seccomp profile. The current canonical
+manifest deliberately retains a writable root filesystem for application persistence;
+the read-only-root configuration documented for Docker is an opt-in runtime profile,
+not the default Kubernetes assertion.
