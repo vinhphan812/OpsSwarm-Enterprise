@@ -304,6 +304,7 @@ jobs:
           # and is executable.  A stub is installed on the NODE (not in the
           # image) so the init-container gate is exercised for real.
           # Production operators mount the genuine OpenClaw binary here.
+          mkdir -p evidence
           node="$(kind get nodes --name opsswarm-evidence | head -1)"
           echo "node=$node" | tee evidence/kind-node.txt
           docker exec "$node" /bin/sh -c '
