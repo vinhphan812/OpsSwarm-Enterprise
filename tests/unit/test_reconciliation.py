@@ -238,3 +238,48 @@ class TestRecoveryResult:
 
         assert result.recovered is True
         assert result.checkpoint_sequence == 5
+
+
+class TestAmbiguousWriteHandoff:
+    """Tests for build_ambiguous_write_handoff."""
+
+    def test_build_ambiguous_write_handoff(self, manager):
+        from opsswarm.resilience import AmbiguousWriteOutcome
+        run = MagicMock()
+        run.run_id = "run-123"
+        outcome = AmbiguousWriteOutcome("Write failed ambiguously", operation="update_pr")
+        handoff = manager.build_ambiguous_write_handoff(run, outcome)
+
+        assert handoff["status"] == "reconciliation_required"
+        assert handoff["run_id"] == "run-123"
+        assert handoff["operation"] == "update_pr"
+        assert handoff["automatic_retry_permitted"] is False
+        assert 'investigate' in handoff['allowed_next_actions']
+        assert 'abort' in handoff['allowed_next_actions']
+        assert 'resume_after_external_confirmation' in handoff['allowed_next_actions']
+
+
+class TestReconciliationExtraCoverage:
+    def test_detect_gaps_malformed_task_data(self, manager, tmp_path):
+        manager.evidence.append('run-malformed', 'S2.task_graph', 'not-a-dict')
+        manager.evidence.append('run-malformed', 'S4.finding', {'task_id': 'T1'})
+        report = manager.reconcile('run-malformed')
+        assert report is not None
+
+    def test_get_recovery_recommendation_standard_evidence(self, manager):
+        from opsswarm.reconciliation import ReconciliationReport
+        from datetime import datetime, timezone
+        report = ReconciliationReport(
+            run_id='run-1',
+            total_records=3,
+            unique_idempotency_keys=3,
+            duplicates_skipped=0,
+            evidence_kinds=['S1.incident', 'S2.task_graph', 'S4.finding'],
+            gaps_detected=[],
+            last_evidence_timestamp=datetime.now(timezone.utc),
+            generated_at=datetime.now(timezone.utc),
+        )
+        rec = manager.get_recovery_recommendation(report, has_checkpoint=False)
+        assert 'Resume from evidence log' in rec
+
+

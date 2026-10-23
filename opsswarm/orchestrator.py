@@ -23,6 +23,7 @@ from .models import CommandOutcome  # Import for Issue #9 fix
 from .policy import PolicyEngine
 from .metrics import metrics
 from .reconciliation import ReconciliationManager
+from .resilience import AmbiguousWriteOutcome
 from .store import RunStore
 from .validators import validate_task_graph, TaskGraphError
 
@@ -531,8 +532,20 @@ class Orchestrator:
             return
         self._record_budget_snapshot(run, budget)
         budget.mark_openclaw_call()
-        run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
-                                                 run.root_cause, option)
+        try:
+            run.execution = await S.execute_recovery(self.oc, self.profile("recovery-responder"), run.run_id, run.incident,
+                                                     run.root_cause, option)
+        except AmbiguousWriteOutcome as outcome:
+            metrics.record_ambiguous_write()
+            handoff = self.reconciliation.build_ambiguous_write_handoff(run, outcome)
+            await self._set_state(run, RunState.WAITING_DECISION)
+            await self._save(run, "S6.ambiguous_write", handoff)
+            run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind="DECISION",
+                                           reason=str(outcome),
+                                           options=[],
+                                           question="Use /opsswarm investigate <read-only verification request>, /opsswarm abort, or /opsswarm resume after external confirmation.")
+            await self.github.comment(run.issue_number, decision_request(run))
+            return
         await self._save(run, "S5.execution", run.execution.model_dump())
         # Checkpoint after execution
         self.ev.checkpoint(run.run_id, CheckpointType.EXECUTION, {

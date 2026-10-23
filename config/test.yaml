@@ -72,3 +72,8 @@ observability:
     level: INFO
     format: structured_json
     corr_id_context: true
+
+# Issue #70 — HA Coordination (ADR-030) — disabled for tests by default
+ha:
+  enabled: false
+  rate_limit_table_enabled: false

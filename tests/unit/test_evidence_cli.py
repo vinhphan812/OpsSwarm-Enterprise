@@ -20,3 +20,21 @@ def test_verify_cli_fail(tmp_path, capsys):
     captured = capsys.readouterr()
     assert "FAIL" in captured.err
     assert "ERROR" in captured.err
+
+
+def test_cli_unsupported_command(capsys):
+    from opsswarm.cli import main
+    import pytest
+    with pytest.raises(SystemExit) as exc:
+        main([])
+    assert exc.value.code == 2
+
+
+def test_cli_unsupported_evidence_command(capsys):
+    from opsswarm.cli import main, VERIFY_USAGE
+    import pytest
+    with pytest.raises(SystemExit) as exc:
+        main(["evidence", "unknown"])
+    assert exc.value.code == VERIFY_USAGE
+
+
