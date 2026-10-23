@@ -353,6 +353,13 @@ jobs:
           grep -n -A3 "readinessProbe:" evidence/dev-overlay.yaml | tee evidence/readiness-probe.txt
           grep -q "path: /ready" evidence/dev-overlay.yaml
 
+      - name: Create the application namespace before registry credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The pull secret is namespaced; create the destination before it.
+          kubectl create namespace opsswarm --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Create the registry pull secret
         shell: bash
         run: |
