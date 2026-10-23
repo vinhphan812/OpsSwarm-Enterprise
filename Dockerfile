@@ -48,8 +48,10 @@ RUN uv pip install --no-cache --upgrade setuptools wheel pip build
 # Install all runtime dependencies from the locked requirements file so that
 # syft/Trivy can produce an accurate SBOM and vulnerability report.
 COPY requirements.lock /app/requirements.lock
-RUN uv pip install --no-cache -r /app/requirements.lock || \
-    { echo "ERROR: failed to install from requirements.lock — dependency graph is not reproducible"; exit 1; }
+# `requirements.lock` is hash-locked.  Do not add a fallback resolver here:
+# a failed locked install must fail the build rather than silently changing the
+# dependency graph.
+RUN uv pip install --no-cache --require-hashes -r /app/requirements.lock
 
 # Copy source and build the wheel in-place (editable install not needed in the wheel).
 COPY pyproject.toml /app/pyproject.toml
@@ -96,6 +98,14 @@ COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 # at the exact path configured below.
 COPY --from=openclaw-runtime /usr/local/bin/node /usr/local/bin/node
 COPY --from=openclaw-runtime /usr/local/lib/node_modules /usr/local/lib/node_modules
+# The Node binary is dynamically linked against libatomic.so.1, which the
+# python:3.11-slim runtime base does not ship.  Without it the image dies with
+# "node: error while loading shared libraries: libatomic.so.1" and the
+# container can never become ready.  Copy the exact library the Node build was
+# linked against from the same (pinned) OpenClaw runtime stage instead of
+# installing an unpinned OS package.
+COPY --from=openclaw-runtime /usr/lib/x86_64-linux-gnu/libatomic.so.1.2.0 \
+    /usr/lib/x86_64-linux-gnu/libatomic.so.1
 RUN ln -s /usr/local/lib/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw \
     && openclaw --version
 
