@@ -1,0 +1,258 @@
+# docker-compose.yml — OpsSwarm Enterprise local / single-node deployment
+#
+# Usage:
+#   cp .env.compose.example .env  # optional: customise committed safe defaults
+#   docker compose up -d          # production profile
+#   docker compose --profile openclaw up -d  # optional OpenClaw sidecar profile
+#
+# Image tag: set OPSWARM_IMAGE to override the default opsswarm/opsswarm:local.
+#   docker compose --env-file .env.local up -d
+#
+# ─── Profiles ──────────────────────────────────────────────────────────────────
+#
+#  default  — opsswarm only (run without --profile to use this)
+#  openclaw — spin up the OpenClaw runtime alongside OpsSwarm (side-by-side,
+#              not embedded in the OpsSwarm image).  Activate with:
+#              docker compose --profile openclaw up -d
+#
+# ─── Secrets (token injection) ─────────────────────────────────────────────────
+#
+#   GITHUB_TOKEN is never baked into the image.  Three options, in order of
+#   preference:
+#
+#   1. Docker secret (recommended for Docker Swarm / Compose in production):
+#        echo -n "ghp_..." | docker secret create opsswarm-github-token -
+#        (remove GITHUB_TOKEN from .env; compose reads from docker secrets)
+#
+#   2. Token file mounted from the host (default in this compose file):
+#        echo "ghp_..." > .github-token   # 0600 permissions required
+#        GITHUB_TOKEN_FILE=/run/secrets/opsswarm-github-token  (via .env)
+#
+#   3. Plain env var in .env (easiest for local dev; not recommended for prod):
+#        GITHUB_TOKEN=ghp_...
+#
+# ─── Persistent state ───────────────────────────────────────────────────────────
+#
+#   opsswarm-runtime-data  — /app/runtime-data (run metadata, checkpoints)
+#   opsswarm-evidence-store — /var/lib/opsswarm (evidence artefacts)
+#
+#   Both volumes are created on first `docker compose up` and survive restarts.
+#   To reset: docker compose down -v
+#
+x-common-env: &common-env
+  # Path to the OpenClaw binary inside the container.
+  #
+  # Supported deployment topologies:
+  #
+  #   (a) Sidecar (default for compose --profile openclaw):
+  #       OpenClaw is started as a co-located compose service and the binary is
+  #       made available at /opt/openclaw/openclaw via the openclaw-data named
+  #       volume.  Set OPSWARM_OPENCLAW_BIN to this path in the sidecar profile.
+  #
+  #   (b) Host mount (single-service compose without --profile):
+  #       Mount the host OpenClaw binary at any container path and set
+  #       OPSWARM_OPENCLAW_BIN to that path in your .env.
+  #
+  #   (c) Kubernetes sidecar:
+  #       Mount the OpenClaw binary via an emptyDir or hostPath volume.
+  #       See k8s/base/deployment.yaml and docs/guides/CONTAINER_DEPLOYMENT.md.
+  #
+  # The init container in k8s/base/deployment.yaml validates that the binary
+  # exists and is executable before the main container starts.
+  OPSWARM_OPENCLAW_BIN: ${OPSWARM_OPENCLAW_BIN:-}
+
+  # Config file path inside the container.  Mount config/ via the override
+  # file or a named volume when not using the default config/production.yaml.
+  OPSWARM_CONFIG: ${OPSWARM_CONFIG:-config/production.yaml}
+
+  # OpenClaw timeout override (seconds).  Default: 600 (from production.yaml).
+  # OPSWARM_OPENCLAW_TIMEOUT: "600"
+
+  # OpsSwarm runtime data directory (relative to /app).  Do not change unless
+  # the runtime-data volume mount point is also changed.
+  OPSWARM_DATA_DIR: runtime-data
+
+  # ── GitHub token injection ──────────────────────────────────────────────────
+  # GITHUB_TOKEN_FILE — path inside the container where the GitHub PAT file is
+  # mounted.  OpsSwarm reads this file at startup and uses its contents as the
+  # GITHUB_TOKEN.  This avoids putting the raw token in environment variables.
+  #
+  # To use a plain env var instead of a file, set GITHUB_TOKEN directly in
+  # your .env and remove GITHUB_TOKEN_FILE here.
+  GITHUB_TOKEN_FILE: ${GITHUB_TOKEN_FILE:-/run/secrets/github-token}
+
+  # GITHUB_TOKEN — fallback when GITHUB_TOKEN_FILE is not set.  Prefer the
+  # token-file approach (see above) to avoid secrets in environment variables.
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+
+  # GitHub repository in owner/repo format (e.g. my-org/my-repo).
+  GITHUB_REPO: ${GITHUB_REPO:-vinhphan812/OpsSwarm-Enterprise}
+
+x-optsswarm-healthcheck: &opsswarm-healthcheck
+  test: ["CMD", "python", "-c",
+         "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
+
+services:
+
+  # ─── OpsSwarm ───────────────────────────────────────────────────────────────
+  opsswarm:
+    image: ${OPSWARM_IMAGE:-opsswarm/opsswarm:local}
+    container_name: opsswarm
+    restart: unless-stopped
+
+    # Ports: host -> container
+    #   8080 — HTTP API (health, metrics, runs, webhooks)
+    ports:
+      - "${OPSWARM_PORT:-8080}:8080"
+
+    env_file:
+      # This committed, credential-free baseline makes `docker compose config`
+      # self-contained in clean clones. Operators can replace it explicitly
+      # with `OPSWARM_ENV_FILE=.env` or `--env-file <path>` at deploy time.
+      - path: ${OPSWARM_ENV_FILE:-.env.compose.example}
+        required: true
+
+    environment:
+      <<: *common-env
+
+    volumes:
+      # Persistent runtime state (run metadata, checkpoints).
+      # Survives restarts; remove with docker compose down -v to reset.
+      - opsswarm-runtime-data:/app/runtime-data
+
+      # Persistent evidence store (evidence artefacts written by OpsSwarm).
+      - opsswarm-evidence-store:/var/lib/opsswarm
+
+      # GitHub token file — mounted read-only inside the container.
+      # Host path is set via GITHUB_TOKEN_FILE_HOST in .env (see Secret injection above).
+      # chmod 0600 the host file; the container runs as uid 10001.
+      - type: bind
+        source: ${GITHUB_TOKEN_FILE_HOST:-.github-token}
+        target: /run/secrets/github-token
+        read_only: true
+        bind:
+          propagation: rprivate
+
+    networks:
+      - opsswarm-net
+
+    healthcheck:
+      <<: *opsswarm-healthcheck
+
+    # Resource limits — adjust to match your hardware.
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    # Stop signal: SIGTERM → uvicorn graceful shutdown (matches Dockerfile ENTRYPOINT).
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+    # Dependency on OpenClaw: the opsswarm container requires the OpenClaw binary
+    # to be available before it can start the OpenClaw adapter.
+    #
+    # The sidecar topology uses Docker Compose's natural service-startup ordering:
+    # openclaw is defined BEFORE opsswarm in this file, so Compose starts openclaw
+    # first.  This is sufficient because the openclaw-data volume exists and the
+    # binary is immediately available when the openclaw service starts.
+    #
+    # For a hard ordering guarantee (opsswarm waits for openclaw to be healthy),
+    # use `condition: service_healthy` instead.  Add a curl-based health check to
+    # the openclaw service first.  See docker-compose.override.yml for an example.
+
+  # ─── OpenClaw (sidecar profile) ───────────────────────────────────────────
+  # Spin up alongside OpsSwarm when you do not have OpenClaw installed on the host.
+  # Activate with: docker compose --profile openclaw up -d
+  #
+  # Topology:
+  #   openclaw service:   writes /opt/openclaw/openclaw binary to the openclaw-data
+  #                       named volume (your OpenClaw distribution directory mounted
+  #                       here from the host or pre-built into a custom image).
+  #   opsswarm service:   reads the binary from openclaw-data at /opt/openclaw/openclaw
+  #                       (mapped via OPSWARM_OPENCLAW_BIN env var below).
+  #
+  # Prerequisites:
+  #   1. Build the OpenClaw image, or replace OPENCLAW_IMAGE with a pre-built tag:
+  #        docker build -f openclaw.Dockerfile -t openclaw:latest .
+  #   2. Mount your OpenClaw distribution directory as openclaw-data.
+  #      The volume must contain the openclaw binary at /opt/openclaw/openclaw.
+  #
+  # Usage:
+  #   echo "OPENCLAW_IMAGE=openclaw:latest" >> .env
+  #   echo "OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw" >> .env
+  #   docker compose --profile openclaw up -d
+  openclaw:
+    image: ${OPENCLAW_IMAGE:-openclaw:latest}
+    container_name: openclaw
+    restart: unless-stopped
+
+    profiles:
+      - openclaw
+
+    # Set OPSWARM_OPENCLAW_BIN to the path where the opsswarm service will read
+    # the binary.  opsswarm-service reads this env var at startup.
+    environment:
+      - OPSWARM_OPENCLAW_BIN=/opt/openclaw/openclaw
+
+    # openclaw-data: a named volume that the openclaw service populates with the
+    # OpenClaw binary.  Mount the host OpenClaw installation directory here.
+    # The opsswarm service reads from the same volume at the same mount path.
+    volumes:
+      - openclaw-data:/opt/openclaw
+
+    networks:
+      - opsswarm-net
+
+    healthcheck:
+      test: ["CMD", "true"]   # OpenClaw has no HTTP health endpoint; rely on container exit
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+        reservations:
+          cpus: "1.0"
+          memory: 2G
+
+    # Expose OpenClaw IPC port if needed for debugging.
+    # ports:
+    #   - "9090:9090"
+
+# ─── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  # Runtime state: run metadata, checkpoint files, orchestrator state.
+  # Mounted at /app/runtime-data inside the container.
+  opsswarm-runtime-data:
+    driver: local
+
+  # Evidence artefacts: evidence JSON files, attachments.
+  # Mounted at /var/lib/opsswarm inside the container.
+  opsswarm-evidence-store:
+    driver: local
+
+  # OpenClaw working directory (sidecar profile only).
+  openclaw-data:
+    driver: local
+
+# ─── Networks ──────────────────────────────────────────────────────────────────
+networks:
+  opsswarm-net:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16

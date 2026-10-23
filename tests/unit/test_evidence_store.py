@@ -59,7 +59,9 @@ class TestEvidenceStoreCore:
             json.dumps({"kind": "S4.finding", "payload": {"task_id": "t1", "finding": "good"}})
             + f', "signature": "{sig1}"}}\n'
             "invalid json here\n"
-            + json.dumps({"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}})
+            + json.dumps(
+                {"kind": "S4.finding", "payload": {"task_id": "t2", "finding": "also good"}}
+            )
             + f', "signature": "{sig2}"}}\n',
         )
 
@@ -296,7 +298,7 @@ class TestEvidenceVerify:
         ev = EvidenceStore(data_dir=tmp_path)
         run_id = "run-verify-shape"
         p = tmp_path / "evidence" / f"{run_id}.jsonl"
-        p.write_text("[]\n42\n\"record\"\n", encoding="utf-8")
+        p.write_text('[]\n42\n"record"\n', encoding="utf-8")
 
         valid, errors = ev.verify(run_id)
 

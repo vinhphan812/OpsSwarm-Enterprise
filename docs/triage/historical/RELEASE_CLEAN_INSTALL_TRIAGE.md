@@ -174,6 +174,7 @@ Verify the installed package is from the wheel, not the local source:
 
 ```python
 import opsswarm
+
 print(opsswarm.__file__)  # Must be in site-packages, not repo
 ```
 
@@ -399,6 +400,7 @@ Portable Python generation (not OS-specific tool):
 
 ```python
 import hashlib, pathlib
+
 for p in pathlib.Path("dist").iterdir():
     print(f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}")
 ```

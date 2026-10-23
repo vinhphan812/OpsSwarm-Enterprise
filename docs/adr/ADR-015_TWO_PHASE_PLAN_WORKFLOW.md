@@ -71,8 +71,9 @@ New in `models.py`:
 ```python
 class RunState(str, Enum):
     ...
-    PLAN_RCA = "PLAN_RCA"           # Deferred RCA in progress
+    PLAN_RCA = "PLAN_RCA"  # Deferred RCA in progress
     PLAN_RCA_RESOLVED = "PLAN_RCA_RESOLVED"  # RCA complete
+
 
 VALID_TRANSITIONS[RunState.RESOLVED] = {
     RunState.PLAN_RCA,
@@ -80,7 +81,7 @@ VALID_TRANSITIONS[RunState.RESOLVED] = {
 }
 VALID_TRANSITIONS[RunState.PLAN_RCA] = {
     RunState.PLAN_RCA_RESOLVED,
-    RunState.ABORTED,             # RCA abandoned
+    RunState.ABORTED,  # RCA abandoned
 }
 VALID_TRANSITIONS[RunState.PLAN_RCA_RESOLVED] = set()  # Terminal
 ```

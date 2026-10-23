@@ -53,6 +53,7 @@ def _rca_response():
         "confidence": 0.9,
     }
 
+
 def _safe_workflow_responses():
     """Full response set for a safe-write run that resolves end-to-end."""
     return investigation_and_rca() + [

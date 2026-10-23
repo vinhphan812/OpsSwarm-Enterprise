@@ -69,7 +69,7 @@ class TestMetricsNewFamilies:
 
     def test_record_openclaw_call_sanitises_invalid(self):
         m = Metrics()
-        m.record_openclaw_call("")      # empty -> "unknown"
+        m.record_openclaw_call("")  # empty -> "unknown"
         m.record_openclaw_call("foo; DROP TABLE")  # injection attempt
         output = m.to_prometheus()
         assert 'profile="unknown"' in output
