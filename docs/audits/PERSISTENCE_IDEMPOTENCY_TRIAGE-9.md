@@ -249,13 +249,15 @@ async def handle_comment(self, number, actor, body, permission, command, comment
 
     # Record after successful processing
     run.processed_comment_ids.append(comment_id)
-    run.command_sequence.append(CommandRecord(
-        comment_id=comment_id,
-        actor=actor,
-        command=command.name,
-        argument=command.argument,
-        timestamp=utc_now()
-    ))
+    run.command_sequence.append(
+        CommandRecord(
+            comment_id=comment_id,
+            actor=actor,
+            command=command.name,
+            argument=command.argument,
+            timestamp=utc_now(),
+        )
+    )
     await self._save(run, "command.processed", {...})
 ```
 
@@ -300,11 +302,7 @@ def reconcile(run_id: str) -> ReconciliationReport:
             duplicates.append(e)
         else:
             seen_keys.add(key)
-    return ReconciliationReport(
-        total=len(evidence),
-        unique=len(seen_keys),
-        duplicates=duplicates
-    )
+    return ReconciliationReport(total=len(evidence), unique=len(seen_keys), duplicates=duplicates)
 ```
 
 ### 6.3 Ambiguous Side-Effect Reconciliation

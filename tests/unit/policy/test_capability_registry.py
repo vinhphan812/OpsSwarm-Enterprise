@@ -148,6 +148,7 @@ def policy_engine_no_registry() -> PolicyEngine:
 # NORMAL — happy path
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_risk_order_values():
     """Risk-ORD: _RISK_ORDER values are correctly ordered."""
@@ -352,6 +353,7 @@ def test_registry_pattern_matched_captured(valid_registry_path: Path):
 # BOUNDARY — edge cases
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_registry_all_four_risk_levels_load(tmp_path: Path):
     """Reg-B1: All four Risk levels are accepted."""
@@ -466,6 +468,7 @@ def test_registry_rules_preserve_declaration_order(tmp_path: Path):
 # FAULT — error handling
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_registry_fault_invalid_yaml_corrupt_file(tmp_path: Path):
     """Reg-F1: YAML parse failure raises ValueError."""
@@ -522,6 +525,7 @@ def test_registry_fault_empty_rules_list_loads(tmp_path: Path):
 # ===========================================================================
 # POLICY INTEGRATION — resolve_effective_risk
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_policy_resolve_registry_match_upgrades_model(policy_engine_with_registry):
@@ -646,6 +650,7 @@ def test_policy_no_registry_property_none(policy_engine_no_registry):
 # DOWNGRADE — LLM cannot lower registered risky capability
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_downgrade_prevented_llm_safe_model_for_destructive_registry(
     policy_engine_with_registry,
@@ -698,6 +703,7 @@ def test_downgrade_allowed_when_no_registry(policy_engine_no_registry):
 # UNKNOWN CAPABILITY — fail-closed
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_unknown_write_capability_no_registry_falls_back_to_model(
     policy_engine_no_registry,
@@ -746,6 +752,7 @@ def test_unknown_capability_denied_when_destructive_model_assumed(
 # ===========================================================================
 # DESTRUCTIVE DENIAL — destructive ops blocked regardless of model label
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_destructive_deny_redis_flush(policy_engine_with_registry):
@@ -798,6 +805,7 @@ def test_destructive_deny_case_insensitive(policy_engine_with_registry):
 # STALE APPROVAL — digest binding (structural test)
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_stale_approval_different_description_changes_risk(policy_engine_with_registry):
     """Stale-1: Modified description invalidates approval because canonical op changes."""
@@ -837,6 +845,7 @@ def test_stale_approval_unknown_op_uses_model(policy_engine_with_registry):
 # ===========================================================================
 # READ-ONLY FLOW — allowed through registry
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_read_only_allowed_by_model(policy_engine_with_registry):
@@ -884,6 +893,7 @@ def test_read_only_model_read_falls_to_classify_escalation(
 # POLICYENGINE CLASSIFY_OPERATION — preserved backward compatibility
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_classify_operation_preserved_patch_admin(policy_engine_no_registry):
     """Classify-1: classify_operation still detects patch /admin/ as DESTRUCTIVE."""
@@ -916,6 +926,7 @@ def test_classify_operation_preserved_none(policy_engine_no_registry):
 # ACTION MAPPING — existing policy engine behavior preserved
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_action_read_auto(policy_engine_with_registry):
     """Action-1: READ is AUTO."""
@@ -943,6 +954,7 @@ def test_action_destructive_deny(policy_engine_with_registry):
 # ===========================================================================
 # REGISTRY RULE DIRECT MATCHING
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_rule_matches_contains():
@@ -1025,6 +1037,7 @@ def test_rule_matches_whitespace_normalization():
 # POLICY ENGINE MISSING PATH — graceful degradation
 # ===========================================================================
 
+
 @pytest.mark.unit
 def test_policy_missing_registry_path_returns_none():
     """Miss-1: Registry path that does not exist logs warning and returns None."""
@@ -1047,6 +1060,7 @@ def test_policy_registry_path_empty_removes_registry():
 # ===========================================================================
 # REGISTRY RESULT DATACLASS
 # ===========================================================================
+
 
 @pytest.mark.unit
 def test_registry_result_defaults():

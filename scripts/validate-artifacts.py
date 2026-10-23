@@ -36,11 +36,17 @@ SAFE_PLACEHOLDERS = {
 
 CREDENTIAL_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("private key", re.compile(r"-----BEGIN (?:[A-Z0-9 ]+ )?PRIVATE KEY-----")),
-    ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b")),
+    (
+        "GitHub token",
+        re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
+    ),
     ("API key", re.compile(r"\bsk-[A-Za-z0-9_-]{32,}\b")),
     ("Slack token", re.compile(r"\bxox[pborsa]-[A-Za-z0-9-]{20,}\b")),
     ("AWS access key", re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b")),
-    ("authorization credential", re.compile(r"(?i)\bauthorization\s*[:=]\s*(?:bearer|basic)\s+[A-Za-z0-9+/_.=-]{16,}")),
+    (
+        "authorization credential",
+        re.compile(r"(?i)\bauthorization\s*[:=]\s*(?:bearer|basic)\s+[A-Za-z0-9+/_.=-]{16,}"),
+    ),
     ("credential in URL", re.compile(r"(?i)\b[a-z][a-z0-9+.-]*://[^\s/@:]+:[^\s/@]+@")),
 )
 ASSIGNMENT_PATTERN = re.compile(
@@ -59,7 +65,7 @@ SPDX_PURL_PATTERN = re.compile(r"^SPDXRef-[A-Za-z0-9.-]+$")
 
 def _extract_sbom_tokens(value: Any, tokens: set[str]) -> None:
     """Recursively extract known SBOM token values from a parsed document.
-    
+
     These tokens are known to be identifiers/URLs and not secrets.
     """
     if isinstance(value, str):
@@ -118,7 +124,7 @@ def _extract_sbom_tokens(value: Any, tokens: set[str]) -> None:
 
 def _is_known_sbom_token(candidate: str) -> bool:
     """Check if a candidate token is a known SBOM pattern, not a secret.
-    
+
     This provides fail-closed validation: we only exempt tokens we can confidently
     identify as SBOM identifiers (PURLs, SPDX references), not just any string
     containing '/' or '.'.
@@ -149,7 +155,7 @@ def _looks_like_placeholder(value: str) -> bool:
 
 def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> None:
     """Scan text for credential patterns.
-    
+
     Args:
         text: The text content to scan.
         sbom_known_tokens: Optional set of tokens known to be SBOM identifiers
@@ -194,7 +200,7 @@ def _scan_credentials(text: str, sbom_known_tokens: set[str] | None = None) -> N
 
 def _validate_text(raw: bytes, sbom_known_tokens: set[str] | None = None) -> str:
     """Validate raw text content.
-    
+
     Args:
         raw: The raw bytes to validate.
         sbom_known_tokens: Optional set of tokens known to be SBOM identifiers
@@ -249,6 +255,7 @@ def _normalise_bandit_for_scan(value: Any) -> Any:
             normalised["metrics"] = {"_totals": totals} if isinstance(totals, dict) else {}
     return normalised
 
+
 def _validate_bandit_policy(value: Any) -> None:
     """Fail when Bandit reports a medium- or high-severity finding."""
     if not isinstance(value, dict) or not isinstance(value.get("results"), list):
@@ -268,7 +275,7 @@ def _validate_bandit_policy(value: Any) -> None:
 
 def _validate_json(path: Path, text: str) -> tuple[Any, set[str]]:
     """Validate JSON structure and extract known SBOM tokens.
-    
+
     Returns:
         A tuple of (parsed_value, sbom_known_tokens).
     """

@@ -61,12 +61,12 @@ Both phases have independent budgets. If Phase 2 exhausts its budget, the run te
 
 ```python
 VALID_TRANSITIONS[RunState.RESOLVED] = {
-    RunState.PLAN_RCA,           # kick off Phase 2
+    RunState.PLAN_RCA,  # kick off Phase 2
     RunState.PLAN_RCA_RESOLVED,  # skip RCA when rca_enabled=false
 }
 VALID_TRANSITIONS[RunState.PLAN_RCA] = {
     RunState.PLAN_RCA_RESOLVED,  # successful synthesis
-    RunState.ABORTED,            # budget exhausted or RCA abandoned
+    RunState.ABORTED,  # budget exhausted or RCA abandoned
 }
 VALID_TRANSITIONS[RunState.PLAN_RCA_RESOLVED] = set()  # Terminal
 ```
@@ -97,6 +97,7 @@ Both are capped independently. Phase-2 budget is controlled by `cfg.get("rca_bud
 ```python
 class RCAReport(BaseModel):
     """Structured RCA and postmortem record (ADR-015/ADR-016)."""
+
     run_id: str = ""
     issue_number: int = 0
     proximate_cause: str = ""
@@ -107,7 +108,9 @@ class RCAReport(BaseModel):
     what_went_poorly: list[str] = Field(default_factory=list)
     timeline: list[dict] = Field(default_factory=list)  # [{timestamp, actor, action}]
     evidence_refs: list[str] = Field(default_factory=list)
-    corrective_actions: list[dict] = Field(default_factory=list)  # [{description, priority, owner, ticket_url, status}]
+    corrective_actions: list[dict] = Field(
+        default_factory=list
+    )  # [{description, priority, owner, ticket_url, status}]
     lessons_learned: str = ""
     confidence: float = 0.0
 ```
@@ -115,8 +118,8 @@ class RCAReport(BaseModel):
 `RunRecord` gains two fields:
 
 ```python
-rca_report: RCAReport | None = None         # Phase-2 structured output
-rca_budget_snapshot: dict | None = None     # {"tokens_used": ..., "wall_clock_seconds": ...}
+rca_report: RCAReport | None = None  # Phase-2 structured output
+rca_budget_snapshot: dict | None = None  # {"tokens_used": ..., "wall_clock_seconds": ...}
 ```
 
 `RCAReport.from_root_cause()` adapts a Phase-1 `RootCauseArtifact` into an `RCAReport` for environments where Phase-2 is skipped.

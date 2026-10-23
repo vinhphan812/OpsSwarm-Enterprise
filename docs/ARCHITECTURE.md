@@ -394,6 +394,13 @@ The following invariants are normative for the current architecture:
 - Issue #9 — persistence, idempotency, concurrency, and restart recovery hardening
 - Issue #10 — architecture documentation with Mermaid diagrams
 - Issue #11 — end-to-end lifecycle and recovery-flow documentation
+- Issue #73 — documentation traceability for the canonical single-replica
+  container and Kubernetes deployment profile. The implementation is maintained
+  in [`feature/pr93-remediation` / PR #104](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/104):
+  [`Dockerfile`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/Dockerfile),
+  [`k8s/`](https://github.com/vinhphan812/OpsSwarm-Enterprise/tree/feature/pr93-remediation/k8s),
+  and [`container-delivery.yml`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/.github/workflows/container-delivery.yml).
+  This branch deliberately adds no duplicate manifest tree.
 
 Any future architecture-significant change should update this document, the corresponding flow diagram, tests/fitness
 gates, and an ADR when the project ADR process is established.

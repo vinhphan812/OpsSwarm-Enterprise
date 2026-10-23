@@ -17,6 +17,7 @@ from opsswarm.policy import PolicyEngine, _resolve_registry_path
 # classify_plan() branches
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_classify_plan_input_branch():
     """Branches lines 43-44: requires_business_input=True returns INPUT."""
@@ -73,9 +74,7 @@ def test_classify_plan_multiple_options_decision():
 @pytest.mark.unit
 def test_classify_plan_single_auto():
     """Branches lines 49-52: single option with AUTO policy returns AUTO."""
-    eng = PolicyEngine(
-        {"policy": {"safe_write": "AUTO"}}
-    )
+    eng = PolicyEngine({"policy": {"safe_write": "AUTO"}})
     plan = RecoveryPlan(
         options=[RemediationOption(id="x", description="safe", risk=Risk.SAFE_WRITE)]
     )
@@ -86,9 +85,7 @@ def test_classify_plan_single_auto():
 @pytest.mark.unit
 def test_classify_plan_single_approval():
     """Branches lines 53-54: single option with HUMAN_APPROVAL returns APPROVAL."""
-    eng = PolicyEngine(
-        {"policy": {"risky_write": "HUMAN_APPROVAL"}}
-    )
+    eng = PolicyEngine({"policy": {"risky_write": "HUMAN_APPROVAL"}})
     plan = RecoveryPlan(
         options=[RemediationOption(id="x", description="risky", risk=Risk.RISKY_WRITE)]
     )
@@ -99,9 +96,7 @@ def test_classify_plan_single_approval():
 @pytest.mark.unit
 def test_classify_plan_single_deny():
     """Branches line 55: single option with DENY policy returns DENY."""
-    eng = PolicyEngine(
-        {"policy": {"destructive": "DENY"}}
-    )
+    eng = PolicyEngine({"policy": {"destructive": "DENY"}})
     plan = RecoveryPlan(
         options=[RemediationOption(id="x", description="drop", risk=Risk.DESTRUCTIVE)]
     )
@@ -113,6 +108,7 @@ def test_classify_plan_single_deny():
 # -----------------------------------------------------------------------
 # resolve_effective_risk_plan()
 # -----------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_resolve_effective_risk_plan_with_option():
@@ -157,6 +153,7 @@ def test_resolve_effective_risk_plan_no_recommended_uses_first():
 # _resolve_registry_path()
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.unit
 def test_resolve_registry_path_empty_string():
     """Branches line 168-169: empty string returns None."""
@@ -189,6 +186,7 @@ def test_resolve_registry_path_relative():
 # -----------------------------------------------------------------------
 # action() — existing but add explicit branch coverage
 # -----------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_action_unknown_risk_defaults_to_deny():

@@ -229,3 +229,27 @@ GitHub's security alert record.
 
 License inventory is evidence for review, not an implicit approval. Unknown, unclassified, or potentially incompatible
 licenses require release-owner or legal adjudication before a release policy can allow them.
+
+## Container and Kubernetes security references (Issue #73)
+
+The authoritative implementation is the single [`k8s/` tree in PR #104](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/104),
+not this documentation-only branch. Inspect the canonical
+[`Deployment`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/k8s/base/deployment.yaml),
+[`Secret template`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/k8s/base/secret.yaml),
+and [`container-delivery workflow`](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/.github/workflows/container-delivery.yml)
+before changing a deployment.
+
+- **Least privilege:** The workload uses UID/GID `10001`,
+  `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, and a
+  runtime-default seccomp profile. The canonical Kubernetes profile currently
+  keeps `readOnlyRootFilesystem: false` for its persistence contract; do not
+  claim that the default profile is read-only-root.
+- **Secrets:** Never add live values to the Secret template, a Kustomize patch,
+  CI output, or a PR. Create the production secret out of band with an approved
+  secret manager, External Secrets, or Sealed Secrets.
+- **Workflow policy versus evidence:** The workflow is configured to create SBOM
+  and BuildKit provenance metadata, run fail-closed Trivy checks, capture an
+  immutable registry digest, and test a pull by that digest. Those controls do
+  not prove a particular image was published, scanned, signed, attested, or
+  deployed. Retain successful run artifacts and validate the exact image/digest
+  before making any of those assertions.
