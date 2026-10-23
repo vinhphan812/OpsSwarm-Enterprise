@@ -3,8 +3,9 @@
 # Production overlay — managed Kubernetes (GKE, EKS, AKS)
 #
 # Overrides from base:
-#   - image: pinned to v{version} tag (no :latest)
-#   - imagePullPolicy: Always (required for :latest; use IfNotPresent for tags)
+#   - image: pinned to the v{version} tag (no :latest)
+#   - imagePullPolicy: Always (tolerates a registry-side tag re-point while
+#     the rollout settles; switch to IfNotPresent once the tag is immutable)
 #   - APP_ENV: production (enables fail-closed auth checks)
 #   - LOG_LEVEL: WARNING (reduces log volume under normal operation)
 #   - Service type: LoadBalancer (or use Ingress — see below)
@@ -15,8 +16,9 @@
 # Security notes:
 #   - readOnlyRootFilesystem: consider setting true in deployment.yaml and
 #     using tmpfs for /tmp, /var/run in this overlay.
-#   - NetworkPolicy: k8s/overlays/prod/network-policy.yaml adds cloud LB
-#     ingress and model-provider egress rules.  Review and un-comment the
+#   - NetworkPolicy: k8s/overlays/prod/network-policy.yaml adds a production
+#     ingress allowlist scoped to a deliberately labelled ingress namespace
+#     and documents model-provider egress.  Review and un-comment the
 #     specific provider CIDRs before deploying.
 #   - AppArmor / seccomp: additional hardening can be added via a pod security
 #     policy or Pod Security Standards (PSS) in the namespace.

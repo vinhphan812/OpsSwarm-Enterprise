@@ -122,6 +122,81 @@ def kustomize_available() -> bool:
     return is_tool_available("kustomize")
 
 
+def _extract_top_level_block(text: str, key: str) -> str:
+    """Return the YAML block that follows a top-level *key*.
+
+    The block runs from the ``key:`` line until the next line that is
+    indented no further than the key itself (or a comment/blank line
+    followed by a shallower line).  This lets a test reason about one
+    section — e.g. ``ingress:`` — without being confused by unrelated
+    mentions elsewhere in the same document, such as a commented-out
+    egress example.
+
+    Args:
+        text: The raw file content.
+        key: The top-level key to extract, including its colon.
+
+    Returns:
+        The block text, or an empty string when the key is absent.
+    """
+    lines = text.splitlines()
+    start = None
+    base_indent = 0
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == key or stripped.startswith(key + " "):
+            start = index
+            base_indent = len(line) - len(line.lstrip())
+            break
+    if start is None:
+        return ""
+
+    block: list[str] = []
+    for line in lines[start + 1:]:
+        if not line.strip():
+            block.append(line)
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent <= base_indent:
+            break
+        block.append(line)
+    return "\n".join(block)
+
+
+def _render_prod_overlay() -> str | None:
+    """Render ``k8s/overlays/prod`` with kustomize, or return None.
+
+    Returns None when no kustomize implementation is available, so that
+    environments without kustomize skip the rendered-manifest assertions
+    instead of failing them.
+    """
+    prod_overlay = K8S_DIR / "overlays" / "prod"
+    if not prod_overlay.is_dir():
+        return None
+
+    if kubectl_available():
+        result = run(
+            ["kubectl", "kustomize", str(prod_overlay)],
+            cwd=REPO_ROOT,
+            check=False,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            return result.stdout
+
+    if kustomize_available():
+        result = run(
+            ["kustomize", "build", str(prod_overlay)],
+            cwd=REPO_ROOT,
+            check=False,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            return result.stdout
+
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # A. OCI Image
 # ─────────────────────────────────────────────────────────────────────────────
@@ -228,6 +303,14 @@ class TestOCIDockerfile:
             "Dockerfile must include a HEALTHCHECK instruction"
         assert "/health" in content, \
             "HEALTHCHECK must probe the /health endpoint"
+
+    def test_dockerfile_installs_only_hash_locked_requirements(self):
+        """A.1  Locked dependency installation fails closed without a resolver fallback."""
+        content = read(DOCKERFILE)
+        assert "uv pip install --no-cache --require-hashes -r /app/requirements.lock" in content, \
+            "Dockerfile must install exactly the hash-locked requirements"
+        assert "||" not in content, \
+            "Dockerfile must not fall back to an unpinned dependency installation"
 
 
 class TestOCIReleaseWorkflow:
@@ -654,7 +737,7 @@ class TestKubernetes:
                 )
 
     def test_prod_network_policy_overlay_exists(self):
-        """C.7  Production NetworkPolicy overlay adds load-balancer ingress and model-provider egress."""
+        """C.7  Production NetworkPolicy allows only labelled ingress namespaces."""
         prod_netpol_file = K8S_DIR / "overlays" / "prod" / "network-policy.yaml"
         if not prod_netpol_file.is_file():
             pytest.skip(f"overlays/prod/network-policy.yaml not found at {prod_netpol_file}")
@@ -668,9 +751,29 @@ class TestKubernetes:
         # Must document model-provider egress.
         assert "openai" in content.lower() or "model" in content.lower(), \
             "Production NetworkPolicy overlay must document model-provider egress"
-        # Must have a cloud load-balancer ingress rule.
-        assert "load-balancer" in content.lower() or "cloud" in content.lower(), \
-            "Production NetworkPolicy overlay must add cloud load-balancer ingress rules"
+        assert "opsswarm.io/production-ingress" in content, \
+            "Production ingress must use an explicitly labelled namespace"
+
+        # The broad-CIDR check is scoped to the *ingress* section only.  The
+        # file documents a commented-out Anthropic egress example that
+        # legitimately mentions 0.0.0.0/0 as a DNS-policy fallback; that is
+        # egress documentation, not an ingress allowance, and must not fail
+        # the ingress assertion.  Parse the rendered structure rather than
+        # grepping the raw text.
+        ingress_block = _extract_top_level_block(content, "ingress:")
+        assert ingress_block, \
+            "Production NetworkPolicy must define an ingress section"
+        assert "cidr: 0.0.0.0/0" not in ingress_block, \
+            "Production NetworkPolicy must not allow broad public ingress"
+
+        # The rendered production overlay must likewise not enable broad
+        # public ingress once the manifest is actually applied.
+        rendered = _render_prod_overlay()
+        if rendered is not None:
+            rendered_ingress = _extract_top_level_block(rendered, "ingress:")
+            if rendered_ingress:
+                assert "cidr: 0.0.0.0/0" not in rendered_ingress, \
+                    "Rendered production overlay must not allow broad public ingress"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

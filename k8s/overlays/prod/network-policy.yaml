@@ -3,8 +3,12 @@
 # OpsSwarm Enterprise — Production NetworkPolicy overlay
 #
 # This patch adds two rules to the base NetworkPolicy:
-#   1. Ingress from cloud load-balancer IP ranges (GKE / EKS / AKS).
-#   2. Egress to model-provider endpoints (OpenAI, Anthropic, Vertex AI).
+#   1. Ingress from a deliberately labelled production ingress namespace
+#      (NOT a broad 0.0.0.0/0 allowance and NOT a cloud LB CIDR list — the
+#      provider CIDRs are only known per environment and belong in a
+#      separately reviewed overlay).
+#   2. Egress to model-provider endpoints (OpenAI, Anthropic, Vertex AI),
+#      documented as commented examples that the operator un-comments.
 #
 # Cluster-policy integration note:
 #   If your cluster uses a ClusterNetworkPolicy (Cilium) or GlobalNetworkPolicy
@@ -48,36 +52,22 @@ spec:
       app.kubernetes.io/name: opsswarm
 
   ingress:
-    # ── Cloud load-balancer ingress ──────────────────────────────────────
-    # Replace the CIDR blocks below with your actual load-balancer IP ranges.
-    # These must be the EXTERNAL IPs of your cloud load balancers — not the
-    # internal VPC CIDR, which would be caught by the base policy's same-namespace
-    # and labelled-namespace rules.
+    # ── Production ingress-controller allowlist ────────────────────────────
+    # Do not use 0.0.0.0/0 (even with RFC1918 exceptions): that still permits
+    # arbitrary public source addresses.  Label the namespace hosting the
+    # production ingress controller before applying this overlay:
     #
-    # Example ranges (replace with your actual values):
-    #   GKE (GCP):     34.x.x.x/24  (compute.googleapis.com ranges)
-    #                  130.211.x.x/22  (GKE LB ranges)
-    #   EKS (AWS):     52.x.x.x/24   (AWS ELB ranges — varies by region)
-    #                  75.x.x.x/24
-    #   AKS (Azure):   20.x.x.x/24   (Azure LB — varies by region)
+    #   kubectl label namespace <ingress-namespace> \
+    #     opsswarm.io/production-ingress=true
     #
-    # To find your AWS LB ranges:
-    #   aws ec2 describe-addresses --query 'Addresses[*].PublicIp' --output text \
-    #     | tr '\t' '\n' | cut -d'.' -f1-3 | sort -u
-    #
-    # To find your GKE LB ranges:
-    #   gcloud compute addresses list --filter="purpose=LOAD_BALANCER" \
-    #     --format='value(address)' | cut -d'.' -f1-3 | sort -u
-    #
-    # Set a comment with the discovered CIDR so future operators know the basis:
-    # # GKE cluster: us-central1, discovered 2024-10: 34.x.x.x/24
+    # This policy is additive to the base same-namespace/explicit-namespace
+    # allowlists and limits external traffic to that deliberately labelled
+    # namespace.  A cloud-specific IP allowlist belongs in a separately
+    # reviewed overlay once the actual provider CIDRs are known.
     - from:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except:
-              - 10.0.0.0/8
-              - 172.16.0.0/12
-              - 192.168.0.0/16
+        - namespaceSelector:
+            matchLabels:
+              opsswarm.io/production-ingress: "true"
       ports:
         - protocol: TCP
           port: 8080
