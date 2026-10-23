@@ -114,6 +114,7 @@ jobs:
         shell: bash
         env:
           SHA7: ${{ steps.meta.outputs.sha7 }}
+          BUILD_DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           set -euo pipefail
           pinned="${IMAGE_REPO}:${SHA7}"
@@ -130,11 +131,12 @@ jobs:
             echo "ERROR: registry returned a malformed digest: '$digest'" >&2
             exit 1
           fi
-          latest_digest="$(crane digest "${IMAGE_REPO}:latest")"
-          echo "=== crane digest ${IMAGE_REPO}:latest ==="
-          echo "$latest_digest"
-          if [[ "$latest_digest" != "$digest" ]]; then
-            echo "ERROR: latest ($latest_digest) != pinned ($digest)" >&2
+          # `latest` is deliberately not compared here: concurrent PR and push
+          # runs may legitimately retag this mutable convenience alias. The
+          # immutable contract is that registry read-back equals the digest
+          # emitted by the just-completed build/push action.
+          if [[ "$digest" != "$BUILD_DIGEST" ]]; then
+            echo "ERROR: registry digest ($digest) differs from build digest ($BUILD_DIGEST)" >&2
             exit 1
           fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
@@ -299,6 +301,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p evidence
           # The dev overlay bind-mounts the node's /usr/local/bin/openclaw into
           # the init container, which refuses to start unless the file exists
           # and is executable.  A stub is installed on the NODE (not in the
