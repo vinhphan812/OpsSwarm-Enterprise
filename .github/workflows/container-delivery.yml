@@ -330,7 +330,7 @@ jobs:
           apiVersion: kustomize.config.k8s.io/v1beta1
           kind: Kustomization
           resources:
-            - ../../../k8s/overlays/dev
+            - ../../k8s/overlays/dev
           images:
             - name: ghcr.io/vinhphan812/opsswarm-enterprise
               newName: ghcr.io/vinhphan812/opsswarm-enterprise
