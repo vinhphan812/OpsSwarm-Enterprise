@@ -25,10 +25,23 @@ _diag_*.py
 .locked-runtime/
 .worktrees/
 
-# One-off investigation scripts that were previously committed at the repo
-# root. Anchored to the root so the tracked checks under scripts/ are
-# unaffected (scripts/check_mypy_strict.py, scripts/check_ruff_full.py).
-/check_*.py
-/debug_*.py
-/find_*.py
-/parse_*.py
+# Legacy root scratch/investigation scripts from pre-cleanup master.
+# Mandatory policy: new validation scripts must be placed under scripts/ (e.g. scripts/check_*.py).
+/check_bandit_json.py
+/check_final.py
+/check_metrics.py
+/check_more_info.py
+/check_norm_path.py
+/check_raw_structure.py
+/check_token_context.py
+/debug_validate.py
+/debug_validate2.py
+/diagnose_validate.py
+/find_fail.py
+/get_bandit_findings.py
+/inspect_alerts.py
+/inspect_test_alerts.py
+/parse_alerts.py
+/simulate_validate.py
+/trace_norm.py
+/trace_token.py
