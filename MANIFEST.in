@@ -1,0 +1,12 @@
+# Alembic migration scripts and the Alembic configuration are part of the
+# distributed artifact: an operator following the ADR-031 runbook must be able
+# to run "alembic upgrade head" from an installed source distribution.
+#
+# The repository is deployed as a source checkout (see deploy/systemd and the
+# README install steps), so these files are present in the working tree there.
+# The source distribution is what "pip install <sdist>" is built from, so the
+# migration tree has to be declared explicitly -- setuptools only includes
+# files that live inside a discovered package by default.
+include alembic.ini
+recursive-include migrations *.py
+recursive-include migrations *.mako
