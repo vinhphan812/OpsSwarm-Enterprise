@@ -50,6 +50,9 @@ persistence:
   enable_checkpoints: true
   enable_atomic_writes: true
 
+store:
+  backend: filesystem
+
 observability:
   metrics:
     histogram_buckets_seconds:
