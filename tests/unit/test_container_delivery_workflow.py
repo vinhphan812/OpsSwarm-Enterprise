@@ -220,6 +220,19 @@ class TestDigestAssertion:
             "container-delivery.yml must pull the image by its immutable digest"
         )
 
+    def test_compose_evidence_supplies_a_concrete_github_repository(self):
+        """The Compose smoke path must not pass an unexpanded config placeholder."""
+        if not CONTAINER_DELIVERY_WORKFLOW.is_file():
+            pytest.skip("container-delivery.yml not present")
+
+        content = _read(CONTAINER_DELIVERY_WORKFLOW)
+        assert 'export GITHUB_REPO="${GITHUB_REPOSITORY}"' in content, (
+            "container-delivery.yml must pass the GitHub owner/repo to Compose"
+        )
+        assert 'GITHUB_REPO must be owner/repo' in content, (
+            "container-delivery.yml must fail before Compose for an invalid repository"
+        )
+
     @pytest.mark.parametrize(
         "digest",
         [

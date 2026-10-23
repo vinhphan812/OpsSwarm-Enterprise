@@ -192,8 +192,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p evidence
-          # The Compose profile reads the image from OPSWARM_IMAGE.
+          # The Compose profile reads the image and repository from these
+          # explicit values. Do not rely on application-side interpolation:
+          # an unset GITHUB_REPO deliberately remains the literal placeholder
+          # in config/production.yaml and fails repository validation.
           export OPSWARM_IMAGE="$IMAGE_REF"
+          export GITHUB_REPO="${GITHUB_REPOSITORY}"
+          case "$GITHUB_REPO" in
+            */*) ;;
+            *) echo "ERROR: GITHUB_REPO must be owner/repo, got ${GITHUB_REPO@Q}" >&2; exit 1 ;;
+          esac
           # A token file is required by the compose contract; the value is
           # irrelevant for a liveness/readiness probe and never leaves the
           # runner.

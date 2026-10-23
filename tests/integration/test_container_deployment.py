@@ -25,6 +25,7 @@ Markers
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import re
@@ -35,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 # ── Project root ──────────────────────────────────────────────────────────────
 
@@ -747,6 +749,22 @@ class TestKubernetes:
         assert "53" in content or "dns" in content.lower(), (
             "NetworkPolicy must allow DNS (kube-dns) egress"
         )
+
+    def test_network_policy_ipblock_exceptions_are_strict_subnets(self):
+        """C.7  Every ipBlock exception must be contained by its parent CIDR."""
+        netpol_file = K8S_BASE / "network-policy.yaml"
+        policy = yaml.safe_load(read(netpol_file))
+        for rule in policy.get("spec", {}).get("egress", []):
+            for destination in rule.get("to", []):
+                block = destination.get("ipBlock")
+                if not block:
+                    continue
+                parent = ipaddress.ip_network(block["cidr"])
+                for exception in block.get("except", []):
+                    child = ipaddress.ip_network(exception)
+                    assert child.subnet_of(parent), (
+                        f"ipBlock exception {child} must be a strict subset of {parent}"
+                    )
 
     def test_k8s_namespace_exists(self):
         """C.1  namespace.yaml defines the opsswarm namespace."""
