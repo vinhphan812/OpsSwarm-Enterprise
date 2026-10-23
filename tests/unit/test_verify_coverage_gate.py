@@ -27,6 +27,7 @@ from verify_coverage_gate import (  # noqa: E402
     main,
     pyproject_threshold,
     verify,
+    parse_workflow_text,
 )
 
 
@@ -167,11 +168,7 @@ def test_every_workflow_and_script_is_audited_by_the_guard() -> None:
 
 
 def test_guard_fails_when_ci_threshold_drifts_below_policy(tmp_path: Path) -> None:
-    """The guard fails when ci.yml enforces a lower threshold than the policy.
-
-    This is the exact drift that the original defect introduced: ci.yml said
-    89 while pyproject.toml and the Makefile said 90.
-    """
+    """The guard fails when ci.yml enforces a lower threshold than the policy."""
     root = _write(
         tmp_path,
         pyproject=PYPROJECT_TEMPLATE.format(value=90),
@@ -358,6 +355,56 @@ def test_guard_still_catches_drift_behind_a_resolved_ci_gate(tmp_path: Path) -> 
 
     assert errors, "the guard must fail when the Makefile drifts apart"
     assert any("Makefile" in error for error in errors), errors
+
+
+# ---------------------------------------------------------------------------
+# Advanced Workflow Parsing (Multiline Folded/Block Scalars & Anchors/Aliases)
+# ---------------------------------------------------------------------------
+
+
+def test_workflow_multiline_block_scalar_and_aliases(tmp_path: Path) -> None:
+    """Workflow parsing correctly handles block scalars (|), folded scalars (>), and anchors/aliases."""
+    workflow_content = """
+    name: Advanced CI
+    defaults:
+      run: &default-run
+        shell: bash
+    jobs:
+      test:
+        runs-on: ubuntu-latest
+        steps:
+          - run: |
+              echo "Running tests"
+              python -m pytest --cov-fail-under=90
+          - run: >
+              python -m pytest
+              --cov-fail-under=90
+    """
+    root = _write(
+        tmp_path,
+        pyproject=PYPROJECT_TEMPLATE.format(value=90),
+        makefile=MAKEFILE_TEMPLATE.format(value=90),
+        ci=workflow_content,
+    )
+    assert verify(root) == []
+
+
+def test_alternate_command_entrypoints_config(tmp_path: Path) -> None:
+    """Alternate command entrypoints like setup.cfg or tox.ini are parsed and checked."""
+    root = _write(
+        tmp_path,
+        pyproject=PYPROJECT_TEMPLATE.format(value=90),
+        makefile=MAKEFILE_TEMPLATE.format(value=90),
+        ci=CI_LITERAL_TEMPLATE.format(value=90),
+    )
+    (root / "tox.ini").write_text("[testenv]\ncommands = pytest --cov-fail-under=90\n", encoding="utf-8")
+    assert verify(root) == []
+
+    # Drifts in tox.ini should be caught
+    (root / "tox.ini").write_text("[testenv]\ncommands = pytest --cov-fail-under=85\n", encoding="utf-8")
+    errors = verify(root)
+    assert errors
+    assert any("tox.ini" in error for error in errors)
 
 
 # ---------------------------------------------------------------------------

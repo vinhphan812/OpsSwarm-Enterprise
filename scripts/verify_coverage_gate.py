@@ -39,6 +39,7 @@ import re
 import sys
 import tomllib
 from pathlib import Path
+import yaml
 
 # The committed coverage policy floor.  Raising the gate only requires editing
 # the declarations; lowering it below this floor is refused on purpose, because
@@ -74,6 +75,27 @@ def pyproject_threshold(text: str) -> float | None:
         return None
 
 
+def parse_workflow_text(text: str) -> str:
+    """Parse workflow YAML robustly using yaml.safe_load (handling folded/block scalars, anchors/aliases)."""
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return text
+    strings = []
+    def _collect(obj):
+        if isinstance(obj, str):
+            strings.append(obj)
+        elif isinstance(obj, dict):
+            for k, v in obj.items():
+                _collect(k)
+                _collect(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _collect(item)
+    _collect(data)
+    return "\n".join(strings) + "\n" + text
+
+
 def literal_thresholds(text: str) -> list[float]:
     """Return every ``--cov-fail-under=<n>`` value found in a text blob."""
     return [float(match) for match in CLI_FAIL_UNDER.findall(text)]
@@ -90,12 +112,7 @@ def read_text(path: Path) -> str:
 
 
 def declared_gates(root: Path) -> dict[str, list[float]]:
-    """Return the thresholds declared by each gate location.
-
-    Each entry maps a human-readable location to the list of literal threshold
-    values found there.  An empty list means the location carries no literal
-    gate, either because it declares none or because it resolves one.
-    """
+    """Return the thresholds declared by each gate location."""
     gates: dict[str, list[float]] = {}
 
     pyproject = root / "pyproject.toml"
@@ -111,20 +128,24 @@ def declared_gates(root: Path) -> dict[str, list[float]]:
     if workflows.is_dir():
         for workflow in sorted(workflows.glob("*.yml")):
             location = f".github/workflows/{workflow.name} --cov-fail-under"
-            gates[location] = literal_thresholds(read_text(workflow))
+            wf_text = parse_workflow_text(read_text(workflow))
+            gates[location] = literal_thresholds(wf_text)
 
     scripts = root / "scripts"
     if scripts.is_dir():
         this_file = Path(__file__).resolve()
         for script in sorted(scripts.iterdir()):
-            # Never scan this verifier: it necessarily mentions the flag it
-            # searches for, and it is not itself a coverage gate.
             if script.resolve() == this_file:
                 continue
             if not script.is_file() or script.suffix not in {".py", ".sh"}:
                 continue
             location = f"scripts/{script.name} --cov-fail-under"
             gates[location] = literal_thresholds(read_text(script))
+
+    for cfg_name in ("tox.ini", "setup.cfg"):
+        cfg_path = root / cfg_name
+        if cfg_path.is_file():
+            gates[f"{cfg_name} --cov-fail-under"] = literal_thresholds(read_text(cfg_path))
 
     return gates
 
@@ -173,8 +194,6 @@ def verify(root: Path) -> list[str]:
                 "is not permitted"
             )
 
-    # The Makefile is a declared gate location: it must state the policy
-    # explicitly so a local `make coverage` run is held to the documented bar.
     makefile_values = gates.get(MAKEFILE_LOCATION, [])
     if not makefile_values:
         errors.append(
@@ -186,9 +205,7 @@ def verify(root: Path) -> list[str]:
         if disagreement:
             errors.append(disagreement)
 
-    # ci.yml may either state the threshold literally or resolve it from the
-    # source of truth at run time.  Either way it must agree with the policy.
-    ci_source = read_text(root / ".github" / "workflows" / "ci.yml")
+    ci_source = parse_workflow_text(read_text(root / ".github" / "workflows" / "ci.yml"))
     ci_values = gates.get(CI_WORKFLOW_LOCATION, [])
     if ci_values and canonical is not None:
         disagreement = _disagreement(CI_WORKFLOW_LOCATION, ci_values, canonical)
@@ -201,7 +218,6 @@ def verify(root: Path) -> list[str]:
             "policy value or resolve it"
         )
 
-    # Any other workflow or helper script that mentions a gate must agree too.
     for location, values in gates.items():
         if location in {CANONICAL_LOCATION, MAKEFILE_LOCATION, CI_WORKFLOW_LOCATION}:
             continue
@@ -267,7 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         for location, values in gates.items()
         if values and len(set(values)) == 1
     )
-    ci_source = read_text(root / ".github" / "workflows" / "ci.yml")
+    ci_source = parse_workflow_text(read_text(root / ".github" / "workflows" / "ci.yml"))
     suffix = (
         " (ci.yml resolves its gate from pyproject.toml)"
         if derived_gate(ci_source)
