@@ -371,17 +371,18 @@ jobs:
             --docker-username="${{ github.actor }}" \
             --docker-password="${{ secrets.GITHUB_TOKEN }}" \
             --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n opsswarm patch deployment opsswarm --type=json \
-            -p '[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ghcr-pull"}]}]'
-          kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.template.spec.imagePullSecrets}' \
-            | tee evidence/pull-secret.txt
-          echo
+
 
       - name: Apply the dev overlay
         shell: bash
         run: |
           set -euo pipefail
           kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
+          # The Deployment is created by the overlay, so attach the namespaced
+          # GHCR credential only after the manifest has been applied.
+          kubectl -n opsswarm patch deployment opsswarm --type=json -p '[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ghcr-pull"}]}]'
+          kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.template.spec.imagePullSecrets}' | tee evidence/pull-secret.txt
+          echo
 
       - name: Wait for the rollout to become ready
         shell: bash
