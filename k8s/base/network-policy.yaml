@@ -114,8 +114,6 @@ spec:
     - to:
         - ipBlock:
             cidr: 140.82.112.0/22
-        - ipBlock:
-            cidr: 192.30.252.0/22
       ports:
         - protocol: TCP
           port: 443
