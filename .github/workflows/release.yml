@@ -313,7 +313,7 @@ jobs:
       # ─── Container image (issue #73) ────────────────────────────────────────
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d3b53c60f864b11ee2f0cd543bfae1e76d28e6d # v3.9.0
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
 
       - name: Authenticate to GitHub Container Registry
         uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
@@ -359,7 +359,7 @@ jobs:
           }
 
       - name: Generate SPDX SBOM from published container image
-        uses: anchore/sbom-action@bb502a77cf8aa87824c7c1c21e6f3bc4ce39cfe3 # v0.17.0
+        uses: anchore/sbom-action@d94f46e13c6c62f59525ac9a1e147a99dc0b9bf5 # v0.17.0
         with:
           image: ${{ steps.image_digest.outputs.image }}@${{ steps.image_digest.outputs.digest }}
           format: spdx-json
@@ -374,7 +374,7 @@ jobs:
           python -m json.tool artifacts/release/sbom.spdx.json >/dev/null
 
       - name: Vulnerability scan with Trivy (fail-closed at CRITICAL)
-        uses: aquasecurity/trivy-action@5c14972d7ab9fcbfa23ea40e6d2e1fb0a98f3d # 0.24.0
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.24.0
         with:
           image-ref: ${{ steps.image_digest.outputs.image }}@${{ steps.image_digest.outputs.digest }}
           format: sarif
@@ -497,7 +497,7 @@ jobs:
           ref: refs/tags/${{ needs.release.outputs.tag }}
           persist-credentials: false
       - name: Download distributions and smoke config
-        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-distributions-${{ needs.release.outputs.tag }}
           path: smoke-input/
