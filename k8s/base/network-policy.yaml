@@ -106,20 +106,24 @@ spec:
     # ── GitHub API ─────────────────────────────────────────────────────────
     # OpsSwarm Enterprise reads and writes GitHub issues and pull requests.
     #
-    # CIDR basis: GitHub publishes their IP ranges at https://api.github.com/meta.
-    # AS16033 (GitHub) as of 2024 uses 140.82.112.0/22 (verified 2024).
+    # CIDR basis: GitHub publishes their IP ranges at https://api.github.com/meta
+    # ("api" key).  Each published range is listed as its own ipBlock because
+    # a NetworkPolicy ipBlock admits one CIDR plus an optional "except" list,
+    # and every entry in "except" must be a strict subset of that one CIDR.
+    # A single wide CIDR with unrelated exclusions is rejected by the API
+    # server, so the ranges are enumerated individually.
     # Re-check annually — stale CIDRs will cause OpsSwarm to fail GitHub API calls.
     # GitHub Enterprise Server: replace this block with your self-hosted IP ranges
     # (managed in k8s/overlays/prod/network-policy.yaml).
     - to:
         - ipBlock:
-            cidr: 140.82.112.0/22
-            # Exclude GitHub-hosted runner egress — defence-in-depth only.
-            # The runner's own egress rules should already block outbound calls;
-            # this exclusion prevents accidental OpsSwarm → runner callback even
-            # if a runner IP falls within GitHub's AS16033 range.
-            except:
-              - 192.30.252.0/22  # GitHub Actions runner IPs (verify at runner.yaml)
+            cidr: 140.82.112.0/20
+        - ipBlock:
+            cidr: 143.55.64.0/20
+        - ipBlock:
+            cidr: 185.199.108.0/22
+        - ipBlock:
+            cidr: 192.30.252.0/22
       ports:
         - protocol: TCP
           port: 443
