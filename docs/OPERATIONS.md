@@ -114,3 +114,35 @@ opsswarm_dependency_retry_exhausted_total{operation="GET:/repos/..."}
 # Ambiguous writes (writes whose outcome is unknown — check GitHub)
 opsswarm_execution_ambiguous_total
 ```
+
+## Canonical Kubernetes operations (Issue #73)
+
+The canonical deployment assets are maintained in [PR #104](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/104)
+on `feature/pr93-remediation`, under [`k8s/`](https://github.com/vinhphan812/OpsSwarm-Enterprise/tree/feature/pr93-remediation/k8s).
+Use the [Container Deployment Guide](https://github.com/vinhphan812/OpsSwarm-Enterprise/blob/feature/pr93-remediation/docs/guides/CONTAINER_DEPLOYMENT.md)
+for render, server-side dry-run, rollout, and rollback commands; this PR does not
+ship a competing `deploy/kubernetes/` tree.
+
+### Single-writer and lifecycle boundaries
+
+- Production is deliberately one replica with a `Recreate` strategy. Do not scale
+  the workload until the distributed-state contract tracked by Issue #70 exists.
+- The canonical PVCs hold evidence at `/var/lib/opsswarm` and runtime state at
+  `/app/runtime-data`; preserve their single-writer ownership during a rollout.
+- `/health` is a **liveness** signal: it confirms that the API process is alive.
+  It does not establish that startup validation, dependency checks, or draining
+  have completed.
+- `/ready` is the **readiness** lifecycle gate. The canonical Kubernetes Deployment
+  probes `/ready`; it is `200` only after startup validation and is `503` while
+  the service is starting, draining, or failed. Route traffic only after the
+  readiness probe succeeds.
+- The canonical pod uses a 60-second termination grace period. Before a restart or
+  rollback, inspect pod events and all-container logs; if readiness or health
+  verification fails, stop promotion and use `kubectl rollout undo` only after
+  diagnosing the failure.
+
+The workload runs as UID/GID `10001`, disallows privilege escalation, drops all
+capabilities, and applies the runtime-default seccomp profile. The current canonical
+manifest deliberately retains a writable root filesystem for application persistence;
+the read-only-root configuration documented for Docker is an opt-in runtime profile,
+not the default Kubernetes assertion.

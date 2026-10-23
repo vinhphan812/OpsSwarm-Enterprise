@@ -29,6 +29,7 @@ def _get_metrics():
     if _metrics_module is None:
         try:
             from .metrics import metrics as _m
+
             _metrics_module = _m
         except Exception:
             _metrics_module = None
@@ -446,8 +447,7 @@ class EvidenceStore:
                 continue
             if not isinstance(rec, Mapping):
                 errors.append(
-                    f"Line {i + 1}: JSON record must be a mapping "
-                    f"(got {type(rec).__name__})"
+                    f"Line {i + 1}: JSON record must be a mapping (got {type(rec).__name__})"
                 )
                 continue
 
@@ -455,8 +455,7 @@ class EvidenceStore:
             payload = rec.get("payload", {})
             if not isinstance(payload, Mapping):
                 errors.append(
-                    f"Line {i + 1}: payload must be a mapping "
-                    f"(got {type(payload).__name__})"
+                    f"Line {i + 1}: payload must be a mapping (got {type(payload).__name__})"
                 )
                 continue
 
@@ -471,8 +470,7 @@ class EvidenceStore:
             recomputed = self._signature_with_chain(kind, payload, prev_sig=prev_sig)
             if stored_sig != recomputed:
                 errors.append(
-                    f"Line {i + 1}: chain broken "
-                    f"(stored={stored_sig}, recomputed={recomputed})"
+                    f"Line {i + 1}: chain broken (stored={stored_sig}, recomputed={recomputed})"
                 )
             prev_sig = stored_sig
 

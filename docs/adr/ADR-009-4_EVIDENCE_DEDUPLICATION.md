@@ -1,7 +1,7 @@
 # ADR-009-4: Evidence Duplicate Handling
 
-**Status:** Proposed  
-**Created:** 2026-09-22  
+**Status:** Proposed
+**Created:** 2026-09-22
 **Related:** Issue #9, PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md
 
 ## Context
@@ -12,10 +12,16 @@ detection:
 ```python
 # evidence.py:12-17
 def append(self, run_id: str, kind: str, payload: dict[str, Any]) -> str:
-    eid=f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
-    rec={"id":eid,"timestamp":datetime.now(timezone.utc).isoformat(),"run_id":run_id,"kind":kind,"payload":payload}
-    with (self.path/f"{run_id}.jsonl").open("a",encoding="utf-8") as f:
-        f.write(json.dumps(rec,ensure_ascii=False,default=str)+"\n")
+    eid = f"EV-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    rec = {
+        "id": eid,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "run_id": run_id,
+        "kind": kind,
+        "payload": payload,
+    }
+    with (self.path / f"{run_id}.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
     return eid
 ```
 
@@ -79,11 +85,8 @@ recorded. This creates:
    ```python
    def _signature(kind: str, payload: dict) -> str:
        """Calculate stable signature for duplicate detection."""
-       stable = {k: v for k, v in payload.items() 
-                 if k not in ('timestamp', 'eid', 'id')}
-       return hashlib.sha256(
-           f"{kind}:{json.dumps(stable, sort_keys=True)}".encode()
-       ).hexdigest()[:16]
+       stable = {k: v for k, v in payload.items() if k not in ("timestamp", "eid", "id")}
+       return hashlib.sha256(f"{kind}:{json.dumps(stable, sort_keys=True)}".encode()).hexdigest()[:16]
    ```
 
 2. **Duplicate index** (`evidence.py`)

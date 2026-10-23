@@ -151,10 +151,14 @@ def check_health(python: Path, config_path: Path, port: int) -> bool:
         # Start uvicorn in background using the venv Python (not host sys.executable)
         proc = subprocess.Popen(
             [
-                str(python), "-m", "uvicorn",
+                str(python),
+                "-m",
+                "uvicorn",
                 "opsswarm.api:app",
-                "--host", "127.0.0.1",
-                "--port", str(port),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
             ],
             cwd=tmpdir,
             env=env,

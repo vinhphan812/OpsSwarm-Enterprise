@@ -52,7 +52,8 @@ def run_mypy_stage1() -> tuple[int, list[str]]:
         timeout=300,
     )
     errors = [
-        line for line in result.stdout.splitlines()
+        line
+        for line in result.stdout.splitlines()
         if "opsswarm/" in line and ":" in line and "error:" in line
     ]
     return result.returncode, errors
@@ -62,8 +63,7 @@ def main() -> None:
     baseline = load_baseline()
     if baseline is None:
         print(
-            "INFO: .static_analysis_baseline.toml not found. "
-            "Running in advisory mode.",
+            "INFO: .static_analysis_baseline.toml not found. Running in advisory mode.",
             file=sys.stderr,
         )
         sys.exit(2)

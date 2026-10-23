@@ -76,8 +76,8 @@ _CONTROL_CHAR_RE = re.compile(
     # Matches in order: NUL–BEL, backspace, VT, FF, CR, DEL, C1 block, OSC/PM (late 0x9x)
     r"[\x00-\x08\x07\x0b\x0c\x0d\x7f\x80-\x9f\x98\x9e]|"
     # \n → \u21a0, \t → single space
-    r"(?<!\x09)(\x0a)|"   # newline not preceded by tab → replace
-    r"(?<!\x0a)(\x09)"     # tab not preceded by newline → replace
+    r"(?<!\x09)(\x0a)|"  # newline not preceded by tab → replace
+    r"(?<!\x0a)(\x09)"  # tab not preceded by newline → replace
 )
 # Pre-built replacement: pass group(1) which is either \x0a or \x09; replace with safe glyph/space
 _CONTROL_CHAR_RE_WITH_GROUP = re.compile(
@@ -95,13 +95,15 @@ def _strip_control_chars(text: str) -> str:
     space. Other C0/C1 chars are stripped. High bytes (Vietnamese CJK, emoji,
     etc.) are preserved.
     """
+
     def _replacer(m: re.Match[str]) -> str:
         ch = m.group()
         if ch == "\x0a":
-            return "\u21a0"   # ↗ — safe paragraph separator in structured log
+            return "\u21a0"  # ↗ — safe paragraph separator in structured log
         if ch == "\x09":
             return " "
         return ""
+
     return _CONTROL_CHAR_RE_WITH_GROUP.sub(_replacer, text)
 
 

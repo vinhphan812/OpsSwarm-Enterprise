@@ -56,6 +56,7 @@ TEST_MARKERS = {
 
 class ValidationError(Exception):
     """Validation failure."""
+
     pass
 
 
@@ -113,7 +114,10 @@ def validate_skill_frontmatter(skill_id: str) -> tuple[bool, list[str]]:
         errors.append(f"Unsupported frontmatter fields: {sorted(extra)}")
     if frontmatter.get("name") != skill_id:
         errors.append(f"Frontmatter name must equal allowlisted skill id {skill_id}")
-    if not isinstance(frontmatter.get("description"), str) or not frontmatter["description"].strip():
+    if (
+        not isinstance(frontmatter.get("description"), str)
+        or not frontmatter["description"].strip()
+    ):
         errors.append("description must be a non-empty string")
 
     return len(errors) == 0, errors
@@ -183,12 +187,14 @@ def collect_test_evidence(skill_id: str) -> tuple[list[dict[str, Any]], list[str
                             decorator_names.add(dec.attr)
                     for marker in TEST_MARKERS:
                         if marker in decorator_names:
-                            evidence.append({
-                                "skill_id": skill_id,
-                                "file": str(test_file.relative_to(PROJECT_ROOT)),
-                                "function": node.name,
-                                "category": marker,
-                            })
+                            evidence.append(
+                                {
+                                    "skill_id": skill_id,
+                                    "file": str(test_file.relative_to(PROJECT_ROOT)),
+                                    "function": node.name,
+                                    "category": marker,
+                                }
+                            )
                             break
         except (SyntaxError, OSError) as exc:
             errors.append(f"Error reading {test_file}: {exc}")
@@ -216,9 +222,7 @@ def validate_test_threshold(skill_id: str) -> tuple[bool, list[str]]:
     total = sum(counts.values())
 
     if total < MIN_TESTS_PER_SKILL:
-        errors.append(
-            f"Test count {total} below threshold {MIN_TESTS_PER_SKILL} for {skill_id}"
-        )
+        errors.append(f"Test count {total} below threshold {MIN_TESTS_PER_SKILL} for {skill_id}")
         return False, errors
 
     # Every required category must have at least 1 test.
@@ -265,15 +269,15 @@ def validate_runnable(skill_id: str) -> tuple[bool, list[str]]:
 
 
 def generate_evidence(
-        run_id: str,
-        skill_id: str,
-        static_pass: bool,
-        runnable_pass: bool,
-        static_errors: list[str],
-        runnable_errors: list[str],
-        tests_collected: int,
-        tests_passed: int | None = None,
-        coverage: float | None = None,
+    run_id: str,
+    skill_id: str,
+    static_pass: bool,
+    runnable_pass: bool,
+    static_errors: list[str],
+    runnable_errors: list[str],
+    tests_collected: int,
+    tests_passed: int | None = None,
+    coverage: float | None = None,
 ) -> dict[str, Any]:
     """Generate evidence record for a skill validation."""
     # Get evidence refs from existing evidence store if available
@@ -321,10 +325,10 @@ def save_evidence(run_id: str, evidence: dict[str, Any]) -> Path:
 
 
 def run_validation(
-        skill_id: str,
-        static_only: bool = False,
-        runnable_only: bool = False,
-        generate_evidence_flag: bool = False,
+    skill_id: str,
+    static_only: bool = False,
+    runnable_only: bool = False,
+    generate_evidence_flag: bool = False,
 ) -> tuple[bool, dict[str, Any]]:
     """Run validation for a single skill."""
     run_id = get_run_id()
@@ -397,7 +401,9 @@ def main(argv: list[str] | None = None) -> int:
     skills_to_validate = []
     if args.skill:
         if args.skill not in ALL_SKILLS:
-            print(f"Error: Unknown skill '{args.skill}'. Valid skills: {ALL_SKILLS}", file=sys.stderr)
+            print(
+                f"Error: Unknown skill '{args.skill}'. Valid skills: {ALL_SKILLS}", file=sys.stderr
+            )
             return 1
         skills_to_validate = [args.skill]
     elif args.all:
@@ -418,11 +424,13 @@ def main(argv: list[str] | None = None) -> int:
             generate_evidence_flag=args.evidence,
         )
 
-        results.append({
-            "skill_id": skill_id,
-            "passed": passed,
-            "evidence": evidence,
-        })
+        results.append(
+            {
+                "skill_id": skill_id,
+                "passed": passed,
+                "evidence": evidence,
+            }
+        )
 
         if not passed:
             all_passed = False
@@ -458,9 +466,9 @@ def main(argv: list[str] | None = None) -> int:
                 for r in results
             ],
             "overall_pass": all_passed,
-            "failures": [
-                r["skill_id"] for r in results if not r["passed"]
-            ] if not all_passed else [],
+            "failures": [r["skill_id"] for r in results if not r["passed"]]
+            if not all_passed
+            else [],
         }
         save_evidence(run_id, summary_evidence)
 

@@ -152,8 +152,7 @@ class CapabilityRegistry:
             except ValueError:
                 valid = [r.value for r in Risk]
                 raise ValueError(
-                    f"[ADR-013] Rule {rid!r} has invalid risk {raw_risk!r}; "
-                    f"expected one of {valid}"
+                    f"[ADR-013] Rule {rid!r} has invalid risk {raw_risk!r}; expected one of {valid}"
                 )
 
             # Validate pattern_mode
@@ -166,9 +165,7 @@ class CapabilityRegistry:
 
             # Validate pattern is present
             if not entry.get("pattern"):
-                raise ValueError(
-                    f"[ADR-013] Rule {rid!r} is missing required 'pattern' field"
-                )
+                raise ValueError(f"[ADR-013] Rule {rid!r} is missing required 'pattern' field")
 
             rules.append(
                 RegistryRule(

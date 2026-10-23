@@ -173,9 +173,9 @@ def check_file_links(file_path: Path, base_dir: Path) -> list[BrokenLink]:
 
 
 def validate_documentation_links(
-        docs_dir: Path,
-        extra_files: list[Path] | None = None,
-        verbose: bool = False,
+    docs_dir: Path,
+    extra_files: list[Path] | None = None,
+    verbose: bool = False,
 ) -> tuple[int, list[BrokenLink]]:
     """Validate links in all markdown files under docs_dir and any extra files."""
     all_files: list[Path] = []
@@ -211,7 +211,11 @@ def main() -> int:
         "--extra-files",
         nargs="*",
         type=Path,
-        default=[PROJECT_ROOT / "README.md", PROJECT_ROOT / "AGENTS.md", PROJECT_ROOT / "CLAUDE.md"],
+        default=[
+            PROJECT_ROOT / "README.md",
+            PROJECT_ROOT / "AGENTS.md",
+            PROJECT_ROOT / "CLAUDE.md",
+        ],
         help="Extra individual markdown files to check (e.g. root README.md)",
     )
     parser.add_argument(

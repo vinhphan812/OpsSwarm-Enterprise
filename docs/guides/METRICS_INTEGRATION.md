@@ -242,7 +242,7 @@ def test_metrics_endpoint():
     assert "text/plain" in response.headers["content-type"]
     body = response.text
     assert "opsswarm_runs_total" in body
-    assert 'state="TRIAGE"' in body      # Corrected: Prometheus format uses quoted labels
+    assert 'state="TRIAGE"' in body  # Corrected: Prometheus format uses quoted labels
     assert "1" in body
 ```
 
@@ -251,7 +251,7 @@ def test_metrics_endpoint():
 ```python
 def test_metrics_all_counters_present(client_with_admin_scope):
     """Verify all expected counter families are always present in the output."""
-    response = client_with_admin_scope.get("/metrics")   # requires admin scope
+    response = client_with_admin_scope.get("/metrics")  # requires admin scope
     body = response.text
     assert "opsswarm_runs_total" in body
     assert "opsswarm_commands_executed" in body
@@ -263,7 +263,7 @@ def test_metrics_label_format():
     metrics.record_run("PLANNING")
     metrics.record_command("approved")
     metrics.record_verification(True)
-    response = client_with_admin_scope.get("/metrics")   # requires admin scope
+    response = client_with_admin_scope.get("/metrics")  # requires admin scope
     body = response.text
     assert 'state="PLANNING"' in body
     assert 'outcome="approved"' in body

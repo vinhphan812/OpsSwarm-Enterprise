@@ -75,7 +75,9 @@ def locked_requirements(lock_text: str) -> dict[str, str]:
             raise ValueError(f"duplicate locked package: {name}")
 
         # Determine the end of the current requirement block
-        next_index = pinned_lines[position + 1][0] if position + 1 < len(pinned_lines) else len(lines)
+        next_index = (
+            pinned_lines[position + 1][0] if position + 1 < len(pinned_lines) else len(lines)
+        )
         block = lines[index:next_index]
 
         # Check if the current block contains a hash

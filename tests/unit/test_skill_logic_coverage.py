@@ -9,8 +9,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from opsswarm.models import (
-    Task, IncidentContext, RootCauseArtifact, RecoveryPlan,
-    ExecutionResult, VerificationResult, TaskType, Risk, RCAReport,
+    Task,
+    IncidentContext,
+    RootCauseArtifact,
+    RecoveryPlan,
+    ExecutionResult,
+    VerificationResult,
+    TaskType,
+    Risk,
+    RCAReport,
 )
 from opsswarm import skill_logic as S
 
@@ -18,6 +25,7 @@ from opsswarm import skill_logic as S
 # -----------------------------------------------------------------------
 # _redact_dict() — else branch (non-string/non-dict/non-list values)
 # -----------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_redact_dict_preserves_non_string_types():
@@ -86,6 +94,7 @@ def test_redact_dict_list_with_mixed_types():
 # build_tasks() — generic Exception handler (lines 68-70)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_build_tasks_generic_exception():
     """Lines 68-70: non-ValidationError exceptions in the try block return [].
@@ -96,9 +105,7 @@ async def test_build_tasks_generic_exception():
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {"tasks": [{"id": "t1", "type": "INVESTIGATE"}]}
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
     with patch(
         "opsswarm.skill_logic.Task.model_validate",
@@ -113,6 +120,7 @@ async def test_build_tasks_generic_exception():
 # execute_task() — generic Exception handler (lines 92-99)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_execute_task_generic_exception():
     """Lines 92-99: non-ValidationError exceptions return safe fallback Finding."""
@@ -123,7 +131,9 @@ async def test_execute_task_generic_exception():
     incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
     # normalize_finding raises non-ValidationError → generic handler
-    with patch("opsswarm.skill_logic.normalize_finding", side_effect=RuntimeError("INTERNAL_STACK_TRACE")):
+    with patch(
+        "opsswarm.skill_logic.normalize_finding", side_effect=RuntimeError("INTERNAL_STACK_TRACE")
+    ):
         result = await S.execute_task(mock_oc, "agent", "run-id", incident, task)
 
     assert result.task_id == "t1"
@@ -137,23 +147,20 @@ async def test_execute_task_generic_exception():
 # synthesize_root_cause() — generic Exception handler (lines 166-172)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_synthesize_root_cause_generic_exception():
     """Lines 166-172: non-ValidationError exceptions return uncertain RCA."""
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
     with patch(
         "opsswarm.skill_logic.normalize_root_cause_artifact",
         side_effect=RuntimeError("unexpected failure"),
     ):
-        result = await S.synthesize_root_cause(
-            mock_oc, "agent", "run-id", incident, [], []
-        )
+        result = await S.synthesize_root_cause(mock_oc, "agent", "run-id", incident, [], [])
 
     assert result.status == "uncertain"
     assert result.proximate_cause == "Unable to synthesize root cause"
@@ -163,15 +170,14 @@ async def test_synthesize_root_cause_generic_exception():
 # make_recovery_plan() — generic Exception handler (lines 187-189)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_make_recovery_plan_generic_exception():
     """Lines 187-189: non-ValidationError exceptions return empty RecoveryPlan."""
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
     root = RootCauseArtifact(proximate_cause="p", root_cause="r")
 
     with patch(
@@ -187,16 +193,16 @@ async def test_make_recovery_plan_generic_exception():
 # execute_recovery() — generic Exception handler (lines 208-215)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_execute_recovery_generic_exception():
     """Lines 208-215: non-ValidationError exceptions return failed ExecutionResult."""
     from opsswarm.models import RemediationOption
+
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
     root = RootCauseArtifact(proximate_cause="p", root_cause="r")
     option = RemediationOption(id="o1", description="restart service", risk=Risk.SAFE_WRITE)
 
@@ -216,15 +222,14 @@ async def test_execute_recovery_generic_exception():
 # verify_recovery() — generic Exception handler (lines 234-241)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_verify_recovery_generic_exception():
     """Lines 234-241: non-ValidationError exceptions return failed VerificationResult."""
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
     execution = ExecutionResult(option_id="o1", success=True, summary="ok", evidence=[])
 
     with patch(
@@ -244,15 +249,14 @@ async def test_verify_recovery_generic_exception():
 # make_extra_task() — generic Exception handler (lines 260-268)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_make_extra_task_generic_exception():
     """Lines 260-268: non-ValidationError exceptions return fallback Task."""
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=1, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=1, title="t", body="b", service="s", environment="e")
 
     with patch(
         "opsswarm.skill_logic.Task.model_validate",
@@ -269,6 +273,7 @@ async def test_make_extra_task_generic_exception():
 # synthesize_rca() — generic Exception handler (lines 301-306)
 # -----------------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_synthesize_rca_generic_exception():
     """Lines 301-306: non-ValidationError exceptions return safe RCAReport fallback.
@@ -280,9 +285,7 @@ async def test_synthesize_rca_generic_exception():
     mock_oc = AsyncMock()
     mock_oc.run_json.return_value = {}  # Valid response
 
-    incident = IncidentContext(
-        issue_number=42, title="t", body="b", service="s", environment="e"
-    )
+    incident = IncidentContext(issue_number=42, title="t", body="b", service="s", environment="e")
     root = RootCauseArtifact(
         proximate_cause="network timeout",
         root_cause="misconfigured LB",
@@ -295,9 +298,7 @@ async def test_synthesize_rca_generic_exception():
         "opsswarm.skill_logic._normalize_rca_report",
         side_effect=RuntimeError("INTERNAL_STACK_TRACE"),
     ):
-        result = await S.synthesize_rca(
-            mock_oc, "agent", "run-id", incident, root, findings, []
-        )
+        result = await S.synthesize_rca(mock_oc, "agent", "run-id", incident, root, findings, [])
 
     # Safe fallback path taken: run_id and issue_number set from parameters
     assert result.run_id == "run-id"
@@ -307,6 +308,7 @@ async def test_synthesize_rca_generic_exception():
 # -----------------------------------------------------------------------
 # _normalize_rca_report() — conditional branches
 # -----------------------------------------------------------------------
+
 
 @pytest.mark.unit
 def test_normalize_rca_report_camelCase_aliases():

@@ -46,7 +46,9 @@ analysis, and implementation handoffs. Per ADR-006, the canonical frontmatter co
 ```python
 # orchestrator.py:112-114
 if run.execution.ambiguous:
-    run.decision=DecisionRequest(kind="DECISION", reason="The write outcome is ambiguous. Blind retry is prohibited.")
+    run.decision = DecisionRequest(
+        kind="DECISION", reason="The write outcome is ambiguous. Blind retry is prohibited."
+    )
     await self._set_state(run, RunState.WAITING_DECISION)
     return
 ```
@@ -105,17 +107,17 @@ if run.execution.ambiguous:
 
 ```python
 # orchestrator.py:119-136 - S7 IS INDEPENDENT
-async def _verify(self, run:RunRecord):
+async def _verify(self, run: RunRecord):
     await self._set_state(run, RunState.VERIFYING)
-    run.verification=await S.verify_recovery(...)
+    run.verification = await S.verify_recovery(...)
     threshold = float(self.cfg.get("verification_confidence_threshold", 0.85))
     if not run.verification.verified or run.verification.confidence < threshold:
         # S7 veto: allow abort instead of fail
         if run.verification.abort:
-            run.error="Verification failed; aborted by S7"
+            run.error = "Verification failed; aborted by S7"
             await self._set_state(run, RunState.ABORTED)
             return
-        run.error="Independent recovery verification failed"
+        run.error = "Independent recovery verification failed"
         await self._set_state(run, RunState.FAILED)
         return
 ```

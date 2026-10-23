@@ -227,4 +227,3 @@ class TestIdempotencyPreserved:
         should_skip = outcome == CommandOutcome.CONFIRMED.value
 
         assert should_skip, "CONFIRMED comment_id must still be skipped"
-

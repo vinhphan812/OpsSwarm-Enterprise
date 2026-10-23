@@ -5,6 +5,7 @@ __pycache__/
 .mypy_cache/
 *.pyc
 .env
+!.env.compose.example
 runtime-data/
 *.log
 .DS_Store

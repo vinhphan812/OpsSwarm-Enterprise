@@ -77,6 +77,7 @@ class TestOpenClawClient:
     async def test_run_text_non_zero_exit_code(self, client):
         """run_text raises OpenClawErrorSanitized on non-zero exit code."""
         from opsswarm.errors import OpenClawErrorSanitized
+
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
             mock_proc.returncode = 1
@@ -95,6 +96,7 @@ class TestOpenClawClient:
     async def test_run_text_stderr_token_is_sanitized(self, client):
         """Stderr containing tokens/paths is sanitised before reaching the error."""
         from opsswarm.errors import OpenClawErrorSanitized
+
         with patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
             mock_proc = MagicMock()
             mock_proc.returncode = 1

@@ -74,11 +74,11 @@ The `reconcile(run_id)` method returns:
 @dataclass
 class ReconciliationReport:
     run_id: str
-    total_records: int           # Total evidence records
-    unique_idempotency_keys: int # Unique evidence entries
-    duplicates_skipped: int      # Duplicates detected and skipped
-    evidence_kinds: list[str]    # Types of evidence present
-    gaps_detected: list[str]     # Missing expected evidence
+    total_records: int  # Total evidence records
+    unique_idempotency_keys: int  # Unique evidence entries
+    duplicates_skipped: int  # Duplicates detected and skipped
+    evidence_kinds: list[str]  # Types of evidence present
+    gaps_detected: list[str]  # Missing expected evidence
     last_evidence_timestamp: datetime | None
     generated_at: datetime
 ```
@@ -109,8 +109,9 @@ The `Orchestrator` class integrates recovery:
 
 ```python
 class Orchestrator:
-    def __init__(self, cfg, github, openclaw, data_dir="runtime-data",
-                 enable_recovery: bool = True):
+    def __init__(
+        self, cfg, github, openclaw, data_dir="runtime-data", enable_recovery: bool = True
+    ):
         # ... setup ...
         self.reconciliation = ReconciliationManager(data_dir)
 

@@ -84,7 +84,7 @@ VALID_TRANSITIONS: dict[RunState | None, set[RunState]] = {
     },
     RunState.WAITING_INPUT: {RunState.DIAGNOSED, RunState.INVESTIGATING, RunState.ABORTED},
     RunState.RESOLVED: {
-        RunState.PLAN_RCA,           # ADR-015/ADR-016 Phase 2: kick off RCA
+        RunState.PLAN_RCA,  # ADR-015/ADR-016 Phase 2: kick off RCA
         RunState.PLAN_RCA_RESOLVED,  # skip RCA when rca_enabled=false
     },
     RunState.FAILED: {
@@ -449,6 +449,7 @@ class RCAReport(BaseModel):
     Captures the full causal analysis and lessons learned separate from
     the immediate service-restoration plan (Phase 1, RecoveryPlan).
     """
+
     run_id: str = ""
     issue_number: int = 0
     proximate_cause: str = ""
@@ -474,8 +475,10 @@ class RCAReport(BaseModel):
             causal_chain=rc.causal_chain,
             evidence_refs=rc.evidence_refs,
             confidence=rc.confidence,
-            corrective_actions=[{"description": a, "priority": "medium", "owner": None}
-                               for a in rc.corrective_actions],
+            corrective_actions=[
+                {"description": a, "priority": "medium", "owner": None}
+                for a in rc.corrective_actions
+            ],
         )
 
 
