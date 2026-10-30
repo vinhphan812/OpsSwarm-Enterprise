@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
+from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
+import uuid
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 from .models import RunRecord
 
 logger = logging.getLogger(__name__)
-
-
-from abc import ABC, abstractmethod
-import uuid
-import json
 
 
 class BaseStore(ABC):
@@ -23,36 +27,30 @@ class BaseStore(ABC):
     @abstractmethod
     def save(self, run: RunRecord) -> None:
         """Save a run record."""
-        pass
 
     @abstractmethod
     def load(self, run_id: str) -> RunRecord | None:
         """Load a run record by ID."""
-        pass
 
     @abstractmethod
     def load_all(self) -> list[RunRecord]:
         """Load all run records."""
-        pass
 
     @abstractmethod
     def save_checkpoint(
         self, run_id: str, checkpoint_type: str, payload: dict[str, Any]
     ) -> str:
         """Save a checkpoint for a run and return checkpoint ID."""
-        pass
 
     @abstractmethod
     def get_last_checkpoint(self, run_id: str) -> dict[str, Any] | None:
         """Get the last checkpoint for a run."""
-        pass
 
     @abstractmethod
     def update_with_cas(
         self, run_id: str, new_data: dict[str, Any], expected_revision: int
     ) -> bool:
         """Update run record with Compare-And-Swap (CAS) on revision."""
-        pass
 
 
 class FileStore(BaseStore):
@@ -82,10 +80,44 @@ class FileStore(BaseStore):
         self.enable_checkpoints = self.persistence_config.get(
             "enable_checkpoints", enable_checkpoints
         )
+        self._lock_timeout = float(self.persistence_config.get("lock_timeout_seconds", 30.0))
 
         # Log warnings for legacy mode
         if not self.enable_atomic_writes:
             logger.warning("[LEGACY] Atomic writes disabled - data may be corrupted on crash")
+
+    @contextmanager
+    def _process_lock(self, run_id: str) -> Iterator[None]:
+        """Serialize operations on one run across threads and processes."""
+        lock_path = self.path / f".{run_id}.lock"
+        with lock_path.open("a+b") as lock_file:
+            if os.name == "nt" and lock_path.stat().st_size == 0:
+                lock_file.write(b"0")
+                lock_file.flush()
+            deadline = time.monotonic() + self._lock_timeout
+            while True:
+                try:
+                    if os.name == "nt":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                    else:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except (OSError, BlockingIOError):
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(f"Timed out acquiring run store lock for {run_id}")
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                try:
+                    if os.name == "nt":
+                        lock_file.seek(0)
+                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                except OSError:
+                    logger.exception("Failed to release run store lock for %s", run_id)
 
     def save(self, run: RunRecord) -> None:
         """Save a run record with atomic write (write to temp, then rename).
@@ -93,28 +125,8 @@ class FileStore(BaseStore):
         Args:
             run: The RunRecord to save.
         """
-        dest = self.path / f"{run.run_id}.json"
-
-        if self.enable_atomic_writes:
-            # Atomic write: write to .tmp file first, then atomic rename
-            tmp_path = self.path / f".{run.run_id}.tmp"
-
-            # Clean up any stale tmp file from previous crash
-            if tmp_path.exists():
-                tmp_path.unlink()
-
-            # Write and flush the complete snapshot before publishing it.
-            with tmp_path.open("w", encoding="utf-8") as tmp_file:
-                tmp_file.write(run.model_dump_json(indent=2))
-                tmp_file.flush()
-                os.fsync(tmp_file.fileno())
-
-            # Atomic rename - os.replace is atomic on both POSIX and Windows
-            # It handles cross-device moves and replaces existing files atomically
-            os.replace(tmp_path, dest)
-        else:
-            # Direct write (non-atomic, for legacy compatibility)
-            dest.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+        with self._process_lock(run.run_id):
+            self._save_locked(run)
 
     def load(self, run_id: str) -> RunRecord | None:
         """Load a single run record by ID."""
@@ -177,25 +189,29 @@ class FileStore(BaseStore):
             run_id = run.run_id
             checkpoint_data = checkpoint_type_or_data
             checkpoint_file = self.path / f"{run_id}.checkpoint"
-            tmp_path = self.path / f".{run_id}.checkpoint.tmp"
+            tmp_path = self.path / f".{run_id}.{uuid.uuid4().hex}.checkpoint.tmp"
 
             run.checkpoint_state = checkpoint_data
             run.last_checkpoint_at = datetime.now(UTC)
             run.checkpoint_sequence += 1
 
-            if tmp_path.exists():
-                tmp_path.unlink()
-
-            tmp_path.write_text(run.model_dump_json(indent=2), encoding="utf-8")
-            os.replace(tmp_path, checkpoint_file)
+            try:
+                with self._process_lock(run_id):
+                    with tmp_path.open("w", encoding="utf-8") as checkpoint_tmp:
+                        checkpoint_tmp.write(run.model_dump_json(indent=2))
+                        checkpoint_tmp.flush()
+                        os.fsync(checkpoint_tmp.fileno())
+                    os.replace(tmp_path, checkpoint_file)
+            finally:
+                tmp_path.unlink(missing_ok=True)
             return run_id
         else:
             run_id = run_id_or_run
             checkpoint_type = checkpoint_type_or_data
             payload = payload or {}
             ckpt_id = str(uuid.uuid4())
-            checkpoint_file = self.path / f"{run_id}.checkpoint"
-            tmp_path = self.path / f".{run_id}.checkpoint.tmp"
+            checkpoint_file = self.path / f"{run_id}.checkpoint.json"
+            tmp_path = self.path / f".{run_id}.{uuid.uuid4().hex}.checkpoint.tmp"
 
             run = self.load(run_id)
             if run:
@@ -211,17 +227,24 @@ class FileStore(BaseStore):
                 "payload": payload,
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-            if tmp_path.exists():
-                tmp_path.unlink()
-            tmp_path.write_text(json.dumps(ckpt_payload, indent=2), encoding="utf-8")
-            os.replace(tmp_path, checkpoint_file)
+            try:
+                with self._process_lock(run_id):
+                    with tmp_path.open("w", encoding="utf-8") as checkpoint_tmp:
+                        json.dump(ckpt_payload, checkpoint_tmp, indent=2)
+                        checkpoint_tmp.flush()
+                        os.fsync(checkpoint_tmp.fileno())
+                    os.replace(tmp_path, checkpoint_file)
+            finally:
+                tmp_path.unlink(missing_ok=True)
             return ckpt_id
 
     def get_last_checkpoint(self, run_id: str) -> dict[str, Any] | None:
         """Get the last checkpoint for a run."""
         if not self.enable_checkpoints:
             return None
-        checkpoint_file = self.path / f"{run_id}.checkpoint"
+        checkpoint_file = self.path / f"{run_id}.checkpoint.json"
+        if not checkpoint_file.exists():
+            checkpoint_file = self.path / f"{run_id}.checkpoint"
         if not checkpoint_file.exists():
             return None
         try:
@@ -255,21 +278,38 @@ class FileStore(BaseStore):
         self, run_id: str, new_data: dict[str, Any], expected_revision: int
     ) -> bool:
         """Update run record with Compare-And-Swap (CAS) on revision."""
-        run = self.load(run_id)
-        if not run:
-            return False
-        current_revision = getattr(run, "revision", 1)
-        if current_revision != expected_revision:
-            return False
+        with self._process_lock(run_id):
+            run = self.load(run_id)
+            if not run:
+                return False
+            current_revision = getattr(run, "revision", 1)
+            if current_revision != expected_revision:
+                return False
 
-        for k, v in new_data.items():
-            if hasattr(run, k):
-                setattr(run, k, v)
+            for k, v in new_data.items():
+                if hasattr(run, k):
+                    setattr(run, k, v)
 
-        run.revision = expected_revision + 1
-        run.updated_at = datetime.now(UTC)
-        self.save(run)
-        return True
+            run.revision = expected_revision + 1
+            run.updated_at = datetime.now(UTC)
+            self._save_locked(run)
+            return True
+
+    def _save_locked(self, run: RunRecord) -> None:
+        """Persist a run when the caller already owns its process lock."""
+        dest = self.path / f"{run.run_id}.json"
+        if self.enable_atomic_writes:
+            tmp_path = self.path / f".{run.run_id}.{uuid.uuid4().hex}.tmp"
+            try:
+                with tmp_path.open("w", encoding="utf-8") as tmp_file:
+                    tmp_file.write(run.model_dump_json(indent=2))
+                    tmp_file.flush()
+                    os.fsync(tmp_file.fileno())
+                os.replace(tmp_path, dest)
+            finally:
+                tmp_path.unlink(missing_ok=True)
+        else:
+            dest.write_text(run.model_dump_json(indent=2), encoding="utf-8")
 
     def load_checkpoint(self, run_id: str) -> RunRecord | None:
         """Load a checkpoint if it exists for the given run."""
@@ -285,18 +325,31 @@ class FileStore(BaseStore):
             return None
 
     def has_checkpoint(self, run_id: str) -> bool:
-        """Check if a checkpoint exists for the given run."""
+        """Check if a checkpoint exists for the given run.
+
+        Both the legacy RunRecord snapshot (``.checkpoint``) and the current
+        envelope format (``.checkpoint.json``) are recognised, so the answer
+        stays consistent with :meth:`get_last_checkpoint`.
+        """
         if not self.enable_checkpoints:
             return False
-        return (self.path / f"{run_id}.checkpoint").exists()
+        return any(
+            (self.path / f"{run_id}{suffix}").exists()
+            for suffix in (".checkpoint", ".checkpoint.json")
+        )
 
     def delete_checkpoint(self, run_id: str) -> bool:
-        """Delete a checkpoint for a run."""
-        checkpoint_file = self.path / f"{run_id}.checkpoint"
-        if checkpoint_file.exists():
-            checkpoint_file.unlink()
-            return True
-        return False
+        """Delete every checkpoint artefact for a run.
+
+        Returns True when at least one checkpoint file was removed.
+        """
+        deleted = False
+        for suffix in (".checkpoint", ".checkpoint.json"):
+            checkpoint_file = self.path / f"{run_id}{suffix}"
+            if checkpoint_file.exists():
+                checkpoint_file.unlink()
+                deleted = True
+        return deleted
 
 
 RunStore = FileStore
