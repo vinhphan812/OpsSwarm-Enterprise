@@ -96,10 +96,14 @@ patches:
 #   3. external-secrets operator with your cloud secret manager
 secretGenerator:
   - name: opsswarm-secrets
+    options:
+      disableNameSuffixHash: true
     literals:
       # ⚠️  Replace with your actual dev tokens.  Never commit real values.
       - GITHUB_TOKEN=REPLACE_WITH_DEV_GITHUB_TOKEN
       - OPSWARM_OPENCLAW_KEY=REPLACE_WITH_DEV_OPENCLAW_KEY
+      # CI/dev placeholder only; replace via a secret manager in real deployments.
+      - OPSWARM_RUNTIME_SECRET=REPLACE_WITH_DEV_RUNTIME_SECRET
     type: Opaque
 
 # ── Images ────────────────────────────────────────────────────────────────────
