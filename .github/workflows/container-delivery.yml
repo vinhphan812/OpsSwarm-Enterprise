@@ -387,8 +387,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          kubectl -n opsswarm rollout status deployment/opsswarm --timeout=300s \
-            2>&1 | tee evidence/rollout-status.txt
+          if ! kubectl -n opsswarm rollout status deployment/opsswarm --timeout=300s \
+            2>&1 | tee evidence/rollout-status.txt; then
+            echo "Rollout failed; collecting cluster diagnostics before failing." >&2
+            kubectl -n opsswarm get pods -o wide 2>&1 | tee evidence/failure-pods.txt || true
+            kubectl -n opsswarm describe deployment opsswarm 2>&1 | tee evidence/failure-deployment.txt || true
+            kubectl -n opsswarm get events --sort-by=.metadata.creationTimestamp 2>&1 \
+              | tee evidence/failure-events.txt || true
+            pod_names="$(kubectl -n opsswarm get pods -o name 2>/dev/null || true)"
+            while IFS= read -r pod; do
+              [ -n "$pod" ] || continue
+              safe_name="$(printf '%s' "$pod" | tr '/:' '__')"
+              kubectl -n opsswarm describe "$pod" 2>&1 \
+                | tee "evidence/failure-$safe_name-describe.txt" || true
+              kubectl -n opsswarm logs "$pod" --all-containers=true --prefix=true 2>&1 \
+                | tee "evidence/failure-$safe_name-logs.txt" || true
+              kubectl -n opsswarm logs "$pod" --all-containers=true --previous --prefix=true 2>&1 \
+                | tee "evidence/failure-$safe_name-previous-logs.txt" || true
+            done <<< "$pod_names"
+            exit 1
+          fi
           kubectl -n opsswarm get pods -o wide | tee evidence/pods.txt
           kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.replicas}{"\n"}' \
             | tee evidence/replica-count.txt

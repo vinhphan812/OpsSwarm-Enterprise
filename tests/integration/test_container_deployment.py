@@ -799,13 +799,14 @@ class TestKubernetes:
             "embedded CLI mode must not retain a dangling executable volume"
         )
 
-    def test_deployment_uses_pod_fs_group_and_ready_probe(self):
-        """C.3/C.4  Pod-level fsGroup and canonical /ready gate are rendered."""
+    def test_deployment_uses_pod_fs_group_without_unsupported_readiness_probe(self):
+        """Pod security is rendered; no readiness gate is claimed before /ready exists."""
         content = read(K8S_BASE / "deployment.yaml")
         assert "fsGroup: 10001" in content, "fsGroup must be in the Pod spec securityContext"
-        assert "readinessProbe:" in content and "path: /ready" in content, (
-            "production readiness must use /ready, never /health"
-        )
+        assert not any(
+            line.lstrip().startswith("readinessProbe:")
+            for line in content.splitlines()
+        ), "do not configure readiness against an endpoint not yet implemented (issue #30)"
 
     def test_network_policy_has_no_public_ingress(self):
         """C.7  NetworkPolicy base has no 0.0.0.0/0 ingress rule.
