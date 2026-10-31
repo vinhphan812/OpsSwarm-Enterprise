@@ -88,20 +88,17 @@ spec:
       # Fail closed before starting the API when the shipped OpenClaw CLI is not
       # executable.  No executable volume is required: the binary lives in the
       # same pinned image as the application.
+      # Validate the embedded OpenClaw executable before the API starts.
       initContainers:
         - name: openclaw-runtime-check
           image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
           imagePullPolicy: IfNotPresent
-          command:
-            - /bin/sh
-            - -c
+          command: ["/bin/sh", "-c"]
+          args:
             - |
               set -eu
               bin="${OPSWARM_OPENCLAW_BIN:-/usr/local/bin/openclaw}"
-              [ -x "$bin" ] || {
-                echo "ERROR: shipped OpenClaw CLI is not executable at $bin" >&2
-                exit 1
-              }
+              [ -x "$bin" ] || { echo "OpenClaw CLI not executable: $bin" >&2; exit 1; }
               "$bin" --version
           env:
             - name: OPSWARM_OPENCLAW_BIN
@@ -112,8 +109,7 @@ spec:
             runAsGroup: 10001
             allowPrivilegeEscalation: false
             capabilities:
-              drop:
-                - ALL
+              drop: ["ALL"]
 
       # ── Application container ─────────────────────────────────────────────
       containers:

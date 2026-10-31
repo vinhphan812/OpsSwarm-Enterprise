@@ -20,10 +20,11 @@ name: Container Delivery Evidence
 on:
   push:
     branches:
-      - feat/73-container-delivery
+      - feat/issue-73-container-supply-chain-v2
     paths:
       - "Dockerfile"
       - "docker-compose.yml"
+      - "docker-compose.yaml"
       - "k8s/**"
       - "opsswarm/**"
       - ".github/workflows/container-delivery.yml"
@@ -33,6 +34,7 @@ on:
     paths:
       - "Dockerfile"
       - "docker-compose.yml"
+      - "docker-compose.yaml"
       - "k8s/**"
       - "opsswarm/**"
       - ".github/workflows/container-delivery.yml"
@@ -214,7 +216,7 @@ jobs:
             exit 1
           fi
 
-          # Readiness chain: /ready must reach 200 (503 while starting).
+          # Liveness endpoint: /health must return 200 after the process starts.
           code=""
           for _ in $(seq 1 30); do
             code="$(docker exec "$container_id" \
@@ -226,7 +228,7 @@ jobs:
           done
           echo "ready_status=$code" | tee -a evidence/compose-container.txt
           if [[ "$code" != "200" ]]; then
-            echo "ERROR: /ready never returned 200" >&2
+            echo "ERROR: /health never returned 200" >&2
             docker compose -f docker-compose.yml logs opsswarm | tee evidence/compose-logs.txt
             exit 1
           fi
@@ -346,9 +348,9 @@ jobs:
             echo "ERROR: overlay still references a mutable tag" >&2
             exit 1
           fi
-          # The readiness probe must be present and point at /ready.
-          grep -n -A3 "readinessProbe:" evidence/dev-overlay.yaml | tee evidence/readiness-probe.txt
-          grep -q "path: /ready" evidence/dev-overlay.yaml
+          # The liveness probe must point at /health.
+          grep -n -A3 "livenessProbe:" evidence/dev-overlay.yaml | tee evidence/liveness-probe.txt
+          grep -q "path: /health" evidence/dev-overlay.yaml
 
       - name: Apply the dev overlay
         shell: bash
@@ -402,9 +404,9 @@ jobs:
             http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
           cat /tmp/health.json | tee -a evidence/endpoint-probe.txt
           echo | tee -a evidence/endpoint-probe.txt
-          echo "--- GET /ready ---" | tee -a evidence/endpoint-probe.txt
+          echo "--- GET /health ---" | tee -a evidence/endpoint-probe.txt
           curl -sS -o /tmp/ready.json -w 'http_status=%{http_code}\n' \
-            http://127.0.0.1:18080/ready | tee -a evidence/endpoint-probe.txt
+            http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
           cat /tmp/ready.json | tee -a evidence/endpoint-probe.txt
           echo | tee -a evidence/endpoint-probe.txt
 
