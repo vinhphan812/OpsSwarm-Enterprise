@@ -12,7 +12,7 @@ name: Container Delivery Evidence
 #   3. pull    - the image is pulled by digest on a clean daemon
 #   4. compose - the documented Compose profile is executed and probed
 #   5. k8s     - k8s/overlays/dev is rolled out on a single-node cluster and
-#                the readiness / SIGTERM chain is demonstrated
+#                the liveness / SIGTERM chain is demonstrated
 #
 # Nothing here claims HA or multi-replica behaviour: the overlay is
 # single-replica by design (issue #70 gate).
@@ -201,6 +201,7 @@ jobs:
           # runner.
           printf '%s' "not-a-real-token" > .github-token
           chmod 0600 .github-token
+          export OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
 
           docker compose -f docker-compose.yml up -d 2>&1 | tee evidence/compose-up.txt
 
@@ -221,7 +222,7 @@ jobs:
           for _ in $(seq 1 30); do
             code="$(docker exec "$container_id" \
               /app/.venv/bin/python -c \
-              "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/ready').status)" \
+              "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/health').status)" \
               2>/dev/null || true)"
             if [[ "$code" == "200" ]]; then break; fi
             sleep 2
@@ -348,9 +349,14 @@ jobs:
             echo "ERROR: overlay still references a mutable tag" >&2
             exit 1
           fi
-          # The liveness probe must point at /health.
+          # Until issue #30 implements a real readiness endpoint, only liveness
+          # is configured. The startup probe is intentionally not used as readiness.
           grep -n -A3 "livenessProbe:" evidence/dev-overlay.yaml | tee evidence/liveness-probe.txt
           grep -q "path: /health" evidence/dev-overlay.yaml
+          if grep -q "readinessProbe:" evidence/dev-overlay.yaml; then
+            echo "ERROR: readiness probe must not use a non-existent endpoint" >&2
+            exit 1
+          fi
 
       - name: Apply the dev overlay
         shell: bash
@@ -385,7 +391,7 @@ jobs:
           kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.replicas}{"\n"}' \
             | tee evidence/replica-count.txt
 
-      - name: Probe the ready and live endpoints
+      - name: Probe the liveness endpoint
         shell: bash
         run: |
           set -euo pipefail

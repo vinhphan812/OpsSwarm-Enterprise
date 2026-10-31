@@ -165,19 +165,6 @@ spec:
             failureThreshold: 3
             successThreshold: 1
 
-          # ── Readiness probe ────────────────────────────────────────────────
-          # /ready is the canonical lifecycle gate: 200 only after startup
-          # validation, and 503 while starting, draining, or failed.
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: http
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 3
-            successThreshold: 1
-
           # ── Environment variables ──────────────────────────────────────────
           env:
             # References ConfigMap values (non-sensitive).
@@ -220,6 +207,11 @@ spec:
                   key: OPENCLAW_TIMEOUT_SECONDS
 
             # References Secret values (sensitive).
+            - name: OPSWARM_RUNTIME_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: OPSWARM_RUNTIME_SECRET
             - name: GITHUB_TOKEN
               valueFrom:
                 secretKeyRef:

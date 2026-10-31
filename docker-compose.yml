@@ -7,6 +7,7 @@ services:
       - "8080:8080"
     environment:
       APP_ENV: production
+      OPSWARM_RUNTIME_SECRET: ${OPSWARM_RUNTIME_SECRET:?Set a strong OPSWARM_RUNTIME_SECRET}
       GITHUB_REPO: vinhphan812/OpsSwarm-Enterprise
       GITHUB_TOKEN_FILE: /run/secrets/github-token
       OPSWARM_DATA_DIR: /var/lib/opsswarm/runtime-data
