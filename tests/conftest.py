@@ -1,6 +1,5 @@
 # Pytest configuration and shared fixtures
 import os
-import pytest
 
 
 # ----------------------------------------------------------------------
@@ -59,18 +58,6 @@ def pytest_runtest_teardown(item, nextitem):
         _auth_mod.reset_replay_store()
     except (ImportError, AttributeError):
         pass
-
-
-@pytest.fixture(autouse=True)
-def _ensure_readiness_ready(request):
-    if "test_api_readiness.py" not in str(request.node.fspath):
-        try:
-            import opsswarm.runtime as runtime
-            r = runtime.get_readiness()
-            r._is_ready = True
-            r._is_draining = False
-        except (ImportError, AttributeError):
-            pass
 
 
 # Pytest markers for test layer categorization
