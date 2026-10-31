@@ -541,3 +541,93 @@ def test_migrated_database_satisfies_the_executable_schema_contract(
 
     report = validate_ha_schema(sa.inspect(engine))
     assert report.ok is True, report.describe()
+
+
+def test_live_inspector_renders_the_array_column_as_array(alembic_config, engine) -> None:
+    """The live driver really does hide the element type behind ``ARRAY``.
+
+    This pins the driver behaviour the validator has to cope with: the
+    SQLAlchemy PostgreSQL dialect stringifies an array column as the bare
+    word ``ARRAY`` and keeps the element type in a separate ``item_type``
+    attribute.  Without this test a future change to the rendering could
+    silently reintroduce a validator that cannot tell ``TEXT[]`` from
+    ``INTEGER[]``.
+    """
+    with engine.begin() as conn:
+        conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(sa.text("CREATE SCHEMA public"))
+
+    alembic_command_module.upgrade(alembic_config, "head")
+
+    columns = {c["name"]: c for c in sa.inspect(engine).get_columns("runs")}
+    array_type = columns["idempotency_keys"]["type"]
+
+    assert str(array_type) == "ARRAY"
+    assert str(array_type.item_type).upper() == "TEXT"
+
+
+def test_validator_rejects_a_live_array_column_with_the_wrong_element_type(
+    alembic_config, engine
+) -> None:
+    """An ``INTEGER[]`` column does not satisfy the ``TEXT[]`` contract.
+
+    Widening the contract to accept the bare word ``ARRAY`` would make this
+    schema pass.  The element type has to be part of the comparison, so the
+    live database is altered to prove the validator still rejects it.
+    """
+    with engine.begin() as conn:
+        conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(sa.text("CREATE SCHEMA public"))
+
+    alembic_command_module.upgrade(alembic_config, "head")
+
+    with engine.begin() as conn:
+        # The default is dropped first: PostgreSQL cannot cast the ``text[]``
+        # default to ``integer[]`` on its own.
+        conn.execute(sa.text("ALTER TABLE runs ALTER COLUMN idempotency_keys DROP DEFAULT"))
+        conn.execute(
+            sa.text(
+                "ALTER TABLE runs ALTER COLUMN idempotency_keys "
+                "TYPE integer[] USING ARRAY[]::integer[]"
+            )
+        )
+
+    report = validate_ha_schema(sa.inspect(engine))
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "idempotency_keys" in issue.detail
+        for issue in report.issues
+    )
+
+
+def test_validator_rejects_a_live_scalar_column_turned_into_an_array(
+    alembic_config, engine
+) -> None:
+    """A scalar column that became an array is a deviation.
+
+    The rendered type of an array column *contains* the scalar type name --
+    ``"TEXT[]"`` contains ``"TEXT"`` -- so a validator that compared types by
+    substring alone would accept a schema whose scalar column had turned into
+    an array.  The live database is altered to prove the array-ness is part
+    of the comparison.
+    """
+    with engine.begin() as conn:
+        conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(sa.text("CREATE SCHEMA public"))
+
+    alembic_command_module.upgrade(alembic_config, "head")
+
+    with engine.begin() as conn:
+        conn.execute(
+            sa.text(
+                "ALTER TABLE runs ALTER COLUMN state "
+                "TYPE text[] USING ARRAY[state]::text[]"
+            )
+        )
+
+    report = validate_ha_schema(sa.inspect(engine))
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "state" in issue.detail for issue in report.issues
+    )
+

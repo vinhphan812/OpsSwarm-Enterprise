@@ -378,10 +378,8 @@ def test_validator_rejects_an_array_column_with_the_wrong_element_type() -> None
 def test_validator_renders_a_multidimensional_array_with_its_dimensions() -> None:
     """A two-dimensional array keeps both dimension markers in the rendering.
 
-    The contract matches a type by substring, so a ``TEXT[][]`` column still
-    satisfies a ``TEXT[]`` token.  The dimension markers are therefore not
-    observable through a *passing* validation, and the rendering is asserted
-    through the deviation message of a mismatching element type instead.
+    The dimension markers are observable through the deviation message, which
+    reports the rendered type of the offending column.
     """
 
     class _TwoDimensionalInspector(_ConformingInspector):
@@ -401,6 +399,81 @@ def test_validator_renders_a_multidimensional_array_with_its_dimensions() -> Non
     assert report.ok is False
     assert any(
         issue.kind == "column_type" and "INTEGER[][]" in issue.detail for issue in report.issues
+    )
+
+
+def test_validator_rejects_a_two_dimensional_array_for_a_one_dimensional_contract() -> None:
+    """A ``TEXT[][]`` column does not satisfy a ``TEXT[]`` contract.
+
+    Array dimensions are compared exactly, so a column that grew an extra
+    dimension is a deviation rather than a pass.
+    """
+
+    class _TwoDimensionalTextInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append(
+                        {**column, "type": _FakeArrayType(_FakeScalarType("TEXT"), dimensions=2)}
+                    )
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_TwoDimensionalTextInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "idempotency_keys" in issue.detail for issue in report.issues
+    )
+
+
+def test_validator_rejects_an_array_column_for_a_scalar_contract() -> None:
+    """A ``TEXT[]`` column does not satisfy a scalar ``TEXT`` contract.
+
+    This is the false accept the array-aware comparison exists to prevent:
+    the rendered type of an array column *contains* the scalar type name, so
+    a plain substring test would accept it.  A schema that turned a scalar
+    column into an array would therefore pass validation unnoticed.
+    """
+
+    class _ArrayForScalarInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "run_id":
+                    rendered.append({**column, "type": _FakeArrayType(_FakeScalarType("TEXT"))})
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_ArrayForScalarInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "run_id" in issue.detail for issue in report.issues
+    )
+
+
+def test_validator_rejects_a_scalar_column_for_an_array_contract() -> None:
+    """A scalar ``TEXT`` column does not satisfy a ``TEXT[]`` contract."""
+
+    class _ScalarForArrayInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append({**column, "type": _FakeScalarType("TEXT")})
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_ScalarForArrayInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "idempotency_keys" in issue.detail for issue in report.issues
     )
 
 
