@@ -275,6 +275,135 @@ def test_validator_accepts_a_conforming_database() -> None:
     assert report.issues == ()
 
 
+class _FakeArrayType:
+    """A stand-in for SQLAlchemy's ``ARRAY`` type object.
+
+    SQLAlchemy renders ``ARRAY(Text())`` as the bare string ``"ARRAY"``:
+    ``str()`` of the type object discards the element type.  The fake
+    reproduces that behaviour faithfully so the unit layer can lock in the
+    rendering without a database driver.
+    """
+
+    def __init__(self, item_type, dimensions=None):
+        self.item_type = item_type
+        self.dimensions = dimensions
+
+    def __str__(self) -> str:
+        return "ARRAY"
+
+
+class _FakeScalarType:
+    """A stand-in for a SQLAlchemy scalar type object."""
+
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def __str__(self) -> str:
+        return self.name
+
+
+def test_validator_accepts_an_array_column_rendered_by_a_real_driver() -> None:
+    """An array column whose driver renders ``ARRAY`` still satisfies the contract.
+
+    PostgreSQL reports ``runs.idempotency_keys`` as ``TEXT[]``, but the
+    SQLAlchemy inspector hands back an ``ARRAY`` type object whose ``str()``
+    is the bare word ``"ARRAY"``.  The contract declares ``TEXT[]``, so a
+    validator that renders the type naively reports a false deviation on
+    every live database.
+    """
+
+    class _ArrayInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append({**column, "type": _FakeArrayType(_FakeScalarType("TEXT"))})
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_ArrayInspector())
+    assert report.ok is True, report.describe()
+
+
+def test_validator_reports_a_column_that_has_no_reported_type() -> None:
+    """A column the inspector reports without a type is a deviation.
+
+    A missing type cannot be compared against the contract, so it must be
+    reported rather than silently treated as a match.
+    """
+
+    class _UntypedInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append({**column, "type": None})
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_UntypedInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "idempotency_keys" in issue.detail
+        for issue in report.issues
+    )
+
+
+def test_validator_rejects_an_array_column_with_the_wrong_element_type() -> None:
+    """An array of the wrong element type is still a deviation."""
+
+    class _WrongArrayInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append({**column, "type": _FakeArrayType(_FakeScalarType("INTEGER"))})
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_WrongArrayInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "idempotency_keys" in issue.detail
+        for issue in report.issues
+    )
+
+
+def test_validator_renders_a_multidimensional_array_with_its_dimensions() -> None:
+    """A two-dimensional array keeps both dimension markers in the rendering.
+
+    The contract matches a type by substring, so a ``TEXT[][]`` column still
+    satisfies a ``TEXT[]`` token.  The dimension markers are therefore not
+    observable through a *passing* validation, and the rendering is asserted
+    through the deviation message of a mismatching element type instead.
+    """
+
+    class _TwoDimensionalInspector(_ConformingInspector):
+        def get_columns(self, table, schema=None):
+            columns = super().get_columns(table, schema)
+            rendered = []
+            for column in columns:
+                if column["name"] == "idempotency_keys":
+                    rendered.append(
+                        {**column, "type": _FakeArrayType(_FakeScalarType("INTEGER"), dimensions=2)}
+                    )
+                else:
+                    rendered.append(column)
+            return rendered
+
+    report = validate_ha_schema(_TwoDimensionalInspector())
+    assert report.ok is False
+    assert any(
+        issue.kind == "column_type" and "INTEGER[][]" in issue.detail for issue in report.issues
+    )
+
+
 def test_validator_flags_a_time_dependent_check_constraint() -> None:
     """A live database carrying ``expires_at > NOW()`` is rejected."""
 

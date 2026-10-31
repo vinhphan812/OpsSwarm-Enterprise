@@ -47,6 +47,8 @@ sa = pytest.importorskip(
     "sqlalchemy", reason="SQLAlchemy is required for the HA schema migration"
 )
 
+from opsswarm.ha_schema import validate_ha_schema  # noqa: E402  (after importorskip)
+
 try:  # pragma: no cover - exercised only when a driver is installed
     import psycopg2  # noqa: F401
 except ImportError:  # pragma: no cover - exercised only when a driver is missing
@@ -483,3 +485,59 @@ def test_upgrade_downgrade_upgrade_is_stable(alembic_config, engine) -> None:
     alembic_command_module.upgrade(alembic_config, "head")
 
     assert HA_TABLES.issubset(set(sa.inspect(engine).get_table_names()))
+
+
+def test_documented_postgresql_url_scheme_is_accepted(
+    alembic_config, engine, database_url, monkeypatch_module
+) -> None:
+    """The documented ``postgresql://`` URL form must drive the migration.
+
+    ``migrations/env.py`` documents ``export HA_DATABASE_URL=postgresql://...``
+    as the operational way to run ``alembic upgrade head``.  SQLAlchemy 2.x
+    resolves that bare scheme to the psycopg *version 3* driver, which this
+    project does not install, so the documented invocation used to fail with
+    ``ModuleNotFoundError: No module named 'psycopg'`` before any migration
+    ran.  The environment now names the installed driver, so the documented
+    form and an explicitly-driven URL both work.
+
+    This test drives the migration with the bare scheme and asserts the
+    schema is actually created, which is the behaviour an operator depends on.
+    """
+    bare_url = database_url.replace("postgresql+psycopg2://", "postgresql://", 1)
+    assert bare_url.startswith("postgresql://"), "expected a bare postgresql:// URL"
+
+    with engine.begin() as conn:
+        conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(sa.text("CREATE SCHEMA public"))
+
+    # The Alembic environment reads HA_DATABASE_URL first, so the bare scheme
+    # is what the migration actually sees.
+    monkeypatch_module.setenv("HA_DATABASE_URL", bare_url)
+    try:
+        alembic_command_module.upgrade(alembic_config, "head")
+    finally:
+        monkeypatch_module.setenv("HA_DATABASE_URL", database_url)
+
+    assert HA_TABLES.issubset(set(sa.inspect(engine).get_table_names()))
+
+
+def test_migrated_database_satisfies_the_executable_schema_contract(
+    alembic_config, engine
+) -> None:
+    """The live schema must pass the canonical contract validator.
+
+    The unit layer exercises the validator against a fake inspector.  This
+    test runs the *real* SQLAlchemy inspector against a *real* PostgreSQL
+    database, which is the only way to catch a divergence between the
+    contract and what the driver actually reports -- for example an array
+    column, whose type object renders as the bare word ``ARRAY`` rather than
+    the contract's ``TEXT[]``.
+    """
+    with engine.begin() as conn:
+        conn.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        conn.execute(sa.text("CREATE SCHEMA public"))
+
+    alembic_command_module.upgrade(alembic_config, "head")
+
+    report = validate_ha_schema(sa.inspect(engine))
+    assert report.ok is True, report.describe()
