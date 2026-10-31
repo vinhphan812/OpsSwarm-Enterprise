@@ -1,0 +1,18 @@
+# k8s/kustomization.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — Kustomize root
+#
+# This root points to the base overlay.
+# Use overlays/dev or overlays/prod for actual deployments.
+#
+# Usage:
+#   kubectl kustomize k8s/overlays/dev
+#   kubectl kustomize k8s/overlays/prod
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: opsswarm
+
+resources:
+  - ./base
