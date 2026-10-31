@@ -57,19 +57,34 @@ def get_url() -> str:
         EnvironmentError: If neither source supplies a URL.
     """
     url = os.getenv(_URL_ENV_VAR)
-    if url:
+    if not url:
+        url = config.get_main_option("sqlalchemy.url", None)
+    if not url:
+        raise EnvironmentError(
+            f"{_URL_ENV_VAR} environment variable is not set. "
+            "Set it to the PostgreSQL connection string for the HA "
+            "coordination database, for example:\n"
+            "  export HA_DATABASE_URL=postgresql://user:***@localhost:5432/opsswarm_ha"
+        )
+    return _normalise_url(url)
+
+
+def _normalise_url(url: str) -> str:
+    """Return the URL with an explicit driver that this project installs.
+
+    SQLAlchemy 2.x resolves a bare ``postgresql://`` URL to the psycopg
+    *version 3* driver.  This project depends on ``psycopg2-binary`` only, so
+    the documented ``postgresql://user:***@host:5432/db`` invocation fails
+    with ``ModuleNotFoundError: No module named 'psycopg'`` before any
+    migration runs.  Naming the installed driver keeps the documented form
+    working and keeps the driver choice explicit.
+
+    A URL that already names a driver is left untouched, so an operator can
+    still select a different driver deliberately.
+    """
+    if not url.startswith("postgresql://"):
         return url
-
-    configured = config.get_main_option("sqlalchemy.url", None)
-    if configured:
-        return configured
-
-    raise EnvironmentError(
-        f"{_URL_ENV_VAR} environment variable is not set. "
-        "Set it to the PostgreSQL connection string for the HA "
-        "coordination database, for example:\n"
-        "  export HA_DATABASE_URL=postgresql://user:***@localhost:5432/opsswarm_ha"
-    )
+    return "postgresql+psycopg2://" + url[len("postgresql://") :]
 
 
 def run_migrations_offline() -> None:

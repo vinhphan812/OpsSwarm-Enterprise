@@ -39,6 +39,14 @@ jobs:
             "Skill gate s8-orchestration-hub"
           )
 
+          # The HA PostgreSQL suite is only meaningful when it actually ran.
+          # A "skipped" conclusion means the PostgreSQL-backed tests were
+          # never executed, which would let a schema regression pass CI
+          # unnoticed.  This check is therefore held to a strict "success".
+          strict=(
+            "HA PostgreSQL schema and concurrency"
+          )
+
           for attempt in $(seq 1 60); do
             json="$(curl -fsSL \
               -H "Authorization: Bearer ${GH_TOKEN}" \
@@ -53,6 +61,20 @@ jobs:
               echo "${check}: ${state}"
               case "$state" in
                 success|neutral|skipped) ;;
+                missing|queued|in_progress|requested|waiting|pending|null) pending=1 ;;
+                *) failed=1 ;;
+              esac
+            done
+
+            # Strict checks must report "success".  A "skipped" or "neutral"
+            # conclusion means the suite never actually executed against
+            # PostgreSQL, which is exactly the evidence gap this check
+            # exists to close.
+            for check in "${strict[@]}"; do
+              state="$(jq -r --arg n "$check" '[.check_runs[] | select(.name == $n)] | sort_by(.started_at // .created_at) | last | if . == null then "missing" elif (.conclusion | not) then .status else .conclusion end' <<<"$json")"
+              echo "${check} (strict): ${state}"
+              case "$state" in
+                success) ;;
                 missing|queued|in_progress|requested|waiting|pending|null) pending=1 ;;
                 *) failed=1 ;;
               esac

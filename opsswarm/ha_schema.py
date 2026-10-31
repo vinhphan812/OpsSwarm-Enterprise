@@ -377,7 +377,28 @@ def _rendered_type(column: Mapping[str, Any]) -> str:
     column_type = column.get("type")
     if column_type is None:
         return ""
-    return str(column_type)
+    return _render_type(column_type)
+
+
+def _render_type(column_type: Any) -> str:
+    """Render an inspected column type, expanding array types.
+
+    SQLAlchemy renders an array column as the bare string ``"ARRAY"``: the
+    ``str()`` of an ``ARRAY`` type object discards the element type, so
+    ``TEXT[]`` is reported as ``ARRAY``.  A contract that declares
+    ``TEXT[]`` would therefore never match a live database, and the
+    validator would report a deviation that does not exist.
+
+    Array types are expanded back into their PostgreSQL spelling so the
+    element type stays visible.  The element type is also what makes the
+    check meaningful: an ``INTEGER[]`` column still renders as
+    ``INTEGER[]`` and is correctly rejected by a ``TEXT[]`` contract.
+    """
+    item_type = getattr(column_type, "item_type", None)
+    if item_type is None:
+        return str(column_type)
+    dimensions = getattr(column_type, "dimensions", None) or 1
+    return f"{_render_type(item_type)}{'[]' * dimensions}"
 
 
 def _check_constraint_sql(check: Mapping[str, Any]) -> str:
