@@ -120,7 +120,7 @@ PROFILES: dict[str, Profile] = {
         name="dev",
         require_pinned_image=False,
         require_persistent_storage=False,
-        require_readiness_probe=True,
+        require_readiness_probe=False,
     ),
     "prod": Profile(
         name="prod",

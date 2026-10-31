@@ -364,7 +364,11 @@ jobs:
           set -euo pipefail
           kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
           # Replace manifest placeholders with ephemeral, non-persistent CI credentials.
-          kubectl -n opsswarm create secret generic opsswarm-secrets             --from-literal=OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"             --from-literal=GITHUB_TOKEN=ci-placeholder             --from-literal=OPSWARM_OPENCLAW_KEY=ci-placeholder             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n opsswarm create secret generic opsswarm-secrets \\
+            --from-literal=OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \\
+            --from-literal=GITHUB_TOKEN=ci-placeholder \\
+            --from-literal=OPSWARM_OPENCLAW_KEY=ci-placeholder \\
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Create the registry pull secret
         shell: bash
