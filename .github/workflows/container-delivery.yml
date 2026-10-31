@@ -1,0 +1,463 @@
+name: Container Delivery Evidence
+
+# Registry-pushed OCI image with a reproducible manifest digest, plus
+# reproducible pull/run and single-replica Kubernetes operational evidence.
+#
+# This workflow is the executable counterpart of the acceptance criteria in
+# docs/adr/ADR-030_container_delivery_acceptance.md.  Every step below
+# produces evidence that is uploaded as a workflow artifact:
+#
+#   1. build   - the image is PUSHED to ghcr.io (never load:true)
+#   2. digest  - the immutable manifest digest is read back from the REGISTRY
+#   3. pull    - the image is pulled by digest on a clean daemon
+#   4. compose - the documented Compose profile is executed and probed
+#   5. k8s     - k8s/overlays/dev is rolled out on a single-node cluster and
+#                the liveness / SIGTERM chain is demonstrated
+#
+# Nothing here claims HA or multi-replica behaviour: the overlay is
+# single-replica by design (issue #70 gate).
+
+on:
+  push:
+    branches:
+      - feat/issue-73-container-supply-chain-v2
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose.yaml"
+      - "k8s/**"
+      - "opsswarm/**"
+      - ".github/workflows/container-delivery.yml"
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose.yaml"
+      - "k8s/**"
+      - "opsswarm/**"
+      - ".github/workflows/container-delivery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: container-delivery-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_REPO: ghcr.io/vinhphan812/opsswarm-enterprise
+
+jobs:
+  push:
+    name: Build and push OCI image to ghcr.io
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+      image_ref: ${{ steps.digest.outputs.image_ref }}
+      sha7: ${{ steps.meta.outputs.sha7 }}
+
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Resolve commit identity
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "sha7=${sha:0:7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f7ce87c1d6bead3e36075b2ce75da1f6cc28aaca # v3.9.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@4a13e500e55cf31b7a5d59a38ab2040ab0f42f56 # v6.12.0
+        with:
+          context: .
+          file: ./Dockerfile
+          # push:true - the image MUST reach the registry.  load:true only
+          # writes to the runner local daemon and produces no pullable
+          # artifact.
+          push: true
+          tags: |
+            ${{ env.IMAGE_REPO }}:latest
+            ${{ env.IMAGE_REPO }}:${{ steps.meta.outputs.sha7 }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      - name: Install crane for registry manifest inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="0.20.3"
+          curl -fsSL -o /tmp/crane.tar.gz \
+            "https://github.com/google/go-containerregistry/releases/download/v${version}/go-containerregistry_Linux_x86_64.tar.gz"
+          tar -xzf /tmp/crane.tar.gz -C /usr/local/bin crane
+          crane version
+
+      - name: Capture the immutable manifest digest from the registry
+        id: digest
+        shell: bash
+        env:
+          SHA7: ${{ steps.meta.outputs.sha7 }}
+        run: |
+          set -euo pipefail
+          pinned="${IMAGE_REPO}:${SHA7}"
+          manifest="$(crane manifest "$pinned")"
+          digest="$(crane digest "$pinned")"
+          {
+            echo "=== crane manifest ${pinned} ==="
+            echo "$manifest"
+            echo
+            echo "=== crane digest ${pinned} ==="
+            echo "$digest"
+          } | tee manifest-output.txt
+          if [[ ! "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "ERROR: registry returned a malformed digest: '$digest'" >&2
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "image_ref=${IMAGE_REPO}@${digest}" >> "$GITHUB_OUTPUT"
+          mkdir -p evidence
+          cp manifest-output.txt evidence/registry-manifest.txt
+          printf '%s\n' "$digest" > evidence/IMAGE_DIGEST.txt
+          printf '%s\n' "${IMAGE_REPO}@${digest}" > evidence/IMAGE_REF.txt
+
+      - name: Upload registry evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-registry-evidence-${{ steps.meta.outputs.sha7 }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  pull-and-run:
+    name: Reproducible pull and Compose run
+    needs: push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull the image by digest on a clean daemon
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.push.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          # No local build and no local load - the image comes from the registry.
+          docker pull "$IMAGE_REF" | tee evidence/pull-output.txt
+          repo_digests="$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE_REF")"
+          echo "RepoDigests: $repo_digests" | tee -a evidence/pull-output.txt
+          case "$repo_digests" in
+            *@sha256:*) : ;;
+            *) echo "ERROR: pulled image has no registry digest" >&2; exit 1 ;;
+          esac
+
+      - name: Run the documented Compose profile and probe the endpoints
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.push.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          # The Compose profile reads the image from OPSWARM_IMAGE.
+          export OPSWARM_IMAGE="$IMAGE_REF"
+          # A token file is required by the compose contract; the value is
+          # irrelevant for a liveness/readiness probe and never leaves the
+          # runner.
+          printf '%s' "not-a-real-token" > .github-token
+          chmod 0600 .github-token
+          export OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+
+          docker compose -f docker-compose.yml up -d 2>&1 | tee evidence/compose-up.txt
+
+          container_id="$(docker compose -f docker-compose.yml ps -q opsswarm)"
+          echo "container_id=$container_id" | tee evidence/compose-container.txt
+          test -n "$container_id"
+
+          # Rootless confirmation: the process must not be uid 0.
+          uid="$(docker exec "$container_id" id -u)"
+          echo "container_uid=$uid" | tee -a evidence/compose-container.txt
+          if [[ "$uid" == "0" ]]; then
+            echo "ERROR: container is running as root" >&2
+            exit 1
+          fi
+
+          # Liveness endpoint: /health must return 200 after the process starts.
+          code=""
+          for _ in $(seq 1 30); do
+            code="$(docker exec "$container_id" \
+              /app/.venv/bin/python -c \
+              "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/health').status)" \
+              2>/dev/null || true)"
+            if [[ "$code" == "200" ]]; then break; fi
+            sleep 2
+          done
+          echo "ready_status=$code" | tee -a evidence/compose-container.txt
+          if [[ "$code" != "200" ]]; then
+            echo "ERROR: /health never returned 200" >&2
+            docker compose -f docker-compose.yml logs opsswarm | tee evidence/compose-logs.txt
+            exit 1
+          fi
+
+          # The documented runtime mounts must match OPSWARM_DATA_DIR.
+          echo "--- mounts ---" | tee evidence/compose-mounts.txt
+          docker inspect --format '{{range .Mounts}}{{.Type}} {{.Name}} {{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' \
+            "$container_id" | tee -a evidence/compose-mounts.txt
+          docker exec "$container_id" printenv OPSWARM_DATA_DIR | tee -a evidence/compose-mounts.txt
+          docker exec "$container_id" printenv OPSWARM_RUNTIME_DIR 2>/dev/null \
+            | tee -a evidence/compose-mounts.txt || \
+            echo "OPSWARM_RUNTIME_DIR is not set (not a supported variable)" \
+              | tee -a evidence/compose-mounts.txt
+
+          # The state directories must be present and writable under the
+          # declared OPSWARM_DATA_DIR.
+          docker exec "$container_id" ls -la /var/lib/opsswarm \
+            | tee evidence/compose-state-dir.txt
+
+          # SIGTERM behaviour: docker stop must drain and exit cleanly.
+          docker compose -f docker-compose.yml stop -t 30 opsswarm \
+            2>&1 | tee evidence/compose-stop.txt
+          docker inspect --format 'exit_code={{.State.ExitCode}}' "$container_id" \
+            | tee -a evidence/compose-stop.txt
+
+          docker compose -f docker-compose.yml down -v || true
+
+      - name: Upload Compose evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-compose-evidence-${{ needs.push.outputs.sha7 }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+  kubernetes:
+    name: Single-replica Kubernetes rollout
+    needs: push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.5.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install kind and kubectl
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL -o kind \
+            https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          chmod +x kind
+          sudo mv kind /usr/local/bin/kind
+          kind version
+
+      - name: Create a single-node cluster
+        shell: bash
+        run: |
+          set -euo pipefail
+          kind create cluster --name opsswarm-evidence --wait 120s
+
+      - name: Install a stub OpenClaw binary on the node
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The dev overlay bind-mounts the node's /usr/local/bin/openclaw into
+          # the init container, which refuses to start unless the file exists
+          # and is executable.  A stub is installed on the NODE (not in the
+          # image) so the init-container gate is exercised for real.
+          # Production operators mount the genuine OpenClaw binary here.
+          mkdir -p evidence
+          node="$(kind get nodes --name opsswarm-evidence | head -1)"
+          echo "node=$node" | tee evidence/kind-node.txt
+          docker exec "$node" /bin/sh -c '
+            mkdir -p /usr/local/bin
+            printf "#!/bin/sh\nexit 0\n" > /usr/local/bin/openclaw
+            chmod 0755 /usr/local/bin/openclaw
+            ls -l /usr/local/bin/openclaw
+          ' | tee -a evidence/kind-node.txt
+
+      - name: Render the dev overlay pinned to the pushed digest
+        shell: bash
+        env:
+          IMAGE_REF: ${{ needs.push.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/overlay
+          # The overlay is pinned to the IMMUTABLE digest that was just pushed,
+          # so the cluster pulls exactly the artifact the registry published.
+          cat > evidence/overlay/kustomization.yaml <<EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          resources:
+            - ../../k8s/overlays/dev
+          images:
+            - name: ghcr.io/vinhphan812/opsswarm-enterprise
+              newName: ghcr.io/vinhphan812/opsswarm-enterprise
+              digest: ${IMAGE_REF##*@}
+          EOF
+          kubectl kustomize evidence/overlay > evidence/dev-overlay.yaml
+          # The overlay must declare exactly one replica - no HA claims.
+          grep -n "replicas:" evidence/dev-overlay.yaml | tee evidence/replicas.txt
+          if ! grep -q "replicas: 1" evidence/dev-overlay.yaml; then
+            echo "ERROR: dev overlay is not single-replica" >&2
+            exit 1
+          fi
+          # The image must be pinned by digest, not by a mutable tag.
+          grep -n "image:" evidence/dev-overlay.yaml | tee evidence/image-refs.txt
+          if grep -q "image: .*:latest" evidence/dev-overlay.yaml; then
+            echo "ERROR: overlay still references a mutable tag" >&2
+            exit 1
+          fi
+          # Until issue #30 implements a real readiness endpoint, only liveness
+          # is configured. The startup probe is intentionally not used as readiness.
+          grep -n -A3 "livenessProbe:" evidence/dev-overlay.yaml | tee evidence/liveness-probe.txt
+          grep -q "path: /health" evidence/dev-overlay.yaml
+          if grep -q "readinessProbe:" evidence/dev-overlay.yaml; then
+            echo "ERROR: readiness probe must not use a non-existent endpoint" >&2
+            exit 1
+          fi
+
+      - name: Apply the dev overlay
+        shell: bash
+        env:
+          OPSWARM_RUNTIME_SECRET: ${{ secrets.OPSWARM_RUNTIME_SECRET || 'ci-placeholder-runtime-secret' }}
+        run: |
+          set -euo pipefail
+          kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
+          # Replace manifest placeholders with ephemeral values in the same
+          # stable Secret referenced by Deployment; never print or persist data.
+          kubectl -n opsswarm create secret generic opsswarm-secrets \
+            --from-literal=OPSWARM_RUNTIME_SECRET="$OPSWARM_RUNTIME_SECRET" \
+            --from-literal=GITHUB_TOKEN=ci-placeholder \
+            --from-literal=OPSWARM_OPENCLAW_KEY=ci-placeholder \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create the registry pull secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The published package may be private to this repository, so the
+          # cluster authenticates with the workflow token to pull by digest.
+          kubectl -n opsswarm create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="${{ github.actor }}" \
+            --docker-password="${{ secrets.GITHUB_TOKEN }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n opsswarm patch deployment opsswarm --type=json \
+            -p '[{"op":"add","path":"/spec/template/spec/imagePullSecrets","value":[{"name":"ghcr-pull"}]}]'
+          kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.template.spec.imagePullSecrets}' \
+            | tee evidence/pull-secret.txt
+          echo
+
+      - name: Wait for the rollout to become ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! kubectl -n opsswarm rollout status deployment/opsswarm --timeout=300s \
+            2>&1 | tee evidence/rollout-status.txt; then
+            echo "Rollout failed; collecting cluster diagnostics before failing." >&2
+            kubectl -n opsswarm get pods -o wide 2>&1 | tee evidence/failure-pods.txt || true
+            kubectl -n opsswarm describe deployment opsswarm 2>&1 | tee evidence/failure-deployment.txt || true
+            kubectl -n opsswarm get events --sort-by=.metadata.creationTimestamp 2>&1 \
+              | tee evidence/failure-events.txt || true
+            pod_names="$(kubectl -n opsswarm get pods -o name 2>/dev/null || true)"
+            while IFS= read -r pod; do
+              [ -n "$pod" ] || continue
+              safe_name="$(printf '%s' "$pod" | tr '/:' '__')"
+              kubectl -n opsswarm describe "$pod" 2>&1 \
+                | tee "evidence/failure-$safe_name-describe.txt" || true
+              kubectl -n opsswarm logs "$pod" --all-containers=true --prefix=true 2>&1 \
+                | tee "evidence/failure-$safe_name-logs.txt" || true
+              kubectl -n opsswarm logs "$pod" --all-containers=true --previous --prefix=true 2>&1 \
+                | tee "evidence/failure-$safe_name-previous-logs.txt" || true
+            done <<< "$pod_names"
+            exit 1
+          fi
+          kubectl -n opsswarm get pods -o wide | tee evidence/pods.txt
+          kubectl -n opsswarm get deployment opsswarm -o jsonpath='{.spec.replicas}{"\n"}' \
+            | tee evidence/replica-count.txt
+
+      - name: Probe the liveness endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          pod="$(kubectl -n opsswarm get pods -l app.kubernetes.io/name=opsswarm \
+            -o jsonpath='{.items[0].metadata.name}')"
+          echo "pod=$pod" | tee evidence/endpoint-probe.txt
+          kubectl -n opsswarm port-forward "pod/$pod" 18080:8080 &
+          pf_pid=$!
+          trap 'kill $pf_pid 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          echo "--- GET /health ---" | tee -a evidence/endpoint-probe.txt
+          curl -sS -o /tmp/health.json -w 'http_status=%{http_code}\n' \
+            http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
+          cat /tmp/health.json | tee -a evidence/endpoint-probe.txt
+          echo | tee -a evidence/endpoint-probe.txt
+          echo "--- GET /health ---" | tee -a evidence/endpoint-probe.txt
+          curl -sS -o /tmp/ready.json -w 'http_status=%{http_code}\n' \
+            http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
+          cat /tmp/ready.json | tee -a evidence/endpoint-probe.txt
+          echo | tee -a evidence/endpoint-probe.txt
+
+      - name: Demonstrate SIGTERM drain behaviour
+        shell: bash
+        run: |
+          set -euo pipefail
+          pod="$(kubectl -n opsswarm get pods -l app.kubernetes.io/name=opsswarm \
+            -o jsonpath='{.items[0].metadata.name}')"
+          # Deleting the pod sends SIGTERM.  The container must log the drain
+          # and the pod must terminate within terminationGracePeriodSeconds.
+          kubectl -n opsswarm delete pod "$pod" --wait=true --timeout=120s \
+            2>&1 | tee evidence/sigterm-delete.txt
+          kubectl -n opsswarm logs --previous "$pod" 2>/dev/null \
+            | grep -iE "SIGTERM|drain|Draining" \
+            | tee evidence/sigterm-logs.txt || true
+          kubectl -n opsswarm rollout status deployment/opsswarm --timeout=300s \
+            | tee evidence/rollout-after-restart.txt
+          kubectl -n opsswarm get pods -o wide | tee -a evidence/pods.txt
+
+      - name: Upload Kubernetes evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: container-k8s-evidence-${{ needs.push.outputs.sha7 }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30

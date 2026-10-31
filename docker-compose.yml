@@ -1,0 +1,41 @@
+services:
+  opsswarm:
+    image: ${OPSWARM_IMAGE:-ghcr.io/vinhphan812/opsswarm-enterprise:latest}
+    container_name: opsswarm
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: production
+      OPSWARM_RUNTIME_SECRET: ${OPSWARM_RUNTIME_SECRET:?Set a strong OPSWARM_RUNTIME_SECRET}
+      GITHUB_REPO: vinhphan812/OpsSwarm-Enterprise
+      GITHUB_TOKEN_FILE: /run/secrets/github-token
+      OPSWARM_DATA_DIR: /var/lib/opsswarm/runtime-data
+      PORT: "8080"
+    volumes:
+      - opsswarm-runtime-data:/var/lib/opsswarm
+      - type: bind
+        source: ${GITHUB_TOKEN_FILE_HOST:-./.github-token}
+        target: /run/secrets/github-token
+        read_only: true
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+
+  openclaw:
+    image: node:26-bookworm-slim
+    profiles: ["openclaw"]
+    volumes:
+      - openclaw-data:/opt/openclaw
+    command: ["sh", "-c", "sleep infinity"]
+    environment:
+      OPSWARM_OPENCLAW_BIN: /opt/openclaw/openclaw
+
+volumes:
+  opsswarm-runtime-data:
+  openclaw-data:
