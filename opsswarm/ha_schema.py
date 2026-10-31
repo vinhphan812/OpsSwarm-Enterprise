@@ -70,14 +70,37 @@ class SchemaValidationError(RuntimeError):
         super().__init__(f"HA schema validation failed ({len(report.issues)} issue(s)): {detail}")
 
 
+def _split_array_dimensions(rendered: str) -> tuple[str, int]:
+    """Split a rendered type into its base type and its array dimension count.
+
+    ``"TEXT[]"`` becomes ``("TEXT", 1)`` and ``"TEXT"`` becomes
+    ``("TEXT", 0)``.  A two-dimensional array, ``"TEXT[][]"``, becomes
+    ``("TEXT", 2)``.
+    """
+    base = rendered.strip().upper()
+    dimensions = 0
+    while base.endswith("[]"):
+        base = base[:-2]
+        dimensions += 1
+    return base, dimensions
+
+
 @dataclass(frozen=True)
 class ColumnSpec:
     """Expected column definition.
 
-    ``type_tokens`` are uppercase substrings that must all appear in the
-    rendered database type.  Substring matching keeps the contract independent
-    of driver-specific type objects (``TEXT[]`` vs ``ARRAY`` vs
-    ``VARCHAR(64)``) while still catching a genuinely wrong column type.
+    ``type_tokens`` are uppercase type descriptions that must all match the
+    rendered database type.  The *base* type is compared as a substring so the
+    contract stays independent of driver-specific spellings (``TEXT`` vs
+    ``TEXT WITH TIME ZONE``, ``VARCHAR`` vs ``VARCHAR(64)``), while the
+    *array-ness* is compared exactly.
+
+    Array-ness has to be compared exactly because the rendered type of an
+    array column ends in ``[]``: a plain substring test would let the scalar
+    token ``"TEXT"`` match the array type ``"TEXT[]"``, and the array token
+    ``"TEXT[]"`` match the two-dimensional type ``"TEXT[][]"``.  Both are
+    false accepts -- a schema that turned a scalar column into an array would
+    pass validation unnoticed.
     """
 
     name: str
@@ -85,8 +108,15 @@ class ColumnSpec:
     nullable: bool = False
 
     def type_matches(self, rendered_type: str) -> bool:
-        rendered = rendered_type.upper()
-        return all(token in rendered for token in self.type_tokens)
+        """Return True when the rendered type satisfies every contract token."""
+        rendered_base, rendered_dimensions = _split_array_dimensions(rendered_type)
+        for token in self.type_tokens:
+            token_base, token_dimensions = _split_array_dimensions(token)
+            if token_dimensions != rendered_dimensions:
+                return False
+            if token_base not in rendered_base:
+                return False
+        return True
 
 
 @dataclass(frozen=True)
