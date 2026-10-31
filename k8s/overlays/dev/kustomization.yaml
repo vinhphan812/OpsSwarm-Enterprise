@@ -98,7 +98,6 @@ secretGenerator:
   - name: opsswarm-secrets
     literals:
       # ⚠️  Replace with your actual dev tokens.  Never commit real values.
-      - OPSWARM_RUNTIME_SECRET=dev-only-placeholder-runtime-secret-change-before-use
       - GITHUB_TOKEN=REPLACE_WITH_DEV_GITHUB_TOKEN
       - OPSWARM_OPENCLAW_KEY=REPLACE_WITH_DEV_OPENCLAW_KEY
     type: Opaque
