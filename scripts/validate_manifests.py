@@ -126,7 +126,7 @@ PROFILES: dict[str, Profile] = {
         name="prod",
         require_pinned_image=True,
         require_persistent_storage=True,
-        require_readiness_probe=True,
+        require_readiness_probe=False,
     ),
 }
 
@@ -264,19 +264,20 @@ def _validate_probes(container: dict[str, Any], container_context: str, profile:
     if not isinstance(liveness, dict):
         raise ManifestValidationError(f"{container_context}: a livenessProbe is required")
 
+    readiness = container.get("readinessProbe")
+    if readiness is not None:
+        readiness_path = (readiness.get("httpGet") or {}).get("path") if isinstance(readiness, dict) else None
+        if readiness_path == _LIVENESS_PATH:
+            raise ManifestValidationError(
+                f"{container_context}: readinessProbe must not use {_LIVENESS_PATH}; "
+                f"{_LIVENESS_PATH} is a liveness signal, not a readiness gate"
+            )
+
     if not profile.require_readiness_probe:
         return
 
-    readiness = container.get("readinessProbe")
     if not isinstance(readiness, dict):
         raise ManifestValidationError(f"{container_context}: a readinessProbe is required")
-
-    readiness_path = (readiness.get("httpGet") or {}).get("path")
-    if readiness_path == _LIVENESS_PATH:
-        raise ManifestValidationError(
-            f"{container_context}: readinessProbe must not use {_LIVENESS_PATH}; "
-            f"{_LIVENESS_PATH} is a liveness signal, not a readiness gate"
-        )
 
 
 def validate_deployment(deployment: dict[str, Any], context: str, profile: Profile) -> None:

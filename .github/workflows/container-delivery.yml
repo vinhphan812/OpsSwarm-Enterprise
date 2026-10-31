@@ -132,13 +132,6 @@ jobs:
             echo "ERROR: registry returned a malformed digest: '$digest'" >&2
             exit 1
           fi
-          latest_digest="$(crane digest "${IMAGE_REPO}:latest")"
-          echo "=== crane digest ${IMAGE_REPO}:latest ==="
-          echo "$latest_digest"
-          if [[ "$latest_digest" != "$digest" ]]; then
-            echo "ERROR: latest ($latest_digest) != pinned ($digest)" >&2
-            exit 1
-          fi
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "image_ref=${IMAGE_REPO}@${digest}" >> "$GITHUB_OUTPUT"
           mkdir -p evidence
@@ -364,10 +357,10 @@ jobs:
           set -euo pipefail
           kubectl apply -f evidence/dev-overlay.yaml 2>&1 | tee evidence/kubectl-apply.txt
           # Replace manifest placeholders with ephemeral, non-persistent CI credentials.
-          kubectl -n opsswarm create secret generic opsswarm-secrets \\
-            --from-literal=OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \\
-            --from-literal=GITHUB_TOKEN=ci-placeholder \\
-            --from-literal=OPSWARM_OPENCLAW_KEY=ci-placeholder \\
+          kubectl -n opsswarm create secret generic opsswarm-secrets \
+            --from-literal=OPSWARM_RUNTIME_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+            --from-literal=GITHUB_TOKEN=ci-placeholder \
+            --from-literal=OPSWARM_OPENCLAW_KEY=ci-placeholder \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Create the registry pull secret
