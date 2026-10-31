@@ -275,7 +275,9 @@ async def github_webhook(
     data = await request.json()
     if x_github_event == "issues" and data.get("action") == "opened":
         number = int(data["issue"]["number"])
-        asyncio.create_task(engine.start_issue(number, x_github_delivery))
+        await get_readiness().start_background_dispatch(
+            engine.start_issue(number, x_github_delivery)
+        )
         return {"accepted": True, "issue": number}
     if x_github_event == "issue_comment" and data.get("action") == "created":
         number = int(data["issue"]["number"])
@@ -407,5 +409,5 @@ async def monitoring_event(request: Request):
     )
     issue = await gh.create_issue(title, body, labels)
     number = int(issue["number"])
-    asyncio.create_task(engine.start_issue(number))
+    await get_readiness().start_background_dispatch(engine.start_issue(number))
     return {"accepted": True, "issue_number": number}
