@@ -119,6 +119,30 @@ class FileStore(BaseStore):
                 except OSError:
                     logger.exception("Failed to release run store lock for %s", run_id)
 
+    def _discard_legacy_stale_temps(self, run_id: str) -> None:
+        """Remove leftover fixed-name temp files from an interrupted write.
+
+        Atomic writes use a unique temp name per attempt (``.run_id.<uuid>.tmp``),
+        so a crashed write can never publish a half-written run file. Older
+        releases used a fixed temp name (``.run_id.tmp`` / ``.run_id.checkpoint.tmp``);
+        a file left behind under those names is stale by definition and is
+        discarded so it is never mistaken for a valid temporary.
+
+        Only the exact legacy names are removed: a glob would race with a
+        concurrent writer's unique temp file.
+
+        Args:
+            run_id: The run whose legacy temp files should be discarded.
+        """
+        for legacy_name in (f".{run_id}.tmp", f".{run_id}.checkpoint.tmp"):
+            legacy_path = self.path / legacy_name
+            try:
+                legacy_path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning(
+                    "Failed to discard stale temp file %s", legacy_path, exc_info=True
+                )
+
     def save(self, run: RunRecord) -> None:
         """Save a run record with atomic write (write to temp, then rename).
 
@@ -126,6 +150,7 @@ class FileStore(BaseStore):
             run: The RunRecord to save.
         """
         with self._process_lock(run.run_id):
+            self._discard_legacy_stale_temps(run.run_id)
             self._save_locked(run)
 
     def load(self, run_id: str) -> RunRecord | None:
@@ -197,6 +222,7 @@ class FileStore(BaseStore):
 
             try:
                 with self._process_lock(run_id):
+                    self._discard_legacy_stale_temps(run_id)
                     with tmp_path.open("w", encoding="utf-8") as checkpoint_tmp:
                         checkpoint_tmp.write(run.model_dump_json(indent=2))
                         checkpoint_tmp.flush()
@@ -229,6 +255,7 @@ class FileStore(BaseStore):
             }
             try:
                 with self._process_lock(run_id):
+                    self._discard_legacy_stale_temps(run_id)
                     with tmp_path.open("w", encoding="utf-8") as checkpoint_tmp:
                         json.dump(ckpt_payload, checkpoint_tmp, indent=2)
                         checkpoint_tmp.flush()
