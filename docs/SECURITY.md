@@ -229,3 +229,8 @@ GitHub's security alert record.
 
 License inventory is evidence for review, not an implicit approval. Unknown, unclassified, or potentially incompatible
 licenses require release-owner or legal adjudication before a release policy can allow them.
+
+
+## Container security
+
+The supported container runs as a non-root user (UID 10001). Inject runtime secrets through the orchestrator's secret facility; do not bake credentials into image layers, environment defaults, or manifests. Release images are published to GHCR with BuildKit provenance and SBOM metadata and are scanned with Trivy at HIGH and CRITICAL severity; findings fail the release workflow.

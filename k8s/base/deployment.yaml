@@ -1,0 +1,301 @@
+# k8s/deployment.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — Kubernetes Deployment
+#
+# Architecture decisions (issue #73):
+#   replicas: 1          — single-replica until shared coordination (issue #70)
+#                          is enabled.  Scaling beyond 1 requires coordination
+#                          store (Redis or Firestore) to be configured first.
+#   securityContext:     — runAsNonRoot, runAsUser 10001 (matches Dockerfile)
+#                          fsGroup 10001 at POD level (not container level).
+#   readOnlyRootFilesystem: false  — Dockerfile creates writable dirs explicitly;
+#                                    set true with tmpfs mounts for /tmp and /var/run
+#                                    in high-security environments.
+#   livenessProbe:       — /health endpoint (present in v2.2.0).
+#                          NOTE: /health is a LIVENESS probe only.  It confirms
+#                          the app process is alive but does NOT verify that
+#                          auth config is loaded, GitHub API is reachable, or
+#                          OpenClaw binary responds.  Do NOT mark the service
+#                          as production-ready based solely on this signal.
+#                          A real readiness gate (via /ready) is tracked in
+#                          issue #30 (Prometheus + real readiness signals).
+#   readinessProbe:      — OMITTED.  See the detailed note in the spec below.
+#                          /health is not a readiness signal; do NOT re-add until
+#                          issue #30 provides a real /ready endpoint.
+#   resources:           — conservative defaults; tune based on observed p95.
+#
+# OpenClaw runtime delivery:
+#   The OpenClaw CLI is provisioned in the OpsSwarm image at
+#   /usr/local/bin/openclaw.  The init container invokes `openclaw --version`
+#   before the application starts, providing a real executable check without a
+#   hostPath, sidecar, or shared executable volume.
+#
+#   Container delivery supports this embedded-CLI mode only.  A host/sidecar
+#   binary mount is future/not supported and must not be configured here.
+#
+# Apply:  kubectl apply -k k8s/overlays/dev   # dev (uses hostPath)
+#         kubectl apply -k k8s/overlays/prod  # production
+# Dry-run: kubectl kustomize k8s/overlays/dev && kubectl apply --dry-run=server -k k8s/overlays/dev
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opsswarm
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: application
+    app.kubernetes.io/version: "2.2.0"
+spec:
+  # ── Replica count ──────────────────────────────────────────────────────────
+  # ⚠️  Do NOT increase this above 1 until shared coordination (issue #70)
+  # is resolved and a distributed lock store (e.g. Firestore or Redis) is
+  # configured.  Without coordination, multiple replicas will process the
+  # same GitHub webhook events and create duplicate incidents.
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opsswarm
+
+  # Recreate strategy is safe for single-replica; swap to RollingUpdate
+  # once replicas > 1 with proper readiness gates.
+  strategy:
+    type: Recreate
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opsswarm
+        app.kubernetes.io/version: "2.2.0"
+      annotations:
+        # Prometheus scrape annotations — used by the Prometheus scrape config.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        # kubernetes.io/change-cause: "upgrade to v2.2.1"  # uncomment to force a rolling restart
+    spec:
+      # ── Pod-level security context ──────────────────────────────────────────
+      # fsGroup must be at pod level (not container level) so that all containers
+      # in the pod honour the supplemental group for volume access.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+
+      # ── Init containers ──────────────────────────────────────────────────────
+      # Fail closed before starting the API when the shipped OpenClaw CLI is not
+      # executable.  No executable volume is required: the binary lives in the
+      # same pinned image as the application.
+      # Validate the embedded OpenClaw executable before the API starts.
+      initContainers:
+        - name: openclaw-runtime-check
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              bin="${OPSWARM_OPENCLAW_BIN:-/usr/local/bin/openclaw}"
+              [ -x "$bin" ] || { echo "OpenClaw CLI not executable: $bin" >&2; exit 1; }
+              "$bin" --version
+          env:
+            - name: OPSWARM_OPENCLAW_BIN
+              value: /usr/local/bin/openclaw
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+
+      # ── Application container ─────────────────────────────────────────────
+      containers:
+        - name: opsswarm
+          # Replace with your actual image reference.
+          # Canonical: ghcr.io/vinhphan812/opsswarm-enterprise:<tag>
+          # Build: docker build -f Dockerfile -t ghcr.io/vinhphan812/opsswarm-enterprise:latest .
+          # The <tag> should be updated in overlays/dev and overlays/prod.
+          image: ghcr.io/vinhphan812/opsswarm-enterprise:latest
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          # ── Container-level security context ──────────────────────────────────
+          securityContext:
+            # runAsNonRoot: true — container refuses to run as UID 0 (root).
+            # The Dockerfile USER directive sets the primary group to appgroup (10001).
+            runAsNonRoot: true
+            # runAsUser matches the Dockerfile useradd uid 10001.
+            runAsUser: 10001
+            runAsGroup: 10001
+            # readOnlyRootFilesystem: false — the Dockerfile explicitly creates
+            # writable directories (/var/lib/opsswarm, /app/runtime-data).  The
+            # container needs these for evidence persistence and run checkpoints.
+            # Set to true and add tmpfs mounts for /tmp and /var/run in strict
+            # high-security environments.
+            readOnlyRootFilesystem: false
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+
+          # ── Liveness probe ──────────────────────────────────────────────────
+          # HTTP GET /health returns {"ok": true, "version": "2.2.0", ...}
+          # NOTE: /health is a LIVENESS probe ONLY.  It confirms the uvicorn
+          # process is alive but does NOT verify auth config, GitHub API reachability,
+          # or OpenClaw binary availability.  A failed liveness probe causes
+          # Kubernetes to restart the pod — useful for crash loops but NOT a
+          # signal of production readiness.  Do NOT expose the Service as "ready"
+          # based solely on this probe succeeding.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+            successThreshold: 1
+
+          # ── Environment variables ──────────────────────────────────────────
+          env:
+            # References ConfigMap values (non-sensitive).
+            - name: GITHUB_REPO
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: GITHUB_REPO
+            - name: OPSWARM_CONFIG
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPSWARM_CONFIG
+            - name: APP_ENV
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: APP_ENV
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: LOG_LEVEL
+            - name: EVIDENCE_STORE_BACKEND
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: EVIDENCE_STORE_BACKEND
+            - name: PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: PORT
+            - name: OPSWARM_OPENCLAW_BIN
+              value: /usr/local/bin/openclaw
+            - name: OPENCLAW_TIMEOUT_SECONDS
+              valueFrom:
+                configMapKeyRef:
+                  name: opsswarm-config
+                  key: OPENCLAW_TIMEOUT_SECONDS
+
+            # References Secret values (sensitive).
+            - name: OPSWARM_RUNTIME_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: OPSWARM_RUNTIME_SECRET
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: GITHUB_TOKEN
+            - name: OPSWARM_OPENCLAW_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: opsswarm-secrets
+                  key: OPSWARM_OPENCLAW_KEY
+
+          # ── Resource requests and limits ──────────────────────────────────
+          # These are conservative starting-point values.  Monitor actual
+          # usage and adjust to match observed p95/p99 under peak load.
+          #
+          # Guideline (OpsSwarm v2.2.0, single incident run):
+          #   CPU request 200m is sufficient for normal LLM call patterns.
+          #   CPU limit   1000m prevents a runaway loop from monopolising the node.
+          #   Memory      ~256Mi baseline; can spike to 512Mi with large evidence
+          #               payloads or deep task graphs.  Set limit to 1Gi for safety.
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+
+          # ── Volume mounts ─────────────────────────────────────────────────
+          volumeMounts:
+            # Evidence persistence — survives container restarts within the pod.
+            # ⚠️  emptyDir is NOT durable — data is lost on pod deletion.
+            # For production, replace with a PersistentVolumeClaim:
+            #   persistentVolumeClaim:
+            #     claimName: opsswarm-evidence
+            # See the PersistentVolumeClaim defined in kustomization.yaml and the
+            # storage documentation in docs/guides/CONTAINER_DEPLOYMENT.md.
+            - name: evidence-store
+              mountPath: /var/lib/opsswarm
+
+            # Run checkpoints and orchestrator state — survives container restarts.
+            # ⚠️  NOT durable with emptyDir — data is lost on pod deletion.
+            # For production, replace with a PersistentVolumeClaim:
+            #   persistentVolumeClaim:
+            #     claimName: opsswarm-runtime-data
+            - name: runtime-data
+              mountPath: /app/runtime-data
+
+            # /tmp for any in-process temporary files.
+            # Use a tmpfs mount in overlays/prod for additional security:
+            #   emptyDir: { medium: Memory }
+            - name: tmp
+              mountPath: /tmp
+
+      # ── Volumes ────────────────────────────────────────────────────────────
+      volumes:
+        # Evidence and checkpoint PVCs are required even in base: data survives
+        # pod recreation and production must not silently fall back to emptyDir.
+        # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
+        # The opsswarm-evidence PVC (defined in kustomization.yaml) provides
+        # ReadWriteOnce access via the default StorageClass.  For multi-replica
+        # access (once issue #70 is resolved), use a ReadWriteMany storage
+        # backend (NFS, CloudStorage, etc.) and update the PVC spec accordingly.
+        - name: evidence-store
+          persistentVolumeClaim:
+            claimName: opsswarm-evidence
+
+        # Runtime data directory for run checkpoints.
+        # ⚠️  NOT durable with emptyDir — data lost on pod deletion.
+        # ⚠️  Operators MUST configure a PersistentVolumeClaim for production.
+        - name: runtime-data
+          persistentVolumeClaim:
+            claimName: opsswarm-runtime-data
+
+        # /tmp — use tmpfs in production for additional security.
+        - name: tmp
+          emptyDir: {}
+
+      # ── Pod scheduling ─────────────────────────────────────────────────────
+      # Affinity/anti-affinity can be added in overlays/prod for HA.
+      # Currently no node selectors or tolerations — runs on any node.
+
+      # ── Pod disruption ─────────────────────────────────────────────────────
+      # terminationGracePeriodSeconds: 60
+      #   Allows in-flight LLM calls to complete before SIGKILL (30 s default).
+      #   Override in overlays/prod if your OpenClaw agents need longer.
+      terminationGracePeriodSeconds: 60
