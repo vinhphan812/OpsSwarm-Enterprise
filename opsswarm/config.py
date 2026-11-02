@@ -115,3 +115,17 @@ DEFAULT_MONITORING = {
 def get_monitoring(cfg: dict) -> dict:
     """Return the monitoring section from config, merged with defaults."""
     return {**DEFAULT_MONITORING, **cfg.get("monitoring", {})}
+
+
+# ----------------------------------------------------------------------
+# Issue #70 — Persistence store configuration (ADR-030)
+# ----------------------------------------------------------------------
+
+DEFAULT_STORE = {
+    "backend": "filesystem",  # "filesystem" | "postgres"
+}
+
+
+def get_store(cfg: dict) -> dict:
+    """Return the store section from config, merged with defaults."""
+    return {**DEFAULT_STORE, **cfg.get("store", {})}
