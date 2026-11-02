@@ -6,6 +6,8 @@ purpose: The single current audit worklist for OpsSwarm Enterprise
 
 # Current Audit Worklist
 
+**Status:** CURRENT - the single current audit worklist
+
 This is the **only** current audit worklist in the repository. It lists the audit findings that are still
 open, each with the GitHub issue that owns the work. Every other audit document in the tree is either a
 current specification referenced by production code, or a historical report retained for traceability.
