@@ -73,18 +73,27 @@ def fetch_all_check_runs(repo: str, head_sha: str, headers: dict[str, str], open
     return runs
 
 
-def evaluate_checks(check_runs: Iterable[dict[str, Any]], expected_checks: Iterable[str]) -> tuple[bool, bool]:
-    """Return (passed, pending); missing, duplicates, and failures cannot pass."""
+def evaluate_checks(
+    check_runs: Iterable[dict[str, Any]],
+    expected_checks: Iterable[str],
+    strict_checks: Iterable[str] = (),
+) -> tuple[bool, bool]:
+    """Return (passed, pending); strict checks accept only ``success``."""
     by_name: dict[str, list[dict[str, Any]]] = {}
     for run in check_runs:
         if isinstance(run.get("name"), str):
             by_name.setdefault(run["name"], []).append(run)
 
+    expected = list(expected_checks)
+    strict = set(strict_checks)
+    # A strict check may be listed only in the strict set; it must still be
+    # evaluated so that a missing or non-success result fails the gate.
+    names = expected + [name for name in strict if name not in expected]
     pending = failed = False
     missing: list[str] = []
     observed_expected = False
     observed_terminal = True
-    for name in expected_checks:
+    for name in names:
         matches = by_name.get(name, [])
         if len(matches) != 1:
             if not matches:
@@ -97,9 +106,12 @@ def evaluate_checks(check_runs: Iterable[dict[str, Any]], expected_checks: Itera
         observed_expected = True
         status, conclusion = matches[0].get("status"), matches[0].get("conclusion")
         state = conclusion if isinstance(conclusion, str) else status or "pending"
-        print(f"{name}: {state}")
+        print(f"{name}{' (strict)' if name in strict else ''}: {state}")
         if status != "completed" or not isinstance(conclusion, str):
             pending, observed_terminal = True, False
+        elif name in strict:
+            if conclusion != "success":
+                failed = True
         elif conclusion not in SUCCESSFUL_CONCLUSIONS:
             failed = True
 
@@ -111,7 +123,7 @@ def evaluate_checks(check_runs: Iterable[dict[str, Any]], expected_checks: Itera
     return not failed and not pending, pending and not failed
 
 
-def poll_checks(repo: str, head_sha: str, expected_checks: list[str], max_attempts: int = 60, sleep_seconds: int = 10, opener: Callable[..., Any] = urllib.request.urlopen, sleeper: Callable[[float], None] = time.sleep) -> int:
+def poll_checks(repo: str, head_sha: str, expected_checks: list[str], max_attempts: int = 60, sleep_seconds: int = 10, opener: Callable[..., Any] = urllib.request.urlopen, sleeper: Callable[[float], None] = time.sleep, strict_checks: Iterable[str] = ()) -> int:
     token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
     if token:
@@ -122,7 +134,7 @@ def poll_checks(repo: str, head_sha: str, expected_checks: list[str], max_attemp
         except CheckRunFetchError as exc:
             print(f"Unable to verify canonical check runs: {exc}", file=sys.stderr)
             return 1
-        passed, pending = evaluate_checks(check_runs, expected_checks)
+        passed, pending = evaluate_checks(check_runs, expected_checks, strict_checks)
         if passed:
             print("All canonical checks passed.")
             return 0
@@ -140,10 +152,11 @@ def main() -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--head-sha", required=True)
     parser.add_argument("--checks", nargs="+", required=True)
+    parser.add_argument("--strict-checks", nargs="*", default=[])
     parser.add_argument("--max-attempts", type=int, default=60)
     parser.add_argument("--sleep", type=int, default=10)
     args = parser.parse_args()
-    return poll_checks(args.repo, args.head_sha, args.checks, args.max_attempts, args.sleep)
+    return poll_checks(args.repo, args.head_sha, args.checks, args.max_attempts, args.sleep, strict_checks=args.strict_checks)
 
 
 if __name__ == "__main__":
