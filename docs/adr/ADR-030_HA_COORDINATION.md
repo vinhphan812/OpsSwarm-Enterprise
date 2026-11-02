@@ -83,11 +83,19 @@ CREATE TABLE runs (
 CREATE INDEX idx_runs_issue ON runs (issue_number);
 
 -- Run leadership lease
+-- The canonical schema (migrations/versions/001_initial_ha_schema.py, whose
+-- contract is described by opsswarm/ha_schema.py) carries a durable fencing
+-- token and deliberately omits a time-dependent
+-- CHECK on expires_at: PostgreSQL evaluates CHECK constraints on write only,
+-- so such a constraint freezes an expired row and blocks renewal and
+-- takeover.  Lease expiry is evaluated dynamically, inside the acquisition
+-- transaction, using PostgreSQL server time.
 CREATE TABLE run_leases (
     run_id      TEXT        NOT NULL PRIMARY KEY REFERENCES runs(run_id) ON DELETE CASCADE,
     owner_id    TEXT        NOT NULL,           -- process-unique instance ID
+    epoch       BIGINT      NOT NULL DEFAULT 1, -- durable fencing token
     expires_at  TIMESTAMPTZ NOT NULL,
-    CONSTRAINT  no_expired_leases CHECK (expires_at > NOW())
+    CONSTRAINT  run_leases_epoch_positive CHECK (epoch > 0)
 );
 
 -- Evidence log (replaces JSONL files)
@@ -105,13 +113,16 @@ CREATE TABLE evidence (
 CREATE INDEX idx_evidence_run ON evidence (run_id);
 CREATE INDEX idx_evidence_sig ON evidence (run_id, signature);
 
--- Anti-replay / rate-limit state (shared across processes)
+-- Anti-replay / rate-limit state (shared across processes).
+-- The key alone cannot be the primary key: one key is reused across
+-- consecutive windows, so the canonical schema uses the composite primary key
+-- (key, window_start).
 CREATE TABLE rate_limit_buckets (
-    key             TEXT        NOT NULL PRIMARY KEY,
+    key             TEXT        NOT NULL,
     hits            INTEGER     NOT NULL DEFAULT 0,
     window_start    TIMESTAMPTZ NOT NULL,
     window_seconds  INTEGER     NOT NULL DEFAULT 3600,
-    UNIQUE(key, window_start)
+    PRIMARY KEY (key, window_start)
 );
 
 -- Checkpoints (replaces .checkpoint files)
@@ -362,7 +373,8 @@ If the HA migration must be reverted:
 4. **Schema:** Drop HA tables in a follow-up migration. The filesystem data is untouched.
 
 ```python
-# opsswarm/ha_store.py
+# opsswarm/ha_store.py — planned Phase 3 adapter (not implemented in this
+# branch; the Phase 2 work here ships the schema and the runtime DB layer only)
 class HaRunStore:
     """Adapter that delegates to filesystem store when HA is disabled."""
 
