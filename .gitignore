@@ -17,6 +17,7 @@ dist*
 build
 .ruff_cache
 artifacts/
+test-results/
 *.egg-info/
 .coverage
 _diag_*.py
