@@ -3,7 +3,11 @@
 **Task:** Issue #75 — retry, circuit-breaker and ambiguous-write acceptance verification
 **Verified implementation:** PR #103 — canonical resilience integration, branch `feat/issue-75-client-resilience-v2`
 **SHA verified at the time of this report:** `f61986d928c27ab45be4f5359634ef2937783bff`
-**Current canonical #103 head (after review remediation):** `00760828c1f75c8fec8cb31324791a5dc3723e39`
+**Current canonical #103 head (after review remediation and the master merge):** `d15253983e4e3795885c33aa65fc9d854efa2713`
+**Resilience surface at that head:** byte-identical to `00760828c1f75c8fec8cb31324791a5dc3723e39`
+(`git diff 00760828c d1525398 -- opsswarm/resilience.py opsswarm/github_client.py
+opsswarm/metrics.py tests/unit/test_resilience.py` reports no change; the delta is the
+merge of `master`, which brings in the unrelated store abstraction)
 **Verification branch:** `test/issue-75-resilience-acceptance`
 **Verified by:** Vinh Phan (GitHub account `vinhphan812`)
 **Date:** October 2026, re-stated November 2026
@@ -23,17 +27,24 @@ here as self-verification rather than as independent sign-off.
 Two further limitations apply:
 
 - The executed test evidence below was captured at SHA `f61986d92…`. The
-  canonical #103 head is now `00760828c1f75c8fec8cb31324791a5dc3723e39`,
-  which additionally contains the review remediation (a half-open probe slot
-  that can no longer be stranded, rejection of non-finite retry metadata, and
-  a barrier that blocks replaying a write whose outcome is unknown).
+  canonical #103 head is now `d1525398`, which additionally contains the
+  review remediation (a half-open probe slot that can no longer be stranded,
+  rejection of non-finite retry metadata, and a barrier that blocks replaying
+  a write whose outcome is unknown) and a merge of `master`. The resilience
+  surface itself is unchanged between `00760828c` and `d1525398`, so the
+  remediation evidence below applies unchanged to the current head.
 - The acceptance evidence for that remediation is published on PR #103 itself:
   the new regression tests fail 12/17 against the previous implementation and
   pass 37/37 against the fixed code; `tests/unit` reports 1081 passed / 2
   skipped, `tests/integration` + `tests/faults` report 100 passed; and the
-  exact-head CI run for `00760828c1f75c8fec8cb31324791a5dc3723e39` succeeds
-  in 27 contexts (the two skipped supplemental security scans are skipped by
-  workflow design and are not required contexts).
+  exact-head CI run succeeds in 27 contexts (the two skipped supplemental
+  security scans are skipped by workflow design and are not required
+  contexts).
+- Local gate run on this branch at its current head: `ruff check .` reports
+  "All checks passed!", `mypy opsswarm` reports "Success: no issues found in
+  29 source files", the full suite reports 1491 passed / 3 skipped with total
+  coverage 90.69% (gate 90%), `python -m build` produces the wheel and sdist,
+  and `git diff --check origin/master...HEAD` is clean.
 
 ---
 
@@ -105,4 +116,4 @@ pytest -q
 
 Issue #75 resilience implementation in PR #103 meets all design and governance criteria. All safety mechanisms (idempotent read retry bounds, non-idempotent ambiguous write protection, rate-limit classification, and circuit breaker isolation) are fully tested and verified.
 
-**Verdict:** **APPROVED — author-verified, not an independent approval.** The acceptance evidence for the canonical head `00760828c1f75c8fec8cb31324791a5dc3723e39` is the exact-head CI result and test output published on PR #103, not this document.
+**Verdict:** **APPROVED — author-verified, not an independent approval.** The acceptance evidence for the canonical head `d1525398` is the exact-head CI result and test output published on PR #103, not this document.

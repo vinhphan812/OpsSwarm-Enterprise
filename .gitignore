@@ -16,7 +16,9 @@ runtime-data/
 dist*
 build
 .ruff_cache
-artifacts/
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/issue-75-qa-report.md
 *.egg-info/
 .coverage
 _diag_*.py
