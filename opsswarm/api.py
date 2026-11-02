@@ -142,7 +142,7 @@ async def _startup_auth_check():
     reload_auth_config()
     _ensure_production_auth_config()
     await get_readiness().startup_complete()
-    # Start background rate limit pruner if enabled (ADR-030)
+    # Start background rate limit pruner if enabled (ADR-031)
     start_rate_limit_pruner()
 
 
@@ -190,7 +190,7 @@ async def ready():
 
     * Startup / drain gate (ADR-014-2, issue #70-73): the process must have
       completed startup and must not be draining.
-    * HA coordination gate (ADR-030): when ``ha.enabled`` is true, Postgres
+    * HA coordination gate (ADR-031): when ``ha.enabled`` is true, Postgres
       must be reachable and this instance must be able to verify its leases.
 
     When HA is disabled the endpoint stays backward compatible and only the

@@ -1,0 +1,55 @@
+# k8s/kustomization.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — Kustomize base overlay
+#
+# Usage:
+#   # Dry-run render all manifests:
+#   kubectl kustomize k8s/
+#
+#   # Apply to cluster (dev):
+#   kubectl apply -k k8s/
+#
+#   # Apply with prod overlay:
+#   kubectl apply -k k8s/overlays/prod
+#
+#   # Dry-run server-side validate:
+#   kubectl apply --dry-run=server -k k8s/
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: opsswarm
+
+# ── Resources ───────────────────────────────────────────────────────────────
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  # ⚠️  The secret.yaml file ships with REPLACE_WITH_REAL_* placeholder values.
+  # Do NOT apply it directly in production.  Use one of the options below:
+  #   Option A — kubectl create secret (see secret.yaml header comments)
+  #   Option B — kustomize secretGenerator (see overlays/dev/kustomization.yaml)
+  #   Option C — sealed-secrets / external-secrets (see secret.yaml header)
+  # Uncomment the line below only after replacing placeholder values:
+  # - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - pdb.yaml
+  - network-policy.yaml
+  - pvc.yaml  # PersistentVolumeClaims for evidence and runtime-data
+
+# ── Labels applied to all resources ─────────────────────────────────────────
+labels:
+  - pairs:
+      app.kubernetes.io/name: opsswarm
+      app.kubernetes.io/managed-by: kustomize
+      app.kubernetes.io/version: "2.2.0"
+    # Include in Deployments' pod template labels so selectors match.
+    includeSelectors: true
+
+# ── Images ─────────────────────────────────────────────────────────────────
+# Replace :latest with a specific image tag in overlays/dev or overlays/prod.
+# Canonical tag format: v{version} (e.g. v2.2.0).
+images:
+  - name: ghcr.io/vinhphan812/opsswarm-enterprise
+    newTag: latest
+    # digest: sha256:abc123...  # pin by digest for reproducible deployments

@@ -1,4 +1,4 @@
-"""Issue #70 — HA Coordination (ADR-030).
+"""Issue #70 — HA Coordination (ADR-031).
 
 This module provides PostgreSQL-backed coordination for high-availability
 multi-process deployments. When disabled (ha.enabled = false), the
@@ -207,7 +207,7 @@ async def check_instance_leases() -> tuple[bool, int]:
 
 
 # ----------------------------------------------------------------------
-# Rate limiting (ADR-030 "Shared Anti-Replay / Rate-Limit State")
+# Rate limiting (ADR-031 "Shared Anti-Replay / Rate-Limit State")
 # ----------------------------------------------------------------------
 
 
@@ -313,7 +313,7 @@ async def prune_expired_rate_limits() -> int:
 
 
 # ----------------------------------------------------------------------
-# Lease management (ADR-030 "Lease Ownership / Expiry / Takeover")
+# Lease management (ADR-031 "Lease Ownership / Expiry / Takeover")
 # ----------------------------------------------------------------------
 
 

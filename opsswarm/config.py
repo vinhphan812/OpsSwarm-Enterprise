@@ -118,7 +118,7 @@ def get_monitoring(cfg: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Issue #70 — HA feature flag (ADR-030)
+# Issue #70 — HA feature flag (ADR-031)
 # ---------------------------------------------------------------------------
 
 DEFAULT_HA = {
@@ -128,13 +128,13 @@ DEFAULT_HA = {
     # PostgreSQL connection string — loaded from environment at runtime.
     # Set HA_DATABASE_URL in the environment when ha.enabled = true.
     "database_url": "",
-    # Lease TTL in seconds (ADR-030 § Lease Lifecycle)
+    # Lease TTL in seconds (ADR-031 § Lease Lifecycle)
     "lease_ttl_seconds": 30,
-    # Heartbeat interval in seconds (ADR-030 § Lease Heartbeat)
+    # Heartbeat interval in seconds (ADR-031 § Lease Heartbeat)
     "heartbeat_interval_seconds": 10,
-    # Standby poll interval in seconds (ADR-030 § Leader Election)
+    # Standby poll interval in seconds (ADR-031 § Leader Election)
     "standby_poll_interval_seconds": 5,
-    # Use PostgreSQL-backed rate limiting instead of in-memory (ADR-030)
+    # Use PostgreSQL-backed rate limiting instead of in-memory (ADR-031)
     # Requires ha.enabled = true and valid database_url
     "rate_limit_table_enabled": False,
 }
@@ -154,7 +154,7 @@ def get_ha(cfg: dict) -> dict:
 
 
 # ----------------------------------------------------------------------
-# Issue #70 — Persistence store configuration (ADR-030)
+# Issue #70 — Persistence store configuration (ADR-031)
 # ----------------------------------------------------------------------
 
 DEFAULT_STORE = {

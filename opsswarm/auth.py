@@ -186,7 +186,7 @@ def _ha_config() -> dict:
 
 
 class _PgRateLimiter:
-    """PostgreSQL-backed rate limiter (ADR-030).
+    """PostgreSQL-backed rate limiter (ADR-031).
 
     Uses SELECT FOR UPDATE to serialize concurrent requests for the same key.
     Falls back to in-memory SimpleRateLimiter if HA is disabled or on errors.

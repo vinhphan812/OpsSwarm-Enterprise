@@ -1,6 +1,6 @@
 # HA Coordination Runbook
 
-**ADR Reference:** [ADR-030 — High-Availability Multi-Process Coordination](../adr/ADR-030_HA_COORDINATION.md)
+**ADR Reference:** [ADR-031 — High-Availability Multi-Process Coordination](../adr/ADR-031_HA_COORDINATION.md)
 **Issue:** #70
 **Phases:** 1–7 (this document covers Phase 7)
 
@@ -43,7 +43,7 @@ with zero data loss.
     (fallback reads)              (fallback reads)
 ```
 
-### Key Parameters (ADR-030)
+### Key Parameters (ADR-031)
 
 | Parameter | Value | Rationale |
 |---|---|---|
