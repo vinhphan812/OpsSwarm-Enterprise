@@ -18,6 +18,8 @@ build*/
 .ruff_cache
 artifacts/*
 !artifacts/.gitkeep
+!artifacts/issue-75-qa-report.md
+test-results/
 *.egg-info/
 .coverage
 _diag_*.py
