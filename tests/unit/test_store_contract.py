@@ -95,16 +95,22 @@ def test_disabled_checkpoints_hide_existing_checkpoint(tmp_path: Path) -> None:
 
 
 def test_loads_legacy_run_snapshot_and_checkpoint_without_revision(tmp_path: Path) -> None:
-    """Legacy JSON without revision keeps defaults and checkpoint state intact."""
+    """A pre-Phase-1 snapshot keeps its defaults and checkpoint state intact.
+
+    The fixture is a captured run record from the pre-Phase-1 release
+    (v2.2.0, commit 4e930336), which predates the ``revision`` field.  It is
+    loaded from disk rather than generated from the current model so the test
+    fails if a future model change stops accepting the snapshot that release
+    actually wrote.
+    """
     store = FileStore(str(tmp_path))
-    record = RunRecord(
-        run_id="legacy-run-42",
-        issue_number=42,
-        state=RunState.INVESTIGATING,
-        checkpoint_state="state_transition",
-        checkpoint_sequence=3,
-    ).model_dump(mode="json")
-    record.pop("revision", None)
+    fixture = (
+        Path(__file__).resolve().parents[1]
+        / "fixtures"
+        / "legacy_run_record_pre_phase1_v2.2.0.json"
+    )
+    record = json.loads(fixture.read_text(encoding="utf-8"))
+    assert "revision" not in record
     (store.path / "legacy-run-42.json").write_text(json.dumps(record), encoding="utf-8")
     (store.path / "legacy-run-42.checkpoint").write_text(json.dumps(record), encoding="utf-8")
 
