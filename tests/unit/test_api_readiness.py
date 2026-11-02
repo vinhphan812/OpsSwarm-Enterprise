@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from opsswarm.evidence import EvidenceStore
+from opsswarm.models import RunState
 from opsswarm.runtime import ReadinessManager
+from opsswarm.store import RunStore
 
 
 @pytest.fixture(autouse=True)
@@ -210,6 +215,156 @@ async def test_background_dispatch_cancellation_releases_tracking():
     task.cancel()
     await asyncio.wait_for(drain_task, timeout=1)
     assert readiness._drained.is_set()
+
+
+async def test_cancelled_started_dispatch_is_recorded_for_reconciliation(tmp_path: Path):
+    """A started dispatch writes durable UNKNOWN state and evidence before release."""
+    store = RunStore(str(tmp_path))
+    evidence = EvidenceStore(str(tmp_path))
+    readiness = ReadinessManager(store=store, evidence=evidence)
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def background_work() -> None:
+        entered.set()
+        await release.wait()
+
+    await readiness.start_background_dispatch(
+        background_work(), label="issue:42:opened", issue_number=42, persist_accepted=True
+    )
+    await entered.wait()
+    task = next(iter(readiness._background_tasks))
+
+    task.cancel()
+    await asyncio.wait_for(readiness._drained.wait(), timeout=1)
+    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.sleep(0)
+
+    assert readiness.abandoned_dispatches == ["issue:42:opened"]
+    marker = next(run for run in store.load_all() if run.issue_number == 42)
+    assert marker.state == RunState.INVESTIGATING
+    assert marker.command_outcomes["issue:42:opened"] == "unknown"
+    checkpoint = store.load_checkpoint(marker.run_id)
+    assert checkpoint is not None and checkpoint.checkpoint_state == "shutdown_drain_timeout"
+    evidence_path = tmp_path / "evidence" / f"{marker.run_id}.jsonl"
+    events = [
+        json.loads(line) for line in evidence_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["kind"] == "S5.dispatch.abandoned"
+
+
+async def test_cancelled_dispatch_that_never_started_is_not_abandoned():
+    """Cancelling work before its first step abandons nothing: it never ran."""
+    readiness = ReadinessManager()
+    release = asyncio.Event()
+
+    async def background_work() -> None:
+        await release.wait()
+
+    await readiness.start_background_dispatch(background_work(), label="issue:43:opened")
+    task = next(iter(readiness._background_tasks))
+    task.cancel()
+    await asyncio.wait_for(readiness._drained.wait(), timeout=1)
+    await asyncio.sleep(0)
+
+    assert readiness.abandoned_dispatches == []
+
+
+async def test_drain_reports_success_when_accepted_work_finishes():
+    readiness = ReadinessManager()
+    await readiness.startup_complete()
+    await readiness.begin_dispatch()
+
+    async def finish() -> None:
+        await asyncio.sleep(0)
+        await readiness.end_dispatch()
+
+    finishing = asyncio.create_task(finish())
+    assert await readiness.initiate_drain(timeout=5) is True
+    await finishing
+    assert readiness.abandoned_dispatches == []
+
+
+async def test_drain_timeout_configuration_rejects_invalid_values(monkeypatch, caplog):
+    from opsswarm.runtime import (
+        DEFAULT_DRAIN_TIMEOUT_SECONDS,
+        DRAIN_TIMEOUT_ENV,
+        _configured_drain_timeout,
+    )
+
+    for value in ("bad", "nan", "inf", "-1"):
+        monkeypatch.setenv(DRAIN_TIMEOUT_ENV, value)
+        with caplog.at_level("WARNING"):
+            assert _configured_drain_timeout() == DEFAULT_DRAIN_TIMEOUT_SECONDS
+
+    monkeypatch.setenv(DRAIN_TIMEOUT_ENV, "0.25")
+    assert _configured_drain_timeout() == 0.25
+
+
+async def test_drain_deadline_records_every_inflight_dispatch_as_abandoned(tmp_path: Path):
+    """A hung dispatch writes durable markers for every accepted operation."""
+    store = RunStore(str(tmp_path))
+    evidence = EvidenceStore(str(tmp_path))
+    readiness = ReadinessManager(store=store, evidence=evidence)
+    await readiness.startup_complete()
+
+    hang = asyncio.Event()
+
+    async def hung_work() -> None:
+        await hang.wait()
+
+    await readiness.start_background_dispatch(
+        hung_work(), label="issue:44:opened", issue_number=44, persist_accepted=True
+    )
+    pending = list(readiness._background_tasks)
+    await readiness.begin_dispatch()
+
+    assert await readiness.initiate_drain(timeout=0.05) is False
+    assert readiness.abandoned_dispatches == ["issue:44:opened", "unlabelled"]
+    assert readiness.inflight == 2
+
+    markers = [
+        run for run in store.load_all() if run.error and "interrupted during shutdown" in run.error
+    ]
+    assert len(markers) == 2
+    assert all(run.command_outcomes for run in markers)
+    for run in markers:
+        checkpoint = store.load_checkpoint(run.run_id)
+        assert checkpoint is not None
+        assert checkpoint.checkpoint_state == "shutdown_drain_timeout"
+        evidence_path = tmp_path / "evidence" / f"{run.run_id}.jsonl"
+        assert evidence_path.exists()
+
+    hang.set()
+    await asyncio.gather(*pending, return_exceptions=True)
+    await asyncio.sleep(0)
+    await readiness.end_dispatch()
+    await asyncio.sleep(0)
+
+
+async def test_shutdown_handler_logs_the_dispatch_it_abandoned(monkeypatch, caplog):
+    """The application shutdown hook reports abandoned work, not just count."""
+    import opsswarm.api as api_module
+    import opsswarm.runtime as runtime
+
+    readiness = ReadinessManager()
+    await readiness.startup_complete()
+    runtime.readiness = readiness
+
+    hang = asyncio.Event()
+
+    async def hung_work() -> None:
+        await hang.wait()
+
+    await readiness.start_background_dispatch(hung_work(), label="issue:45:opened")
+    monkeypatch.setenv(runtime.DRAIN_TIMEOUT_ENV, "0.05")
+
+    with caplog.at_level("ERROR"):
+        await api_module._shutdown_drain()
+
+    assert "issue:45:opened" in caplog.text
+    hang.set()
+    await asyncio.sleep(0)
 
 
 async def test_background_dispatch_cancelled_before_start_releases_tracking():

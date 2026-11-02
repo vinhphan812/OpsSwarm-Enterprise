@@ -145,7 +145,15 @@ async def _startup_auth_check():
 
 @app.on_event("shutdown")
 async def _shutdown_drain():
-    await get_readiness().initiate_drain()
+    readiness = get_readiness()
+    drained = await readiness.initiate_drain()
+    if not drained:
+        logger.error(
+            "Shutdown drain abandoned %d dispatch(es) [%s]; their runs stay in the "
+            "durable store and are reconciled from run state on the next start",
+            len(readiness.abandoned_dispatches),
+            ", ".join(readiness.abandoned_dispatches) or "unlabelled",
+        )
     # Also ensure any background tasks or in-flight operations are awaited or cleaned up
     await asyncio.sleep(0.05)
 
@@ -276,7 +284,10 @@ async def github_webhook(
     if x_github_event == "issues" and data.get("action") == "opened":
         number = int(data["issue"]["number"])
         await get_readiness().start_background_dispatch(
-            engine.start_issue(number, x_github_delivery)
+            engine.start_issue(number, x_github_delivery),
+            label=f"issue:{number}:opened",
+            issue_number=number,
+            persist_accepted=True,
         )
         return {"accepted": True, "issue": number}
     if x_github_event == "issue_comment" and data.get("action") == "created":
@@ -409,5 +420,10 @@ async def monitoring_event(request: Request):
     )
     issue = await gh.create_issue(title, body, labels)
     number = int(issue["number"])
-    await get_readiness().start_background_dispatch(engine.start_issue(number))
+    await get_readiness().start_background_dispatch(
+        engine.start_issue(number),
+        label=f"issue:{number}:monitoring",
+        issue_number=number,
+        persist_accepted=True,
+    )
     return {"accepted": True, "issue_number": number}
