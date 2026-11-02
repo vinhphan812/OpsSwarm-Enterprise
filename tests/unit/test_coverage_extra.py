@@ -279,7 +279,7 @@ class TestStoreExtraCoverage:
         from opsswarm.models import RunRecord
         store = RunStore(data_dir=tmp_path, enable_atomic_writes=True, enable_checkpoints=True)
         run = RunRecord(run_id="store-1", issue_number=1)
-        
+
         # Stale tmp for save
         tmp_path_file = tmp_path / "runs" / ".store-1.tmp"
         tmp_path_file.parent.mkdir(parents=True, exist_ok=True)
@@ -316,7 +316,7 @@ class TestPolicyEngineExtraCoverage:
         registry.lookup.return_value = RegistryResult(matched=True, registry_risk=Risk.DESTRUCTIVE)
         engine = PolicyEngine(cfg={})
         engine._registry = registry
-        
+
         plan = MagicMock()
         plan.options = [MagicMock(description="patch /admin/users")]
         risk, reg_res, class_risk = engine.resolve_effective_risk(plan, Risk.READ)

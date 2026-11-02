@@ -178,23 +178,23 @@ class _PgRateLimiter:
 
     async def is_allowed(self, source_id: str) -> tuple[bool, int]:
         """Return (allowed, retry_after_seconds).
-        
+
         Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
         Falls back to in-memory limiter when HA is disabled or on errors.
         """
         cfg = get_ha({})
-        
+
         # Check if PostgreSQL-backed rate limiting is enabled
         if not cfg.get("rate_limit_table_enabled"):
             # Fall back to in-memory limiter
             return _monitoring_limiter.is_allowed(source_id)
-        
+
         try:
             # Import here to avoid import errors when psycopg is not installed
             from . import ha_db
             return await ha_db.check_rate_limit_pg(
-                source_id, 
-                self._max, 
+                source_id,
+                self._max,
                 self._window
             )
         except Exception as e:
@@ -220,7 +220,7 @@ _rate_limit_prune_task: asyncio.Task | None = None
 
 async def _start_rate_limit_pruner() -> None:
     """Background task to prune expired rate limit buckets.
-    
+
     Runs once per hour when ha.rate_limit_table_enabled=true.
     """
     while True:
@@ -644,12 +644,12 @@ def check_monitoring_body_size(content_length: int | None) -> None:
 
 def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
     """Return (allowed, retry_after_seconds) for monitoring endpoint.
-    
+
     Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
     Falls back to in-memory limiter when HA is disabled or on errors.
     """
     cfg = get_ha({})
-    
+
     if cfg.get("rate_limit_table_enabled"):
         # Use async PostgreSQL-backed limiter
         # Note: This is a sync function, but we need to call async code
@@ -657,21 +657,21 @@ def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
         # For now, we use the sync in-memory limiter but log a warning
         logger.debug("Using PostgreSQL-backed rate limiter (via async)")
         # TODO: Refactor to use async call from async context
-    
+
     return _monitoring_limiter.is_allowed(source_id)
 
 
 async def check_monitoring_rate_limit_async(source_id: str) -> tuple[bool, int]:
     """Async version of check_monitoring_rate_limit for use in async endpoints.
-    
+
     Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
     Falls back to in-memory limiter when HA is disabled or on errors.
     """
     cfg = get_ha({})
-    
+
     if cfg.get("rate_limit_table_enabled"):
         return await _monitoring_limiter_pg.is_allowed(source_id)
-    
+
     return _monitoring_limiter.is_allowed(source_id)
 
 

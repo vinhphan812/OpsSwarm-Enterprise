@@ -1,7 +1,7 @@
 # HA Coordination Runbook
 
-**ADR Reference:** [ADR-030 — High-Availability Multi-Process Coordination](../adr/ADR-030_HA_COORDINATION.md)  
-**Issue:** #70  
+**ADR Reference:** [ADR-030 — High-Availability Multi-Process Coordination](../adr/ADR-030_HA_COORDINATION.md)
+**Issue:** #70
 **Phases:** 1–7 (this document covers Phase 7)
 
 ---

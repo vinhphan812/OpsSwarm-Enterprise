@@ -1,17 +1,45 @@
-# Issue #75 QA Independent Acceptance Verification Report
+# Issue #75 Resilience Acceptance Verification Report
 
-**Task:** Issue #75 QA: independent retry, circuit-breaker and ambiguous-write acceptance  
-**PR Reference:** PR #103 (Canonical resilience integration, SHA `f61986d928c27ab45be4f5359634ef2937783bff`)  
-**QA Branch:** `test/issue-75-resilience-acceptance`  
-**QA Engineer:** dev-qa (Vinh Phan)  
-**Date:** October 2026  
-**Verdict:** **APPROVED**
+**Task:** Issue #75 — retry, circuit-breaker and ambiguous-write acceptance verification
+**Verified implementation:** PR #103 — canonical resilience integration, branch `feat/issue-75-client-resilience-v2`
+**SHA verified at the time of this report:** `f61986d928c27ab45be4f5359634ef2937783bff`
+**Current canonical #103 head (after review remediation):** `00760828c1f75c8fec8cb31324791a5dc3723e39`
+**Verification branch:** `test/issue-75-resilience-acceptance`
+**Verified by:** Vinh Phan (GitHub account `vinhphan812`)
+**Date:** October 2026, re-stated November 2026
+**Verdict:** **APPROVED (author-verified — not an independent approval)**
+
+## Provenance and limitations
+
+This report was produced by the **author of the pull requests it covers**
+(`vinhphan812` is the author of PR #103 and of this report's branch). It is
+therefore **not** an independent acceptance review, and it must not be cited as
+one. The repository does not require an independent reviewer — branch
+protection on `master` requires the contexts `CI`, `Skill Gates` and
+`Security CI`, with `required_approving_review_count` set to `0` and no
+rulesets configured — so a self-verification is permitted, but it is recorded
+here as self-verification rather than as independent sign-off.
+
+Two further limitations apply:
+
+- The executed test evidence below was captured at SHA `f61986d92…`. The
+  canonical #103 head is now `00760828c1f75c8fec8cb31324791a5dc3723e39`,
+  which additionally contains the review remediation (a half-open probe slot
+  that can no longer be stranded, rejection of non-finite retry metadata, and
+  a barrier that blocks replaying a write whose outcome is unknown).
+- The acceptance evidence for that remediation is published on PR #103 itself:
+  the new regression tests fail 12/17 against the previous implementation and
+  pass 37/37 against the fixed code; `tests/unit` reports 1081 passed / 2
+  skipped, `tests/integration` + `tests/faults` report 100 passed; and the
+  exact-head CI run for `00760828c1f75c8fec8cb31324791a5dc3723e39` succeeds
+  in 27 contexts (the two skipped supplemental security scans are skipped by
+  workflow design and are not required contexts).
 
 ---
 
 ## Executive Summary
 
-Independent QA verification was performed on PR #103 implementing robust client resilience for `GitHubClient` (`opsswarm/github_client.py`, `opsswarm/resilience.py`, `opsswarm/metrics.py`). All resilience mechanics—typed dependency error taxonomy, bounded retry policies for idempotent operations, rate-limit classification (`429` and rate-limited `403`), circuit-breaker pattern with failure threshold and recovery timeout, and ambiguous-write interception for non-idempotent methods—were independently audited, inspected, and executed against the test suites.
+Verification was performed by the author on PR #103, which implements robust client resilience for `GitHubClient` (`opsswarm/github_client.py`, `opsswarm/resilience.py`, `opsswarm/metrics.py`). All resilience mechanics—typed dependency error taxonomy, bounded retry policies for idempotent operations, rate-limit classification (`429` and rate-limited `403`), circuit-breaker pattern with failure threshold and recovery timeout, and ambiguous-write interception for non-idempotent methods—were audited, inspected, and executed against the test suites.
 
 All 64 resilience and GitHub fault/client unit tests passed with a 100% pass rate, and the entire regression test suite (1,377 tests) passed cleanly.
 
@@ -26,7 +54,7 @@ All 64 resilience and GitHub fault/client unit tests passed with a 100% pass rat
 | **3. Non-Idempotent Write Safety (Ambiguous Write)** | Non-idempotent operations (`POST`, `PUT`, `DELETE`) never auto-retry on write-phase transport timeouts/errors, raising `AmbiguousWriteOutcome`. | Automated Unit Test Execution (`test_writes_never_auto_retried`, `test_classify_transport_error_connect_vs_write`) | **PASS** | Verified POST requests raise `DependencyUnavailable` / `AmbiguousWriteOutcome` on failure without automatic retries (`call_count == 1`). |
 | **4. Rate-Limit Classification & Retry-After** | `429` responses and `403` responses with rate-limit evidence (`x-ratelimit-remaining: 0`) are classified as `RateLimited` with `retry_after` extraction. Plain `403` is classified as `AuthDenied`. | Automated Unit Test Execution (`TestErrorClassification`) | **PASS** | Verified headers and status codes correctly determine retryability and error categories. |
 | **5. Circuit Breaker Isolation** | Tracks dependency failures, trips to `OPEN` at `failure_threshold`, fails fast with `DependencyCircuitOpen`, transitions to `HALF_OPEN` after `recovery_timeout`, and resets to `CLOSED` on success. | Automated Unit Test Execution (`TestCircuitBreaker`) | **PASS** | Circuit breaker correctly isolates downstream failures from client traffic and recovers upon probe success. |
-| **6. Test Suite & Regression Execution** | Independent execution of resilience, fault, and full regression test suites. | CLI pytest execution | **PASS** | 100% pass rate across resilience and fault tests (64/64) and full regression suite (1,377/1,377 passed). |
+| **6. Test Suite & Regression Execution** | Execution of resilience, fault, and full regression test suites. | CLI pytest execution | **PASS** | 100% pass rate across resilience and fault tests (64/64) and full regression suite (1,377/1,377 passed). |
 | **7. Static Analysis & Quality Gates** | Linting (`ruff check`) and type checking (`mypy opsswarm`). | CLI execution (`ruff check .`, `mypy opsswarm`) | **PASS** | Zero linter errors and zero type checking errors in `opsswarm/`. |
 
 ---
@@ -75,6 +103,6 @@ pytest -q
 
 ## Conclusion
 
-Issue #75 resilience implementation in PR #103 meets and exceeds all design and governance criteria. All safety mechanisms (idempotent read retry bounds, non-idempotent ambiguous write protection, rate-limit classification, and circuit breaker isolation) are fully tested and verified independently.
+Issue #75 resilience implementation in PR #103 meets all design and governance criteria. All safety mechanisms (idempotent read retry bounds, non-idempotent ambiguous write protection, rate-limit classification, and circuit breaker isolation) are fully tested and verified.
 
-**Verdict:** **APPROVED**
+**Verdict:** **APPROVED — author-verified, not an independent approval.** The acceptance evidence for the canonical head `00760828c1f75c8fec8cb31324791a5dc3723e39` is the exact-head CI result and test output published on PR #103, not this document.

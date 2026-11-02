@@ -42,7 +42,7 @@ _INSTANCE_ID: str | None = None
 
 def get_instance_id() -> str:
     """Return this process's unique instance ID.
-    
+
     Generated once at startup and persisted for the lifetime of the process.
     Used to identify which process owns run leases.
     """
@@ -97,7 +97,7 @@ async def _get_connection() -> AsyncConnection:
 
     if _connection_pool is None:
         await _create_pool(cfg["database_url"])
-    
+
     # Wait for a connection with timeout
     try:
         conn = await asyncio.wait_for(_connection_pool.get(), timeout=5.0)
@@ -113,7 +113,7 @@ async def _get_connection() -> AsyncConnection:
             row_factory=dict_row,
             autocommit=False,
         )
-    
+
     return conn
 
 
@@ -127,10 +127,10 @@ async def _return_connection(conn: AsyncConnection) -> None:
 @asynccontextmanager
 async def get_db() -> AsyncGenerator[AsyncConnection, None]:
     """Context manager for database operations.
-    
+
     Yields an async connection from the pool. The connection is automatically
     returned to the pool on exit.
-    
+
     Example:
         async with get_db() as conn:
             await conn.execute("SELECT 1")
@@ -167,7 +167,7 @@ async def close_db_pool() -> None:
 
 async def check_postgres_health() -> bool:
     """Verify Postgres connection is alive.
-    
+
     Returns True if we can execute a simple query successfully.
     Returns False if Postgres is unreachable or any error occurs.
     """
@@ -182,11 +182,11 @@ async def check_postgres_health() -> bool:
 
 async def check_instance_leases() -> tuple[bool, int]:
     """Verify this instance holds valid leases.
-    
+
     Returns (has_leases, lease_count):
     - has_leases: True if this instance holds at least one valid lease
     - lease_count: Number of valid leases held by this instance
-    
+
     Returns (False, 0) if no leases or on error.
     """
     try:
@@ -194,7 +194,7 @@ async def check_instance_leases() -> tuple[bool, int]:
         async with get_db() as conn:
             rows = await conn.execute(
                 """
-                SELECT run_id FROM run_leases 
+                SELECT run_id FROM run_leases
                 WHERE owner_id = %s AND expires_at > NOW()
                 """,
                 (instance_id,),
@@ -217,15 +217,15 @@ async def check_rate_limit_pg(
     window_seconds: int = 3600,
 ) -> tuple[bool, int]:
     """Check and update rate limit using PostgreSQL.
-    
+
     Uses SELECT FOR UPDATE to serialize concurrent requests for the same key.
     Implements a fixed-window counter algorithm.
-    
+
     Args:
         key: Rate limit bucket key (e.g., "scope:opsswarm:monitor" or IP address)
         limit: Maximum requests allowed in the window
         window_seconds: Window size in seconds (default: 1 hour)
-    
+
     Returns:
         (allowed, retry_after):
         - allowed: True if request is within limit, False if over limit
@@ -233,22 +233,22 @@ async def check_rate_limit_pg(
     """
     now = datetime.now(timezone.utc)
     window_start = now.replace(second=0, microsecond=0)
-    
+
     try:
         async with get_db() as conn:
             # Try to acquire lock and get current count
             row = await conn.execute(
                 """
                 SELECT hits FROM rate_limit_buckets
-                WHERE key = %s 
-                  AND window_start = %s 
+                WHERE key = %s
+                  AND window_start = %s
                   AND window_seconds = %s
                 FOR UPDATE
                 """,
                 (key, window_start, window_seconds),
             )
             existing = await row.fetchone()
-            
+
             if existing is None:
                 # New bucket - insert with hit count of 1
                 await conn.execute(
@@ -260,25 +260,25 @@ async def check_rate_limit_pg(
                     (key, window_start, window_seconds),
                 )
                 return True, 0
-            
+
             hits = existing["hits"]
             if hits >= limit:
                 # Over limit - calculate retry time
                 window_end = window_start + timedelta(seconds=window_seconds)
                 retry_after = int((window_end - now).total_seconds()) + 1
                 return False, max(1, retry_after)
-            
+
             # Within limit - increment counter
             await conn.execute(
                 """
-                UPDATE rate_limit_buckets 
-                SET hits = hits + 1 
+                UPDATE rate_limit_buckets
+                SET hits = hits + 1
                 WHERE key = %s AND window_start = %s
                 """,
                 (key, window_start),
             )
             return True, 0
-            
+
     except Exception as e:
         logger.error("Rate limit check failed: %s", e)
         # Fail-open on database errors to avoid blocking service
@@ -288,10 +288,10 @@ async def check_rate_limit_pg(
 
 async def prune_expired_rate_limits() -> int:
     """Prune expired rate limit buckets from the database.
-    
+
     Deletes buckets whose window_start is older than 2 hours.
     Should be called periodically (e.g., once per hour).
-    
+
     Returns:
         Number of rows deleted.
     """
@@ -299,7 +299,7 @@ async def prune_expired_rate_limits() -> int:
         async with get_db() as conn:
             result = await conn.execute(
                 """
-                DELETE FROM rate_limit_buckets 
+                DELETE FROM rate_limit_buckets
                 WHERE window_start < NOW() - INTERVAL '2 hours'
                 """
             )
@@ -319,13 +319,13 @@ async def prune_expired_rate_limits() -> int:
 
 async def acquire_run_lease(run_id: str, ttl_seconds: int = 30) -> tuple[bool, str | None]:
     """Acquire or renew a lease on a run.
-    
+
     Uses INSERT ... ON CONFLICT to atomically acquire or renew the lease.
-    
+
     Args:
         run_id: The run to acquire a lease on
         ttl_seconds: Lease TTL in seconds (default: 30)
-    
+
     Returns:
         (acquired, current_owner):
         - acquired: True if this instance now holds the lease
@@ -333,7 +333,7 @@ async def acquire_run_lease(run_id: str, ttl_seconds: int = 30) -> tuple[bool, s
     """
     instance_id = get_instance_id()
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
-    
+
     try:
         async with get_db() as conn:
             # Try to acquire lease - succeeds if we own it or it's expired
@@ -349,18 +349,18 @@ async def acquire_run_lease(run_id: str, ttl_seconds: int = 30) -> tuple[bool, s
                 """,
                 (run_id, instance_id, expires_at),
             )
-            
+
             # Verify we got it
             row = await conn.execute(
                 "SELECT owner_id FROM run_leases WHERE run_id = %s AND expires_at > NOW()",
                 (run_id,),
             )
             current = await row.fetchone()
-            
+
             if current and current["owner_id"] == instance_id:
                 return True, instance_id
             return False, current["owner_id"] if current else None
-            
+
     except Exception as e:
         logger.error("Failed to acquire run lease: %s", e)
         return False, None
@@ -368,22 +368,22 @@ async def acquire_run_lease(run_id: str, ttl_seconds: int = 30) -> tuple[bool, s
 
 async def release_run_lease(run_id: str) -> bool:
     """Release a lease on a run.
-    
+
     Only releases if this instance currently owns the lease.
-    
+
     Args:
         run_id: The run to release
-    
+
     Returns:
         True if lease was released, False otherwise.
     """
     instance_id = get_instance_id()
-    
+
     try:
         async with get_db() as conn:
             result = await conn.execute(
                 """
-                DELETE FROM run_leases 
+                DELETE FROM run_leases
                 WHERE run_id = %s AND owner_id = %s
                 """,
                 (run_id, instance_id),

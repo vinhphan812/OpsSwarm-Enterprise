@@ -153,3 +153,15 @@ def get_ha(cfg: dict) -> dict:
     return {**defaults, **cfg_ha}
 
 
+# ----------------------------------------------------------------------
+# Issue #70 — Persistence store configuration (ADR-030)
+# ----------------------------------------------------------------------
+
+DEFAULT_STORE = {
+    "backend": "filesystem",  # "filesystem" | "postgres"
+}
+
+
+def get_store(cfg: dict) -> dict:
+    """Return the store section from config, merged with defaults."""
+    return {**DEFAULT_STORE, **cfg.get("store", {})}

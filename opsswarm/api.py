@@ -208,13 +208,13 @@ async def ready():
             status_code=503,
             detail={"status": "not ready", "reason": f"postgres unavailable: {e}"}
         )
-    
+
     if not postgres_ok:
         raise HTTPException(
             status_code=503,
             detail={"status": "not ready", "reason": "postgres connection failed"}
         )
-    
+
     # Verify this instance's leases are valid
     try:
         has_leases, lease_count = await ha_db.check_instance_leases()
@@ -224,7 +224,7 @@ async def ready():
             status_code=503,
             detail={"status": "not ready", "reason": f"lease check failed: {e}"}
         )
-    
+
     # Return ready status
     return {
         "status": "ready",
