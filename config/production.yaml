@@ -59,6 +59,9 @@ persistence:
   enable_checkpoints: true
   enable_atomic_writes: true
 
+store:
+  backend: filesystem
+
 # Issue #26 — Execution budgets (overrides DEFAULT_BUDGET in config.py)
 budget:
   max_tasks_per_run: 50        # Max tasks in a single incident's task graph
