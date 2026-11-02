@@ -1,0 +1,64 @@
+# k8s/base/pvc.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+# OpsSwarm Enterprise — PersistentVolumeClaims for evidence and runtime data
+#
+# These PVCs provide durable storage for evidence files and run checkpoints.
+# Data stored here survives pod restarts and rescheduling.
+#
+# IMPORTANT: These are base PVCs with ReadWriteOnce access mode.
+#   - For single-replica deployments: RWO is sufficient.
+#   - For multi-replica (once issue #70 is resolved): change accessModes to
+#     ReadWriteMany (requires NFS, CloudStorage, or a compatible CSI driver).
+#
+# Storage sizing guidance (v2.2.0):
+#   evidence: 1Gi default.  Each incident run generates ~10-100 KB of evidence
+#              JSONL.  1 Gi supports ~10,000-100,000 runs before rotation.
+#   runtime-data: 256Mi default.  Run checkpoints are small (~1-10 KB each).
+#
+# The PVC is NOT deleted when the Deployment is deleted (retain reclaimPolicy).
+# To delete: kubectl delete pvc opsswarm-evidence opsswarm-runtime-data -n opsswarm
+#
+# Apply:  kubectl apply -f k8s/base/pvc.yaml
+# ─────────────────────────────────────────────────────────────────────────────
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opsswarm-evidence
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/version: "2.2.0"
+  annotations:
+    # NOTE: reclaimPolicy is Controlled by the StorageClass default (Retain).
+    # Explicitly set Delete only if you want automatic cleanup on PVC deletion.
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  # storageClassName: ""  # use the cluster's default StorageClass
+  # Uncomment and set a specific StorageClass if needed:
+  # storageClassName: "standard"    # GKE pd-standard
+  # storageClassName: "gp2"         # EKS gp2
+  # storageClassName: "managed-premium"  # AKS managed-premium
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opsswarm-runtime-data
+  namespace: opsswarm
+  labels:
+    app.kubernetes.io/name: opsswarm
+    app.kubernetes.io/component: storage
+    app.kubernetes.io/version: "2.2.0"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 256Mi
+  # storageClassName: ""  # use the cluster's default StorageClass
