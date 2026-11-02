@@ -11,19 +11,17 @@ unnoticed.  These tests pin the two halves of the guarantee:
 * the required-checks bridge cannot accept that job as anything other than
   ``success``.
 
-The bridge half is verified *behaviourally*: the bash script the workflow
-actually runs is extracted from the workflow YAML and executed against a
-stubbed check-runs payload.  Asserting on the YAML alone would only prove
-the text says the right thing, not that the gate behaves that way.
+The bridge half is verified *behaviourally*: the check lists the workflow
+actually passes to the poller are extracted from the workflow YAML and the
+poller's verdict logic is executed against a stubbed check-runs payload.
+Asserting on the YAML alone would only prove the text says the right thing,
+not that the gate behaves that way.
 """
 
 from __future__ import annotations
 
-import json
-import os
+import importlib.util
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -45,68 +43,42 @@ def _load(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def _find_bash() -> str | None:
-    """Return the path of a usable bash, or None when there is none.
-
-    On Windows the ``bash`` on ``PATH`` is often a WSL launcher that cannot
-    start a real shell, so each candidate is probed before it is used.
-    """
-    candidates = [
-        shutil.which("bash"),
-        r"C:/Program Files/Git/bin/bash.exe",
-        r"C:/Program Files/Git/usr/bin/bash.exe",
-    ]
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            probe = subprocess.run(
-                [candidate, "-c", "echo usable"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if probe.returncode == 0 and "usable" in probe.stdout:
-            return candidate
-    return None
-
-
-BASH = _find_bash()
-JQ = shutil.which("jq")
-
-requires_shell = pytest.mark.skipif(
-    BASH is None or JQ is None,
-    reason="bash and jq are required to exercise the bridge script",
-)
-
-
-def _bridge_script() -> str:
-    """Return the bash script the required-checks bridge actually runs."""
+def _bridge_run_script() -> str:
+    """Return the shell script the required-checks bridge actually runs."""
     workflow = _load(BRIDGE_WORKFLOW)
-    steps = workflow["jobs"]["ci-required"]["steps"]
-    scripts = [step["run"] for step in steps if step.get("shell") == "bash"]
-    assert scripts, "the bridge job must run at least one bash step"
-    return "\n".join(scripts)
+    step = next(
+        step
+        for step in workflow["jobs"]["ci-required"]["steps"]
+        if step.get("shell") == "bash"
+    )
+    return step["run"]
 
 
-def _without_polling_delay(script: str) -> str:
-    """Shorten the bridge's polling loop so the tests do not wait minutes.
+def _cli_checks(run: str, flag: str) -> list[str]:
+    """Return the check names passed to the poller under ``flag``."""
+    names: list[str] = []
+    collecting = False
+    for line in run.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--"):
+            collecting = stripped.startswith(f"{flag} ")
+            continue
+        if not collecting:
+            continue
+        names.extend(re.findall(r'"([^"]+)"', stripped))
+    assert names, f"the bridge must pass {flag!r} to the check poller"
+    return names
 
-    Only the *waiting* is changed -- the retry count and the sleep -- so the
-    verdict logic under test, including the pending/missing path, stays
-    exactly as the workflow runs it.
-    """
-    script = re.sub(r"seq 1 \d+", "seq 1 2", script)
-    return re.sub(r"sleep \d+", "sleep 0", script)
 
-
-def _script_array(script: str, name: str) -> list[str]:
-    """Return the quoted entries of a bash array assignment in the script."""
-    match = re.search(rf"{name}=\(\s*(.*?)\s*\)", script, re.DOTALL)
-    assert match is not None, f"the bridge script must define the {name!r} array"
-    return re.findall(r'"([^"]+)"', match.group(1))
+def _poller():
+    """Import the bridge check poller as a module."""
+    spec = importlib.util.spec_from_file_location(
+        "bridge_poll_check_runs", REPO_ROOT / "scripts" / "poll_check_runs.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _check_runs(names: list[str], conclusion_for: dict[str, str]) -> list[dict]:
@@ -120,38 +92,6 @@ def _check_runs(names: list[str], conclusion_for: dict[str, str]) -> list[dict]:
         }
         for name in names
     ]
-
-
-def _run_bridge(script: str, payload: dict, tmp_path: Path) -> subprocess.CompletedProcess:
-    """Execute the bridge script against a stubbed check-runs payload.
-
-    ``curl`` is replaced by a stub that prints the payload, so the script's
-    own polling, ``jq`` extraction and verdict logic all run unmodified.
-    """
-    assert BASH is not None
-    stub_dir = tmp_path / "bin"
-    stub_dir.mkdir()
-    payload_file = tmp_path / "check-runs.json"
-    payload_file.write_text(json.dumps(payload), encoding="utf-8")
-
-    curl_stub = stub_dir / "curl"
-    curl_stub.write_text(
-        "#!/usr/bin/env bash\ncat " + str(payload_file).replace("\\", "/") + "\n",
-        encoding="utf-8",
-    )
-    curl_stub.chmod(0o755)
-
-    env = dict(os.environ)
-    env["PATH"] = str(stub_dir) + os.pathsep + env["PATH"]
-    env.update({"GH_TOKEN": "test", "REPO": "owner/repo", "HEAD_SHA": "0" * 40})
-
-    return subprocess.run(
-        [BASH, "-c", _without_polling_delay(script)],
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
 
 
 def test_ci_workflow_runs_the_ha_postgres_suites_against_a_postgres_service() -> None:
@@ -195,61 +135,63 @@ def test_the_postgres_job_is_not_conditional() -> None:
 
 def test_the_bridge_holds_the_postgres_job_to_a_strict_success() -> None:
     """The bridge must require ``success`` from the PostgreSQL job."""
-    script = _bridge_script()
+    run = _bridge_run_script()
 
-    strict = _script_array(script, "strict")
+    strict = _cli_checks(run, "--strict-checks")
     assert HA_POSTGRES_JOB_NAME in strict
 
-    expected = _script_array(script, "expected")
+    expected = _cli_checks(run, "--checks")
     assert HA_POSTGRES_JOB_NAME not in expected, (
         "the PostgreSQL job must be held to the strict list, not the list that "
         "accepts a skipped conclusion"
     )
 
 
-@requires_shell
-def test_the_bridge_accepts_a_fully_successful_run(tmp_path: Path) -> None:
+def test_the_bridge_accepts_a_fully_successful_run() -> None:
     """The gate must still pass when every check, including the job, succeeds."""
-    script = _bridge_script()
-    names = _script_array(script, "expected") + _script_array(script, "strict")
+    run = _bridge_run_script()
+    expected = _cli_checks(run, "--checks")
+    strict = _cli_checks(run, "--strict-checks")
+    names = expected + strict
 
-    result = _run_bridge(script, {"check_runs": _check_runs(names, {})}, tmp_path)
+    passed, pending = _poller().evaluate_checks(
+        _check_runs(names, {}), expected, strict
+    )
 
-    assert result.returncode == 0, result.stderr
-    assert "All canonical CI checks passed." in result.stdout
+    assert passed
+    assert not pending
 
 
 @pytest.mark.parametrize("conclusion", ["skipped", "neutral", "cancelled", "timed_out"])
-@requires_shell
-def test_the_bridge_refuses_a_postgres_job_that_did_not_succeed(
-    conclusion: str, tmp_path: Path
-) -> None:
+def test_the_bridge_refuses_a_postgres_job_that_did_not_succeed(conclusion: str) -> None:
     """A PostgreSQL job that did not report ``success`` must fail the gate.
 
     This is the gap the strict list exists to close: without it the bridge
     would accept a ``skipped`` PostgreSQL job, because the ordinary check
     list treats ``skipped`` as a pass.
     """
-    script = _bridge_script()
-    names = _script_array(script, "expected") + _script_array(script, "strict")
-    payload = {
-        "check_runs": _check_runs(names, {HA_POSTGRES_JOB_NAME: conclusion}),
-    }
+    run = _bridge_run_script()
+    expected = _cli_checks(run, "--checks")
+    strict = _cli_checks(run, "--strict-checks")
+    names = expected + strict
+    payload = _check_runs(names, {HA_POSTGRES_JOB_NAME: conclusion})
 
-    result = _run_bridge(script, payload, tmp_path)
+    passed, pending = _poller().evaluate_checks(payload, expected, strict)
 
-    assert result.returncode != 0, (
-        f"the bridge must fail when the PostgreSQL job reports {conclusion!r}"
+    assert not passed, f"the bridge must fail when the PostgreSQL job reports {conclusion!r}"
+    assert not pending
+
+
+def test_the_bridge_refuses_a_missing_postgres_job() -> None:
+    """A PostgreSQL job that never reported at all must not pass the gate."""
+    run = _bridge_run_script()
+    expected = _cli_checks(run, "--checks")
+    strict = _cli_checks(run, "--strict-checks")
+    without_postgres = [name for name in expected + strict if name != HA_POSTGRES_JOB_NAME]
+
+    passed, pending = _poller().evaluate_checks(
+        _check_runs(without_postgres, {}), expected, strict
     )
 
-
-@requires_shell
-def test_the_bridge_refuses_a_missing_postgres_job(tmp_path: Path) -> None:
-    """A PostgreSQL job that never reported at all must not pass the gate."""
-    script = _bridge_script()
-    names = _script_array(script, "expected") + _script_array(script, "strict")
-    without_postgres = [name for name in names if name != HA_POSTGRES_JOB_NAME]
-
-    result = _run_bridge(script, {"check_runs": _check_runs(without_postgres, {})}, tmp_path)
-
-    assert result.returncode != 0, "the bridge must fail when the PostgreSQL job never reported"
+    assert not passed, "the bridge must fail when the PostgreSQL job never reported"
+    assert not pending
