@@ -507,6 +507,8 @@ class RunRecord(BaseModel):
     evidence_keys: set[str] = Field(default_factory=set)
     # State enforcement mode (ADR-009-5)
     state_enforcement: str = "audit"  # "audit", "strict", or "disabled"
+    # CAS revision for HA / coordination (ADR-030)
+    revision: int = 1
     # Idempotency fields for webhook/command deduplication (ADR-009-1)
     idempotency_keys: set[str] = Field(default_factory=set)  # GitHub delivery/comment IDs
     # Command execution tracking (Issue #9 fix): comment_id -> CommandOutcome
