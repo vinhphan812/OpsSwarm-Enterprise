@@ -15,6 +15,7 @@ from typing import Any
 
 from .evidence import EvidenceStore
 from .models import RunRecord, RunState, TERMINAL_STATES
+from .resilience import AmbiguousWriteOutcome
 from .store import RunStore
 
 logger = logging.getLogger(__name__)
@@ -163,7 +164,7 @@ class ReconciliationManager:
                 expected_findings = len(task_data.get("tasks", []))
                 if finding_count < expected_findings:
                     gaps.append(f"Expected {expected_findings} findings, found {finding_count}")
-            except (KeyError, TypeError):
+            except (KeyError, TypeError, AttributeError):
                 pass
 
         return gaps
@@ -275,10 +276,10 @@ class ReconciliationManager:
             "evidence_kinds": report.evidence_kinds,
             "gaps_detected": report.gaps_detected,
             "duplicates_skipped": report.duplicates_skipped,
-            "recommendation": self._get_recovery_recommendation(report, has_checkpoint),
+            "recommendation": self.get_recovery_recommendation(report, has_checkpoint),
         }
 
-    def _get_recovery_recommendation(
+    def get_recovery_recommendation(
         self, report: ReconciliationReport, has_checkpoint: bool
     ) -> str:
         """Get recovery recommendation based on reconciliation report."""
@@ -292,3 +293,20 @@ class ReconciliationManager:
             return f"Resume from evidence with gaps: {', '.join(report.gaps_detected[:2])}"
 
         return "Resume from evidence log - replay from last known state"
+
+    def build_ambiguous_write_handoff(
+        self, run: RunRecord, outcome: AmbiguousWriteOutcome
+    ) -> dict[str, Any]:
+        """Build an unambiguous reconciliation handoff for an AmbiguousWriteOutcome."""
+        return {
+            "status": "reconciliation_required",
+            "run_id": run.run_id,
+            "operation": getattr(outcome, "operation", str(outcome)),
+            "automatic_retry_permitted": False,
+            "allowed_next_actions": [
+                "investigate",
+                "abort",
+                "resume_after_external_confirmation",
+            ],
+            "details": getattr(outcome, "details", {}),
+        }

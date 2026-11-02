@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseStore(ABC):
-    """Abstract base class for OpsSwarm persistence backends (ADR-030)."""
+    """Abstract base class for OpsSwarm persistence backends (ADR-031)."""
 
     @abstractmethod
     def save(self, run: RunRecord) -> None:

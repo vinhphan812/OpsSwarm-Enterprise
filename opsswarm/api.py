@@ -23,7 +23,7 @@ from .auth import (
     write_scope,
 )
 from .commands import parse_command
-from .config import get_github, get_monitoring, load_config
+from .config import get_github, get_ha, get_monitoring, load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import (
     GitHubClient,
@@ -136,15 +136,23 @@ app.add_middleware(CorrelationMiddleware)
 @app.on_event("startup")
 async def _startup_auth_check():
     from .logging_config import setup_logging
+    from .auth import start_rate_limit_pruner
 
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
     await get_readiness().startup_complete()
+    # Start background rate limit pruner if enabled (ADR-031)
+    start_rate_limit_pruner()
 
 
 @app.on_event("shutdown")
 async def _shutdown_drain():
+    from .auth import stop_rate_limit_pruner
+
+    # Stop background rate limit pruner
+    stop_rate_limit_pruner()
+
     readiness = get_readiness()
     drained = await readiness.initiate_drain()
     if not drained:
@@ -156,6 +164,12 @@ async def _shutdown_drain():
         )
     # Also ensure any background tasks or in-flight operations are awaited or cleaned up
     await asyncio.sleep(0.05)
+
+    # Close HA database connections (only if HA is enabled)
+    ha_cfg = get_ha(cfg)
+    if ha_cfg.get("enabled"):
+        from .ha_db import close_db_pool
+        await close_db_pool()
 
 
 # ---------------------------------------------------------------------------
@@ -170,13 +184,79 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    """Readiness endpoint. 200 if OK, else 503."""
+    """Readiness endpoint. 200 if OK, else 503.
+
+    Two independent gates must both pass:
+
+    * Startup / drain gate (ADR-014-2, issue #70-73): the process must have
+      completed startup and must not be draining.
+    * HA coordination gate (ADR-031): when ``ha.enabled`` is true, Postgres
+      must be reachable and this instance must be able to verify its leases.
+
+    When HA is disabled the endpoint stays backward compatible and only the
+    startup / drain gate applies.
+    """
     if not get_readiness().ready:
         raise HTTPException(
             status_code=503,
             detail="Startup incomplete or service is draining",
         )
-    return {"ok": True}
+
+    # Imported at call time so a configuration reload (or a test that patches
+    # opsswarm.config.get_ha) is honoured by the probe.
+    from .config import get_ha
+
+    ha_cfg = get_ha(cfg)
+
+    # If HA is disabled, return ready (backward-compatible behavior).
+    # The response body is exactly the canonical readiness payload; the HA
+    # fields are added only when HA coordination is actually enabled.
+    if not ha_cfg.get("enabled"):
+        return {"ok": True}
+
+    # HA enabled: ha_db is only imported when HA is active.
+    # This avoids a hard psycopg dependency in legacy (ha.enabled=false) mode.
+    try:
+        from . import ha_db  # noqa: F401
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"ha_db module unavailable: {exc}"},
+        ) from exc
+
+    # HA enabled: verify Postgres connection
+    try:
+        postgres_ok = await ha_db.check_postgres_health()
+    except Exception as e:
+        logger.warning("Postgres health check failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"postgres unavailable: {e}"}
+        )
+
+    if not postgres_ok:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": "postgres connection failed"}
+        )
+
+    # Verify this instance's leases are valid
+    try:
+        has_leases, lease_count = await ha_db.check_instance_leases()
+    except Exception as e:
+        logger.warning("Lease check failed: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "not ready", "reason": f"lease check failed: {e}"}
+        )
+
+    # Return ready status
+    return {
+        "ok": True,
+        "status": "ready",
+        "mode": "ha",
+        "active_leases": lease_count,
+    }
 
 
 @app.get("/metrics", dependencies=[Depends(admin_scope)])
@@ -367,7 +447,8 @@ async def monitoring_event(request: Request):
         # Fallback: client IP (proxy-aware)
         rate_key = source_ip
 
-    allowed, retry_after = check_monitoring_rate_limit(rate_key)
+    # Use async rate limiter to support PostgreSQL-backed rate limiting
+    allowed, retry_after = await auth_module.check_monitoring_rate_limit_async(rate_key)
     if not allowed:
         raise HTTPException(
             status_code=429,
