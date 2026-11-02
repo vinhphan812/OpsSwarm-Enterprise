@@ -507,7 +507,7 @@ class RunRecord(BaseModel):
     evidence_keys: set[str] = Field(default_factory=set)
     # State enforcement mode (ADR-009-5)
     state_enforcement: str = "audit"  # "audit", "strict", or "disabled"
-    # CAS revision for HA / coordination (ADR-030)
+    # CAS revision for HA / coordination (ADR-031)
     revision: int = 1
     # Idempotency fields for webhook/command deduplication (ADR-009-1)
     idempotency_keys: set[str] = Field(default_factory=set)  # GitHub delivery/comment IDs
@@ -614,3 +614,14 @@ class RunRecord(BaseModel):
         if self.state in TERMINAL_STATES:
             return False
         return new_state in VALID_TRANSITIONS.get(self.state, set())
+
+
+# ---------------------------------------------------------------------------
+# SQLAlchemy ORM models
+# ---------------------------------------------------------------------------
+# The HA coordination schema is owned by the canonical schema contract
+# (opsswarm/ha_schema.py) and the Alembic migration
+# (migrations/versions/001_initial_ha_schema.py).  That contract is the single
+# declarative source of truth and is validated against a live database, so this
+# module deliberately does not carry a second, divergent ORM definition of the
+# same tables.
