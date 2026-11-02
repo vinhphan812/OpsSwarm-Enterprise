@@ -246,7 +246,8 @@ OpsSwarm exposes a Prometheus-compatible `/metrics` endpoint at port 8080.
 
 | Endpoint    | Auth required | Description                                 |
 |-------------|---------------|---------------------------------------------|
-| `/health`   | No            | Liveness/readiness probe                    |
+| `/health`   | No            | Liveness probe                             |
+| `/ready`    | No            | Readiness probe (fail-closed)              |
 | `/metrics`  | Yes (`admin` scope) | Prometheus metrics in text format    |
 
 ### Scrape with basic-auth
@@ -443,6 +444,114 @@ curl http://localhost:8080/health
 If the init container logs show `ERROR: OpenClaw binary not found`, check that:
 1. `OPSWARM_OPENCLAW_BIN` is set in the ConfigMap.
 2. The volume mount providing the binary is present in the Deployment.
+
+---
+
+## Health, liveness and readiness probes
+
+OpsSwarm exposes two distinct, unauthenticated HTTP probes on port 8080. They
+answer different questions and must not be interchanged.
+
+| Probe    | Endpoint  | Question it answers                   | Kubernetes field      |
+|----------|-----------|---------------------------------------|-----------------------|
+| Liveness | `/health` | Is the process still alive?           | `livenessProbe`       |
+| Readiness| `/ready`  | Can this instance serve traffic now?  | `readinessProbe`      |
+
+### `/health` — liveness
+
+`GET /health` returns `200` with `{"ok": true, "version": ..., "architecture": ...}`
+as soon as the HTTP server is accepting requests. It performs **no** dependency
+check: it does not verify GitHub credentials, OpenClaw availability, or
+database reachability.
+
+Use `/health` for `livenessProbe` only. It is deliberately **independent of the
+HA / Postgres gate**: a database outage must not restart the pod, because
+restarting it neither repairs the database nor improves the situation. A
+restart loop during a Postgres outage would turn a degraded-but-serving
+deployment into a fully unavailable one.
+
+### `/ready` — readiness
+
+`GET /ready` is the fail-closed readiness gate. It returns `200` only when the
+instance can actually serve traffic, and `503` in every other case. The `503`
+conditions are:
+
+| Condition                                            | Status | Effect                                              |
+|------------------------------------------------------|--------|-----------------------------------------------------|
+| Startup validation has not completed yet              | `503`  | Pod is held out of the Service endpoints             |
+| The process is draining after a SIGTERM               | `503`  | Pod stops receiving new traffic before termination  |
+| `ha.enabled` is `true` and Postgres is unreachable     | `503`  | Pod is held out of the Service endpoints             |
+| `ha.enabled` is `true` and lease verification fails   | `503`  | Pod is held out of the Service endpoints             |
+| `ha.enabled` is `true` and the `ha_db` module is unavailable | `503` | Pod is held out of the Service endpoints     |
+
+With `ha.enabled=false` (the default, single-replica profile) only the startup
+and drain gates apply, so `/ready` is an unconditional `200` once startup has
+completed. With `ha.enabled=true` the endpoint additionally fails closed while
+Postgres is down or this instance cannot verify its leases: the pod remains
+running and passes its liveness probe, but it is removed from the Service
+endpoints, so no traffic is routed to it.
+
+`/ready` does **not** verify GitHub credential validity or OpenClaw
+availability. Those are checked on first use, and a failure fails the incident
+closed rather than silently proceeding without GitHub access.
+
+**Never point the readiness probe at `/health`.** `/health` returns `200` while
+the process is alive but its dependencies are broken, which would advertise a
+broken instance as ready. The repository enforces this in three places:
+
+- `scripts/validate_manifests.py` rejects a `readinessProbe` on `/health` in
+  every profile (`base`, `dev` and `prod`);
+- `scripts/check_probe_policy.py` asserts the full positive contract — exactly
+  one readiness probe on `/ready`, and a liveness probe on `/health` — and is
+  run by the `container-delivery` workflow against the rendered dev overlay;
+- the `container-delivery` workflow additionally rejects any overlay whose
+  readiness probe is missing or points somewhere other than `/ready`.
+
+### Probe configuration in the shipped manifests
+
+`k8s/base/deployment.yaml` declares both probes on the `opsswarm` container:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+  successThreshold: 1
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+  successThreshold: 1
+```
+
+The readiness timings are tuned for the startup sequence and the Postgres
+connection-pool warm-up: `initialDelaySeconds` gives startup validation and
+the first pool connect attempt time to complete before the first probe, and
+`failureThreshold: 6` at `periodSeconds: 10` tolerates roughly 60 s of
+continuous failure — long enough for a cold pool warm-up without flapping, and
+short enough that a genuinely broken instance leaves the endpoints promptly.
+
+A failing readiness probe does **not** restart the pod; it only removes the
+pod from the Service endpoints. Restarts remain the exclusive responsibility of
+the liveness probe.
+
+### Verifying the probes locally
+
+```bash
+# Liveness — must return 200 while the process is alive.
+curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8080/health
+
+# Readiness — must return 200 once startup has completed.
+curl -sS -o /dev/null -w '%{http_code}\n' http://localhost:8080/ready
+```
 
 ---
 
