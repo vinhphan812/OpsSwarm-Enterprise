@@ -281,5 +281,3 @@ class TestReconciliationExtraCoverage:
         )
         rec = manager.get_recovery_recommendation(report, has_checkpoint=False)
         assert 'Resume from evidence log' in rec
-
-

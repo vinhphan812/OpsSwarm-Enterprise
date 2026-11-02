@@ -351,14 +351,3 @@ class TestCommandsAndConfigExtraCoverage:
         monkeypatch.setenv("HA_DATABASE_URL", "postgresql://user:pass@localhost/db")
         ha = get_ha({})
         assert ha["database_url"] == "postgresql://user:pass@localhost/db"
-
-
-
-
-
-
-
-
-
-
-

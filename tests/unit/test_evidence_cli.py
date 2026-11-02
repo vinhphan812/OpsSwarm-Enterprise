@@ -36,5 +36,3 @@ def test_cli_unsupported_evidence_command(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["evidence", "unknown"])
     assert exc.value.code == VERIFY_USAGE
-
-

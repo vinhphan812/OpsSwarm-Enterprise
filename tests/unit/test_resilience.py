@@ -280,4 +280,3 @@ class TestResilienceAdditionalCoverage:
     def test_retry_policy_capped_zero_delay(self):
         policy = RetryPolicy(base_delay=0.0)
         assert policy.delay_for(1) == 0.0
-

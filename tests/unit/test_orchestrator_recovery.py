@@ -96,4 +96,3 @@ async def test_execute_option_ambiguous_write_outcome(cfg, tmp_path):
     assert run.state == RunState.WAITING_DECISION
     assert run.decision is not None
     mock_comment.assert_called_once()
-
