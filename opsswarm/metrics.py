@@ -1,6 +1,23 @@
 from collections import Counter
+import re
 
 from .models import RunState
+
+# Label sanitiser for dependency-resilience metric labels.  Labels must never
+# contain characters that could break the Prometheus exposition format or
+# smuggle unbounded attacker-controlled values into the label set.
+_LABEL_SAFE_RE = re.compile(r"[^A-Za-z0-9_.:/-]+")
+_LABEL_MAX_LEN = 120
+
+
+def _safe_label(value: str, *, default: str = "unknown") -> str:
+    """Return a Prometheus-safe, length-bounded label value."""
+    if not isinstance(value, str) or not value.strip():
+        return default
+    cleaned = _LABEL_SAFE_RE.sub("_", value.strip())
+    cleaned = cleaned[:_LABEL_MAX_LEN]
+    return cleaned or default
+
 
 
 class Metrics:
@@ -12,6 +29,7 @@ class Metrics:
     VALID_HUMAN_GATE_KINDS: set[str] = {"approval", "decision", "input"}
     VALID_RECONCILIATION_OUTCOMES: set[str] = {"clean_recovery", "ambiguous", "impossible", "no_evidence"}
     VALID_WEBHOOK_DELIVERY_KINDS: set[str] = {"processed", "dedup_skipped", "rejected"}
+    VALID_CIRCUIT_STATES: set[str] = {"CLOSED", "OPEN", "HALF_OPEN"}
 
     def __init__(self):
         # ── Core counters (already shipped in PR #33) ──────────────────────────
@@ -56,6 +74,19 @@ class Metrics:
         # Webhook delivery counter
         self.webhook_deliveries = Counter()  # kind: count
 
+        # ── NEW: dependency resilience (Issue #75) ─────────────────────────────
+        # Rate-limit occurrences (GitHub API throttling)
+        self.rate_limited = Counter()  # count
+
+        # Circuit-breaker state transitions (dependency, state): count
+        self.circuit_state_transitions = Counter()
+
+        # Retry exhaustion (operation): count — operation labels are bounded
+        self.dependency_retry_exhausted = Counter()
+
+        # Last observed GitHub API rate-limit remaining — gauge
+        self._github_api_remaining: float | None = None
+
         # Budget utilisation — gauge (populated on read)
         self._budget_gauge: dict[str, float] = {}
 
@@ -69,6 +100,8 @@ class Metrics:
             "transition": set(),
             "reconciliation_outcomes": set(),
             "webhook_deliveries": set(),
+            "circuit_state_transitions": set(),
+            "dependency_retry_exhausted": set(),
         }
 
     # ── Core recording methods (already shipped) ───────────────────────────────
@@ -163,6 +196,35 @@ class Metrics:
             kind = "unknown"
         self.webhook_deliveries[kind] += 1
         self._observed_labels.setdefault("webhook_deliveries", set()).add(kind)
+
+    # ── NEW: dependency resilience (Issue #75) ───────────────────────────────
+
+    def record_rate_limited(self):
+        """Record a GitHub API rate-limit (429 / evidenced 403) occurrence."""
+        self.rate_limited["total"] += 1
+
+    def record_circuit_state(self, dependency: str, state: str):
+        """Record a circuit-breaker state transition with cardinality guards.
+
+        ``dependency`` is a bounded dependency identifier (e.g. the configured
+        ``github:owner/repo``) and ``state`` must be one of
+        :attr:`VALID_CIRCUIT_STATES`.
+        """
+        dependency = _safe_label(dependency, default="unknown")
+        if state not in self.VALID_CIRCUIT_STATES:
+            state = "UNKNOWN"
+        self.circuit_state_transitions[(dependency, state)] += 1
+        self._observed_labels["circuit_state_transitions"].add(f"{dependency}|{state}")
+
+    def record_dependency_retry_exhausted(self, operation: str):
+        """Record that every permitted retry attempt for ``operation`` failed."""
+        operation = _safe_label(operation, default="unknown")
+        self.dependency_retry_exhausted[operation] += 1
+        self._observed_labels["dependency_retry_exhausted"].add(operation)
+
+    def set_github_api_remaining(self, remaining: float):
+        """Set the last observed GitHub API rate-limit remaining value."""
+        self._github_api_remaining = float(remaining)
 
     # ── NEW: evidence failures ─────────────────────────────────────────────────
 
@@ -267,6 +329,24 @@ class Metrics:
         # ── NEW: webhook deliveries ──────────────────────────────────────────────
         for kind, count in sorted(self.webhook_deliveries.items()):
             lines.append(f'opsswarm_webhook_deliveries_total{{kind="{kind}"}} {count}')
+
+        # ── NEW: dependency resilience (Issue #75) ──────────────────────────
+        if self.rate_limited:
+            lines.append(f'opsswarm_rate_limited_total {self.rate_limited["total"]}')
+
+        for (dependency, state), count in sorted(self.circuit_state_transitions.items()):
+            lines.append(
+                f'opsswarm_circuit_state_transitions{{dependency="{dependency}",'
+                f'state="{state}"}} {count}'
+            )
+
+        for operation, count in sorted(self.dependency_retry_exhausted.items()):
+            lines.append(
+                f'opsswarm_dependency_retry_exhausted_total{{operation="{operation}"}} {count}'
+            )
+
+        if self._github_api_remaining is not None:
+            lines.append(f'opsswarm_github_api_remaining {self._github_api_remaining:.0f}')
 
         # ── NEW: evidence failures ─────────────────────────────────────────────
         for failure_type, count in sorted(self.evidence_failures.items()):
