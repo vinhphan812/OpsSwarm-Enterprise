@@ -42,7 +42,7 @@ from typing import Final, Optional
 
 from fastapi import HTTPException, Request
 
-from .config import DEFAULT_MONITORING, get_monitoring, get_ha
+from .config import DEFAULT_MONITORING, get_ha, get_monitoring, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +161,30 @@ class _SimpleRateLimiter:
         return True, 0
 
 
+# --------------------------------------------------------------------------
+# HA configuration
+# --------------------------------------------------------------------------
+
+
+_ha_cfg_cache: dict | None = None
+
+
+def _ha_config() -> dict:
+    """Return the ``ha`` section of the loaded configuration.
+
+    The HA feature flags (``enabled``, ``rate_limit_table_enabled``) live in
+    the deployment configuration file, so they must be read from the loaded
+    configuration rather than from the built-in defaults.  The result is
+    cached because the rate limiter consults it on every request; the cache is
+    cleared by :func:`reload_auth_config` when the process environment
+    changes.
+    """
+    global _ha_cfg_cache
+    if _ha_cfg_cache is None:
+        _ha_cfg_cache = get_ha(load_config())
+    return _ha_cfg_cache
+
+
 class _PgRateLimiter:
     """PostgreSQL-backed rate limiter (ADR-030).
 
@@ -182,7 +206,7 @@ class _PgRateLimiter:
         Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
         Falls back to in-memory limiter when HA is disabled or on errors.
         """
-        cfg = get_ha({})
+        cfg = _ha_config()
 
         # Check if PostgreSQL-backed rate limiting is enabled
         if not cfg.get("rate_limit_table_enabled"):
@@ -226,7 +250,7 @@ async def _start_rate_limit_pruner() -> None:
     while True:
         try:
             await asyncio.sleep(3600)  # 1 hour
-            cfg = get_ha({})
+            cfg = _ha_config()
             if cfg.get("rate_limit_table_enabled"):
                 from . import ha_db
                 await ha_db.prune_expired_rate_limits()
@@ -239,7 +263,7 @@ async def _start_rate_limit_pruner() -> None:
 def start_rate_limit_pruner() -> None:
     """Start the background rate limit pruner if enabled."""
     global _rate_limit_prune_task
-    cfg = get_ha({})
+    cfg = _ha_config()
     if cfg.get("rate_limit_table_enabled") and _rate_limit_prune_task is None:
         _rate_limit_prune_task = asyncio.create_task(_start_rate_limit_pruner())
         logger.info("Started rate limit pruner background task")
@@ -648,7 +672,7 @@ def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
     Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
     Falls back to in-memory limiter when HA is disabled or on errors.
     """
-    cfg = get_ha({})
+    cfg = _ha_config()
 
     if cfg.get("rate_limit_table_enabled"):
         # Use async PostgreSQL-backed limiter
@@ -667,7 +691,7 @@ async def check_monitoring_rate_limit_async(source_id: str) -> tuple[bool, int]:
     Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
     Falls back to in-memory limiter when HA is disabled or on errors.
     """
-    cfg = get_ha({})
+    cfg = _ha_config()
 
     if cfg.get("rate_limit_table_enabled"):
         return await _monitoring_limiter_pg.is_allowed(source_id)

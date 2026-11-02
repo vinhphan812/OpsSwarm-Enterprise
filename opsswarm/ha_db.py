@@ -28,7 +28,7 @@ import psycopg
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
-from .config import get_ha
+from .config import get_ha, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ async def _create_pool(database_url: str) -> asyncio.Queue[AsyncConnection]:
 async def _get_connection() -> AsyncConnection:
     """Get a connection from the pool."""
     global _connection_pool
-    cfg = get_ha({})  # Use empty dict to get defaults
+    cfg = get_ha(load_config())
     if not cfg.get("enabled") or not cfg.get("database_url"):
         raise RuntimeError("HA is not enabled or database_url not set")
 
@@ -107,7 +107,7 @@ async def _get_connection() -> AsyncConnection:
     # Check if connection is still alive
     if conn.closed:
         # Reconnect
-        cfg = get_ha({})
+        cfg = get_ha(load_config())
         conn = await AsyncConnection.connect(
             cfg["database_url"],
             row_factory=dict_row,

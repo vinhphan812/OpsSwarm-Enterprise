@@ -10,6 +10,7 @@ import httpx
 from .errors import sanitize_for_log
 from .metrics import metrics
 from .resilience import (
+    AmbiguousWriteOutcome,
     CircuitBreaker,
     DependencyError,
     DependencyUnavailable,
@@ -346,6 +347,11 @@ class GitHubClient:
         self.allowed_origins = allowed_origins
         self.retry_policy = RetryPolicy()
         self.circuit = _github_circuit
+        #: Writes whose outcome could not be determined.  A target listed here
+        #: is blocked until an operator reconciles the real remote state and
+        #: calls :meth:`acknowledge_ambiguous_write`; replaying it could apply
+        #: the side effect twice.
+        self._unreconciled_writes: set[tuple[str, str]] = set()
 
         # ---- resolve TLS verify setting ----
         if verify is False and profile not in _DEV_PROFILES:
@@ -403,11 +409,46 @@ class GitHubClient:
         method_upper = method.upper()
         operation = normalize_operation(method_upper, path)
         is_idempotent = method_upper in _IDEMPOTENT_METHODS
+        write_key = (method_upper, path)
         policy = self.retry_policy
 
-        # Fail fast while the dependency circuit is open.
-        await self.circuit.acquire(operation=operation)
+        if not is_idempotent and write_key in self._unreconciled_writes:
+            # A previous attempt at this exact write may already have been
+            # applied.  Replaying it is prohibited until someone reconciles
+            # the real remote state.
+            raise AmbiguousWriteOutcome(
+                f"GitHub API write to {path} has an unreconciled outcome",
+                operation=operation,
+            )
 
+        # Fail fast while the dependency circuit is open.
+        probe = await self.circuit.acquire(operation=operation)
+
+        try:
+            return await self._attempt(
+                method, path, method_upper, operation, is_idempotent, write_key, probe, **kwargs
+            )
+        finally:
+            if probe:
+                # Hand the single HALF_OPEN probe slot back unless the circuit
+                # already reached a verdict (record_success/record_failure
+                # reset the counter).  Cancellation cannot leak it because
+                # this call never awaits.
+                self.circuit.release_probe()
+
+    async def _attempt(
+        self,
+        method: str,
+        path: str,
+        method_upper: str,
+        operation: str,
+        is_idempotent: bool,
+        write_key: tuple[str, str],
+        probe: bool,
+        **kwargs: Any,
+    ) -> Any:
+        """Run the request loop for one admitted call."""
+        policy = self.retry_policy
         attempt = 0
         while True:
             attempt += 1
@@ -486,6 +527,11 @@ class GitHubClient:
                 if is_idempotent and error.retryable and attempt >= policy.max_attempts:
                     metrics.record_dependency_retry_exhausted(operation)
 
+                if isinstance(error, AmbiguousWriteOutcome):
+                    # Remember the unknown outcome so the same write cannot be
+                    # replayed by a later call on this client.
+                    self._unreconciled_writes.add(write_key)
+
                 raise error from None
 
             except DependencyError:
@@ -521,6 +567,24 @@ class GitHubClient:
                     operation=operation,
                 ) from e
 
+
+    @property
+    def unreconciled_writes(self) -> frozenset[str]:
+        """Writes whose remote outcome is still unknown, as ``METHOD path``."""
+        return frozenset(f"{method} {path}" for method, path in self._unreconciled_writes)
+
+    def acknowledge_ambiguous_write(self, method: str, path: str) -> bool:
+        """Clear the write barrier after the real remote state was reconciled.
+
+        Returns ``True`` when a barrier was lifted, ``False`` when the target
+        was not blocked.  Call this only after confirming on GitHub whether the
+        write landed.
+        """
+        key = (method.upper(), path)
+        if key in self._unreconciled_writes:
+            self._unreconciled_writes.discard(key)
+            return True
+        return False
 
     async def get_issue(self, number: int):
         return await self._req("GET", f"/repos/{self.repo}/issues/{number}")

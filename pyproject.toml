@@ -30,7 +30,7 @@ dev = [
 ]
 ha = [
     "alembic>=1.13,<2",
-    "psycopg2-binary>=2.9,<3",
+    "psycopg[binary]>=3.1,<4",
     "sqlalchemy>=2.0,<3",
 ]
 release = [

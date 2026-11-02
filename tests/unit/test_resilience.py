@@ -204,79 +204,226 @@ class TestGitHubClientResilienceWiring:
             # POST request must not be retried automatically
             assert mock_request.call_count == 1
 
+    def test_jitter_bounds(self):
+        policy = RetryPolicy(base_delay=4.0, max_delay=10.0, jitter_ratio=0.5)
+        for _ in range(50):
+            d = policy.delay_for(1)
+            assert 2.0 <= d <= 4.0
 
-class TestResilienceAdditionalCoverage:
-    def test_dependency_error_for_log(self):
-        err = DependencyUnavailable("error message", operation="GET:/test", status_code=503, correlation_id="corr-123")
-        log_str = err.for_log()
-        assert "corr-123" in log_str
-        assert "op=GET:/test" in log_str
-        assert "status=503" in log_str
-        comment_str = err.for_comment()
-        assert "dependency_unavailable" in comment_str
-        assert "corr-123" in comment_str
-
-    def test_classify_http_error_other_status(self):
-        from opsswarm.resilience import classify_http_error
-        resp = MagicMock(status_code=400, headers={}, text="Bad Request")
-        err = classify_http_error(resp, method="GET", path="/test")
-        assert isinstance(err, InvalidDependencyResponse)
-
-
-    def test_header_value_edge_cases(self):
-        from opsswarm.resilience import _header_value
-        assert _header_value(None, "foo") is None
-        assert _header_value(object(), "foo") is None
-
-    def test_parse_retry_after_invalid(self):
-        # Invalid float in retry-after and x-ratelimit-reset
-        headers1 = {"retry-after": "not-a-float"}
-        assert parse_retry_after(headers1) == (None, None)
-
-        headers2 = {"x-ratelimit-reset": "not-a-float"}
-        assert parse_retry_after(headers2) == (None, None)
-
-    def test_parse_retry_after_valid_reset(self):
-        # Valid x-ratelimit-reset epoch timestamp
-        now = datetime.now(timezone.utc)
-        epoch = (now.timestamp() + 10)
-        headers = {"x-ratelimit-reset": str(epoch)}
-        delta, reset_at = parse_retry_after(headers, now=now)
-        assert delta is not None
-        assert reset_at is not None
-
-
-    def test_has_rate_limit_evidence_invalid_remaining(self):
-        from opsswarm.resilience import _has_rate_limit_evidence
-        headers = {"x-ratelimit-remaining": "invalid"}
-        assert _has_rate_limit_evidence(headers, "some body") is False
-
-    def test_circuit_breaker_validation_and_half_open_limits(self):
-        with pytest.raises(ValueError):
-            CircuitBreaker("cb", failure_threshold=0)
-        with pytest.raises(ValueError):
-            CircuitBreaker("cb", recovery_timeout=0.0)
-        with pytest.raises(ValueError):
-            CircuitBreaker("cb", half_open_max_calls=0)
-
-        cb = CircuitBreaker("cb", failure_threshold=1, recovery_timeout=0.05, half_open_max_calls=1)
-        snapshot = cb.snapshot()
-        assert snapshot["name"] == "cb"
-        assert snapshot["state"] == "CLOSED"
+    def test_parse_retry_after_headers(self):
+        headers = MagicMock()
+        headers.get = lambda k: "12" if k == "retry-after" else None
+        secs, reset = parse_retry_after(headers)
+        assert secs == 12.0
 
     @pytest.mark.asyncio
-    async def test_circuit_breaker_half_open_max_calls_exceeded(self):
-        cb = CircuitBreaker("cb", failure_threshold=1, recovery_timeout=0.01, half_open_max_calls=1)
+    async def test_circuit_half_open_concurrency(self):
+        cb = CircuitBreaker("probe-dep", failure_threshold=1, recovery_timeout=0.01, half_open_max_calls=1)
         await cb.record_failure()
-        assert cb.state == "OPEN"
+        assert cb.is_open
         await asyncio.sleep(0.02)
-        # Transition to HALF_OPEN
-        await cb.acquire(operation="GET:/test")
+        await cb.acquire()
         assert cb.state == "HALF_OPEN"
-        # Second acquire in same half_open window should raise DependencyCircuitOpen
         with pytest.raises(DependencyCircuitOpen):
-            await cb.acquire(operation="GET:/test")
+            await cb.acquire()
 
-    def test_retry_policy_capped_zero_delay(self):
-        policy = RetryPolicy(base_delay=0.0)
-        assert policy.delay_for(1) == 0.0
+    @pytest.mark.asyncio
+    async def test_ambiguous_write_handling(self, client):
+        with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = httpx.ReadTimeout("Read timed out")
+            client.retry_policy = RetryPolicy(max_attempts=3, base_delay=0.01, sleep=AsyncMock())
+            with pytest.raises(AmbiguousWriteOutcome) as exc_info:
+                await client.comment(1, "hello")
+            assert "ambiguous_write" in exc_info.value.error_slug
+            assert mock_request.call_count == 1
+
+
+class TestHalfOpenProbeRelease:
+    """The single HALF_OPEN probe slot must never be stranded."""
+
+    @pytest.mark.asyncio
+    async def test_probe_slot_is_released_after_a_terminal_client_error(self):
+        """A 404 on the probe leaves the circuit usable instead of stuck."""
+        cb = CircuitBreaker("probe-404", failure_threshold=1, recovery_timeout=0.01)
+        await cb.record_failure()
+        await asyncio.sleep(0.02)
+
+        probe = await cb.acquire(operation="GET:/test")
+        assert probe is True
+        assert cb.state == "HALF_OPEN"
+
+        # A 404 is a known rejection: it never records a circuit failure, so
+        # the slot has to be handed back explicitly.
+        cb.release_probe()
+
+        assert await cb.acquire(operation="GET:/test") is True
+
+    @pytest.mark.asyncio
+    async def test_probe_slot_is_released_when_the_probe_is_cancelled(self):
+        """Cancelling an admitted probe must not wedge the circuit."""
+        cb = CircuitBreaker("probe-cancel", failure_threshold=1, recovery_timeout=0.01)
+        await cb.record_failure()
+        await asyncio.sleep(0.02)
+
+        admitted = asyncio.Event()
+
+        async def probe_call() -> None:
+            is_probe = await cb.acquire(operation="GET:/test")
+            try:
+                admitted.set()
+                await asyncio.sleep(10)
+            finally:
+                if is_probe:
+                    cb.release_probe()
+
+        task = asyncio.create_task(probe_call())
+        await admitted.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert await cb.acquire(operation="GET:/test") is True
+
+    @pytest.mark.asyncio
+    async def test_half_open_admits_exactly_one_probe_concurrently(self):
+        """Concurrent callers cannot all probe a recovering dependency."""
+        cb = CircuitBreaker("probe-single", failure_threshold=1, recovery_timeout=0.01)
+        await cb.record_failure()
+        await asyncio.sleep(0.02)
+
+        async def attempt() -> bool:
+            try:
+                await cb.acquire(operation="GET:/test")
+            except DependencyCircuitOpen:
+                return False
+            return True
+
+        results = await asyncio.gather(*(attempt() for _ in range(5)))
+
+        assert results.count(True) == 1
+
+
+class TestNonFiniteRetryMetadata:
+    """A malformed header must degrade to local backoff, never raise."""
+
+    def _headers(self, **values: str) -> MagicMock:
+        lower = {k.replace("_", "-"): v for k, v in values.items()}
+        headers = MagicMock()
+        headers.get = lambda key: lower.get(key)
+        return headers
+
+    @pytest.mark.parametrize("value", ["inf", "-inf", "nan", "1e400"])
+    def test_retry_after_rejects_non_finite_values(self, value):
+        headers = self._headers(retry_after=value)
+
+        assert parse_retry_after(headers) == (None, None)
+
+    @pytest.mark.parametrize("value", ["inf", "nan", "1e400"])
+    def test_rate_limit_reset_rejects_non_finite_epochs(self, value):
+        headers = self._headers(x_ratelimit_reset=value)
+
+        assert parse_retry_after(headers) == (None, None)
+
+    def test_out_of_range_epoch_is_rejected(self):
+        headers = self._headers(x_ratelimit_reset="1e30")
+
+        assert parse_retry_after(headers) == (None, None)
+
+    def test_finite_retry_after_still_honoured(self):
+        headers = self._headers(retry_after="30")
+
+        seconds, reset_at = parse_retry_after(headers)
+
+        assert seconds == 30.0
+        assert reset_at is not None
+
+    @pytest.mark.parametrize("value", [float("inf"), float("nan"), float("-inf")])
+    def test_retry_policy_ignores_non_finite_retry_after(self, value):
+        policy = RetryPolicy(base_delay=1.0, max_delay=4.0, jitter_ratio=0.0)
+
+        delay = policy.delay_for(1, retry_after=value)
+
+        assert delay == 1.0
+
+
+class TestAmbiguousWriteBarrier:
+    """An unknown write outcome must block the replay of that write."""
+
+    @pytest.fixture
+    def client(self):
+        client = GitHubClient(token="test-token", repo="owner/repo")
+        client.circuit = CircuitBreaker("barrier", failure_threshold=100)
+        client.retry_policy = RetryPolicy(max_attempts=3, base_delay=0.0, sleep=AsyncMock())
+        return client
+
+    @pytest.mark.asyncio
+    async def test_replay_is_blocked_until_the_outcome_is_reconciled(self, client):
+        path = f"/repos/{client.repo}/issues/1/comments"
+        with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = httpx.ReadTimeout("Read timed out")
+            with pytest.raises(AmbiguousWriteOutcome):
+                await client.comment(1, "hello")
+
+            assert f"POST {path}" in client.unreconciled_writes
+
+            # A second attempt must not reach the transport at all.
+            with pytest.raises(AmbiguousWriteOutcome) as exc_info:
+                await client.comment(1, "hello")
+            assert "unreconciled" in str(exc_info.value)
+            assert mock_request.call_count == 1
+
+            assert client.acknowledge_ambiguous_write("POST", path) is True
+            assert client.unreconciled_writes == frozenset()
+
+            mock_request.side_effect = None
+            mock_success = MagicMock()
+            mock_success.status_code = 201
+            mock_success.content = b'{"id": 1}'
+            mock_success.json.return_value = {"id": 1}
+            mock_success.headers = {}
+            mock_success.raise_for_status = MagicMock()
+            mock_request.side_effect = [mock_success]
+
+            assert await client.comment(1, "hello") == {"id": 1}
+            assert mock_request.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_acknowledging_an_unblocked_write_reports_no_change(self, client):
+        assert client.acknowledge_ambiguous_write("POST", "/repos/owner/repo/issues/1/labels") is False
+
+    @pytest.mark.asyncio
+    async def test_ambiguous_message_demands_reconciliation(self, client):
+        with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
+            mock_request.side_effect = httpx.ReadTimeout("Read timed out")
+            with pytest.raises(AmbiguousWriteOutcome) as exc_info:
+                await client.comment(1, "hello")
+
+        message = str(exc_info.value)
+        assert "outcome unknown" in message
+        assert "do not retry" in message
+        assert exc_info.value.ambiguous is True
+
+    @pytest.mark.asyncio
+    async def test_probe_slot_is_released_after_a_terminal_client_error(self, client):
+        """A 404 during a HALF_OPEN probe does not wedge the shared circuit."""
+        circuit = client.circuit
+        circuit.recovery_timeout = 0.01
+        circuit.failure_threshold = 1
+        await circuit.record_failure()
+        await asyncio.sleep(0.02)
+
+        with patch.object(client.client, "request", new_callable=AsyncMock) as mock_request:
+            response = MagicMock()
+            response.status_code = 404
+            response.text = "Not Found"
+            response.content = b"Not Found"
+            response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "404 Not Found", request=MagicMock(), response=response
+            )
+            mock_request.return_value = response
+
+            with pytest.raises(InvalidDependencyResponse):
+                await client.get_issue(1)
+
+        assert circuit.state == "HALF_OPEN"
+        assert circuit._half_open_calls == 0

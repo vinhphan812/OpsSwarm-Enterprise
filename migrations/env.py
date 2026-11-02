@@ -1,13 +1,15 @@
-"""
-Alembic environment configuration for OpsSwarm HA migrations.
+"""Alembic environment for the OpsSwarm HA coordination schema (ADR-031).
 
-Loads database URL from the HA_DATABASE_URL environment variable so that
-migrations can be run without hardcoding credentials.
+The database URL is never hardcoded.  It is read from the ``HA_DATABASE_URL``
+environment variable, so the same migration scripts can be applied to a local
+container, a staging cluster, or a managed writer endpoint without editing
+tracked files.
 
-Usage:
+Usage::
+
+    export HA_DATABASE_URL="postgresql://user:secret@host:5432/opsswarm_ha"
     alembic upgrade head
     alembic downgrade -1
-    alembic history --verbose
     alembic current
 """
 
@@ -19,57 +21,80 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-# Import models so that Alembic can auto-generate migrations from SQLAlchemy models.
-# We import the base and metadata directly rather than individual models to avoid
-# circular import issues at the alembic level.
-from opsswarm.models import Base
-
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# The Alembic Config object provides access to the values within the .ini file.
 config = context.config
 
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # disable_existing_loggers must stay False.  Alembic's own env.py template
+    # omits the argument, which makes logging.config disable every logger that
+    # already exists.  When the migration is driven from inside a test session
+    # that silently disables the application's loggers, and any later test that
+    # asserts on captured log records sees an empty capture.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
-# add your model's MetaData object here for 'autogenerate' support
-target_metadata = Base.metadata
+# The HA coordination schema is defined by an explicit, hand-written migration
+# (migrations/versions/001_initial_ha_schema.py).  There is no ORM model
+# metadata to autogenerate against, so target_metadata stays None and
+# `alembic revision --autogenerate` is intentionally not part of the workflow.
+target_metadata = None
+
+_URL_ENV_VAR = "HA_DATABASE_URL"
 
 
 def get_url() -> str:
-    """Return the database URL from the HA_DATABASE_URL environment variable.
+    """Return the database URL to migrate.
+
+    Precedence:
+
+    1. The ``HA_DATABASE_URL`` environment variable.  This is the operational
+       path: an operator exports the URL for the target writer and runs
+       ``alembic upgrade head``.
+    2. The ``sqlalchemy.url`` option of the Alembic config, when a caller has
+       set it explicitly (for example a test harness driving the migration
+       programmatically).
 
     Raises:
-        EnvironmentError: If HA_DATABASE_URL is not set.
+        EnvironmentError: If neither source supplies a URL.
     """
-    url = os.getenv("HA_DATABASE_URL")
+    url = os.getenv(_URL_ENV_VAR)
+    if not url:
+        url = config.get_main_option("sqlalchemy.url", None)
     if not url:
         raise EnvironmentError(
-            "HA_DATABASE_URL environment variable is not set. "
-            "Set it to your PostgreSQL connection string, e.g.:\n"
-            "  export HA_DATABASE_URL=postgresql://user:pass@localhost:5432/opsswarm_ha"
+            f"{_URL_ENV_VAR} environment variable is not set. "
+            "Set it to the PostgreSQL connection string for the HA "
+            "coordination database, for example:\n"
+            "  export HA_DATABASE_URL=postgresql://user:***@localhost:5432/opsswarm_ha"
         )
-    return url
+    return _normalise_url(url)
+
+
+def _normalise_url(url: str) -> str:
+    """Return the URL with an explicit driver that this project installs.
+
+    SQLAlchemy 2.x resolves a bare ``postgresql://`` URL to the psycopg
+    *version 3* driver.  This project depends on ``psycopg2-binary`` only, so
+    the documented ``postgresql://user:***@host:5432/db`` invocation fails
+    with ``ModuleNotFoundError: No module named 'psycopg'`` before any
+    migration runs.  Naming the installed driver keeps the documented form
+    working and keeps the driver choice explicit.
+
+    A URL that already names a driver is left untouched, so an operator can
+    still select a different driver deliberately.
+    """
+    if not url.startswith("postgresql://"):
+        return url
+    return "postgresql+psycopg2://" + url[len("postgresql://") :]
 
 
 def run_migrations_offline() -> None:
-    """Run migrations in 'offline' mode.
-
-    This configures the context with just a URL
-    and not an Engine, though an Engine is acceptable
-    here as well.  By skipping the Engine creation
-    we don't even need a DBAPI to be available.
-
-    Calls to context.execute() here emit the given string to the
-    script output.
-    """
-    url = get_url()
+    """Run migrations in 'offline' mode, emitting SQL to the script output."""
     context.configure(
-        url=url,
+        url=get_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -77,16 +102,12 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
-    In this scenario we need to create an Engine
-    and associate a connection with the context.
-    """
-    configuration = config.get_section(config.config_ini_section) or {}
-    configuration["sqlalchemy.url"] = get_url()
+    """Run migrations in 'online' mode against a live database connection."""
+    section = config.get_section(config.config_ini_section) or {}
+    section["sqlalchemy.url"] = get_url()
 
     connectable = engine_from_config(
-        configuration,
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
@@ -95,6 +116,7 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            compare_type=True,
         )
 
         with context.begin_transaction():

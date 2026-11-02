@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import re
 import time
@@ -109,6 +110,10 @@ class DependencyError(PermissionError):
 
     #: True when retrying the *same* request could plausibly succeed.
     retryable: bool = False
+
+    #: True when the outcome of the operation is unknown, so the caller must
+    #: reconcile against real remote state instead of retrying.
+    ambiguous: bool = False
 
     #: True when this failure counts as a dependency outage for the
     #: circuit-breaker.  Ordinary client errors (4xx) do **not**.
@@ -206,9 +211,16 @@ class AmbiguousWriteOutcome(DependencyError):
     error_slug = "ambiguous_write"
     retryable = False
     counts_toward_circuit = True
+    #: Callers must reconcile against real remote state before touching the
+    #: same target again.  Published for orchestration layers that have to
+    #: distinguish "denied" from "unknown".
+    ambiguous = True
 
     def __init__(self, message: str, **kwargs: Any):
-        super().__init__(message, **kwargs)
+        super().__init__(
+            f"{message} — outcome unknown; reconcile remote state, do not retry this write",
+            **kwargs,
+        )
         # Ambiguous writes are the canonical "we do not know" signal and are
         # surfaced through the documented ambiguous-write metric.
         metrics.record_ambiguous_write()
@@ -327,6 +339,11 @@ def parse_retry_after(headers: Any, *, now: datetime | None = None) -> tuple[flo
     Honours ``Retry-After`` (delta-seconds or HTTP-date) and
     ``X-RateLimit-Reset`` (epoch seconds).  Returns ``(None, None)`` when the
     headers carry no usable information.
+
+    Non-finite values (``nan``, ``inf``, ``1e400``) and epochs outside the
+    representable range are rejected: they are not a wait instruction, and
+    feeding them to ``timedelta``/``fromtimestamp`` would raise instead of
+    degrading to the local backoff schedule.
     """
     now = now or datetime.now(timezone.utc)
     retry_after = _header_value(headers, "retry-after")
@@ -335,7 +352,7 @@ def parse_retry_after(headers: Any, *, now: datetime | None = None) -> tuple[flo
             seconds = float(retry_after)
         except ValueError:
             seconds = None
-        if seconds is not None and seconds >= 0:
+        if seconds is not None and math.isfinite(seconds) and seconds >= 0:
             return seconds, now + timedelta(seconds=seconds)
 
     reset = _header_value(headers, "x-ratelimit-reset")
@@ -344,8 +361,11 @@ def parse_retry_after(headers: Any, *, now: datetime | None = None) -> tuple[flo
             epoch = float(reset)
         except ValueError:
             epoch = None
-        if epoch is not None:
-            reset_at = datetime.fromtimestamp(epoch, tz=timezone.utc)
+        if epoch is not None and math.isfinite(epoch):
+            try:
+                reset_at = datetime.fromtimestamp(epoch, tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None, None
             delta = (reset_at - now).total_seconds()
             return max(delta, 0.0), reset_at
     return None, None
@@ -544,7 +564,7 @@ class RetryPolicy:
         ``max_delay`` — honouring the server is always preferable to our own
         backoff schedule.
         """
-        if retry_after is not None and retry_after > 0:
+        if retry_after is not None and math.isfinite(retry_after) and retry_after > 0:
             return min(float(retry_after), self.max_delay)
         exponent = max(attempt - 1, 0)
         raw = self.base_delay * (2**exponent)
@@ -629,8 +649,16 @@ class CircuitBreaker:
 
     # -- state machine ----------------------------------------------------
 
-    async def acquire(self, *, operation: str = "") -> None:
-        """Admit a call, or raise :class:`DependencyCircuitOpen`."""
+    async def acquire(self, *, operation: str = "") -> bool:
+        """Admit a call, or raise :class:`DependencyCircuitOpen`.
+
+        Returns ``True`` when the call consumed the single HALF_OPEN probe
+        slot.  The caller must hand that slot back through
+        :meth:`release_probe` if the probe finishes without a verdict for the
+        circuit (a terminal client error, a malformed body, or cancellation);
+        otherwise a healthy dependency stays wedged in HALF_OPEN and every
+        later call fails fast forever.
+        """
         async with self._lock:
             if self._state == "OPEN":
                 elapsed = time.monotonic() - self._opened_at
@@ -653,6 +681,20 @@ class CircuitBreaker:
                         operation=operation,
                     )
                 self._half_open_calls += 1
+                return True
+            return False
+
+    def release_probe(self) -> None:
+        """Return a HALF_OPEN probe slot when the probe reached no verdict.
+
+        Deliberately synchronous: it is called from ``finally`` blocks,
+        including ones that run while the task is being cancelled, where an
+        ``await`` could itself be cancelled and leak the slot.
+        """
+        if self._state != "HALF_OPEN":
+            return
+        if self._half_open_calls > 0:
+            self._half_open_calls -= 1
 
     async def record_success(self) -> None:
         """Record a reachable dependency (closes a half-open circuit)."""
