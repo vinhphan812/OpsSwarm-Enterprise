@@ -34,6 +34,7 @@ from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
+from .runtime import check_draining, get_readiness
 from .webhook import verify_signature
 
 logger = logging.getLogger(__name__)
@@ -140,16 +141,29 @@ async def _startup_auth_check():
     setup_logging()
     reload_auth_config()
     _ensure_production_auth_config()
+    await get_readiness().startup_complete()
     # Start background rate limit pruner if enabled (ADR-030)
     start_rate_limit_pruner()
 
 
 @app.on_event("shutdown")
-async def _shutdown_cleanup():
+async def _shutdown_drain():
     from .auth import stop_rate_limit_pruner
 
     # Stop background rate limit pruner
     stop_rate_limit_pruner()
+
+    readiness = get_readiness()
+    drained = await readiness.initiate_drain()
+    if not drained:
+        logger.error(
+            "Shutdown drain abandoned %d dispatch(es) [%s]; their runs stay in the "
+            "durable store and are reconciled from run state on the next start",
+            len(readiness.abandoned_dispatches),
+            ", ".join(readiness.abandoned_dispatches) or "unlabelled",
+        )
+    # Also ensure any background tasks or in-flight operations are awaited or cleaned up
+    await asyncio.sleep(0.05)
 
     # Close HA database connections (only if HA is enabled)
     ha_cfg = get_ha(cfg)
@@ -170,24 +184,35 @@ async def health():
 
 @app.get("/ready")
 async def ready():
-    """Readiness probe — fail-closed until Postgres is reachable and this process
-    can verify it holds (or can acquire) its instance lease.
+    """Readiness endpoint. 200 if OK, else 503.
 
-    Returns 503 when:
-    - ha.enabled = true AND Postgres is unreachable
-    - ha.enabled = true AND Postgres is reachable but instance cannot verify its leases
+    Two independent gates must both pass:
 
-    Returns 200 when:
-    - ha.enabled = false (backward-compatible mode)
-    - ha.enabled = true AND Postgres is reachable AND instance has valid leases
+    * Startup / drain gate (ADR-014-2, issue #70-73): the process must have
+      completed startup and must not be draining.
+    * HA coordination gate (ADR-030): when ``ha.enabled`` is true, Postgres
+      must be reachable and this instance must be able to verify its leases.
+
+    When HA is disabled the endpoint stays backward compatible and only the
+    startup / drain gate applies.
     """
+    if not get_readiness().ready:
+        raise HTTPException(
+            status_code=503,
+            detail="Startup incomplete or service is draining",
+        )
+
+    # Imported at call time so a configuration reload (or a test that patches
+    # opsswarm.config.get_ha) is honoured by the probe.
     from .config import get_ha
 
     ha_cfg = get_ha(cfg)
 
-    # If HA is disabled, return ready (backward-compatible behavior)
+    # If HA is disabled, return ready (backward-compatible behavior).
+    # The response body is exactly the canonical readiness payload; the HA
+    # fields are added only when HA coordination is actually enabled.
     if not ha_cfg.get("enabled"):
-        return {"status": "ready", "mode": "legacy"}
+        return {"ok": True}
 
     # HA enabled: ha_db is only imported when HA is active.
     # This avoids a hard psycopg dependency in legacy (ha.enabled=false) mode.
@@ -227,6 +252,7 @@ async def ready():
 
     # Return ready status
     return {
+        "ok": True,
         "status": "ready",
         "mode": "ha",
         "active_leases": lease_count,
@@ -323,6 +349,7 @@ async def resume_run(issue_number: int):
 
 
 @app.post("/webhooks/github")
+@check_draining
 async def github_webhook(
     request: Request,
     x_github_event: str | None = Header(None),
@@ -336,7 +363,12 @@ async def github_webhook(
     data = await request.json()
     if x_github_event == "issues" and data.get("action") == "opened":
         number = int(data["issue"]["number"])
-        asyncio.create_task(engine.start_issue(number, x_github_delivery))
+        await get_readiness().start_background_dispatch(
+            engine.start_issue(number, x_github_delivery),
+            label=f"issue:{number}:opened",
+            issue_number=number,
+            persist_accepted=True,
+        )
         return {"accepted": True, "issue": number}
     if x_github_event == "issue_comment" and data.get("action") == "created":
         number = int(data["issue"]["number"])
@@ -381,6 +413,7 @@ async def github_webhook(
 
 
 @app.post("/hooks/monitoring")
+@check_draining
 async def monitoring_event(request: Request):
     # --- Body size check (before any auth — large body is a DoS vector) ---
     content_length = request.headers.get("content-length")
@@ -468,5 +501,10 @@ async def monitoring_event(request: Request):
     )
     issue = await gh.create_issue(title, body, labels)
     number = int(issue["number"])
-    asyncio.create_task(engine.start_issue(number))
+    await get_readiness().start_background_dispatch(
+        engine.start_issue(number),
+        label=f"issue:{number}:monitoring",
+        issue_number=number,
+        persist_accepted=True,
+    )
     return {"accepted": True, "issue_number": number}

@@ -334,7 +334,10 @@ def reload_auth_config() -> None:
     Call this after mutating the process environment (e.g. in tests or
     when the operator rotates credentials via a signal).
     """
-    global _opsswarm_runtime_secret, _preshared_keys
+    global _opsswarm_runtime_secret, _preshared_keys, _ha_cfg_cache
+    # The HA feature flags come from the configuration file, so the cached
+    # view of it is dropped together with the cached secret material.
+    _ha_cfg_cache = None
     _opsswarm_runtime_secret = os.environ.get(RUNTIME_SECRET_KEY) or None
     _preshared_keys = {
         SCOPE_READ: os.environ.get(f"{API_KEY_PREFIX}READ", ""),

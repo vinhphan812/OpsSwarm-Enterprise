@@ -313,13 +313,19 @@ class TestReadyEndpoint:
 
         This is the backward-compatible default. No Postgres connection is needed.
         """
+        import opsswarm.api as api_module
+
         # get_ha is imported inside the /ready function from opsswarm.config
-        with patch("opsswarm.config.get_ha", return_value={"enabled": False}):
+        ready_manager = MagicMock()
+        ready_manager.ready = True
+        with (
+            patch("opsswarm.config.get_ha", return_value={"enabled": False}),
+            patch.object(api_module, "get_readiness", return_value=ready_manager),
+        ):
             response = client.get("/ready")
         assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "ready"
-        assert data["mode"] == "legacy"
+        # Legacy mode keeps the canonical readiness payload exactly.
+        assert response.json() == {"ok": True}
 
     def _ha_ready(self, client, ha_cfg: dict, mock_ha_db: MagicMock | None = None) -> "TestClient.response":
         """Helper: inject mock ha_db into sys.modules and call /ready.
@@ -328,6 +334,15 @@ class TestReadyEndpoint:
         (raises ImportError when ha.enabled=true).
         """
         import sys
+
+        import opsswarm.api as api_module
+
+        # The endpoint has two gates: startup/drain readiness and the HA
+        # coordination gate.  These tests exercise the HA gate, so the
+        # startup gate is satisfied explicitly.
+        ready_manager = MagicMock()
+        ready_manager.ready = True
+
         # Store real module if already loaded
         real_ha_db = sys.modules.get("opsswarm.ha_db")
         try:
@@ -336,7 +351,10 @@ class TestReadyEndpoint:
                 sys.modules["opsswarm.ha_db"] = None
             else:
                 sys.modules["opsswarm.ha_db"] = mock_ha_db
-            with patch("opsswarm.config.get_ha", return_value=ha_cfg):
+            with (
+                patch("opsswarm.config.get_ha", return_value=ha_cfg),
+                patch.object(api_module, "get_readiness", return_value=ready_manager),
+            ):
                 return client.get("/ready")
         finally:
             if real_ha_db is not None:
