@@ -88,6 +88,37 @@ def test_save_discards_a_stale_temporary_file(store: FileStore) -> None:
     assert store.load("run-1") is not None
 
 
+def test_save_preserves_another_writers_unique_temporary_file(store: FileStore) -> None:
+    """Cleanup removes only the legacy fixed name, never a live unique temp.
+
+    Atomic writes name each attempt ``.run_id.<uuid>.tmp``.  A cleanup that
+    globbed the run-id prefix would delete a concurrent writer's in-flight
+    temporary file between its ``write`` and its ``os.replace``, turning a
+    healthy write into a lost update.  Only the exact legacy names may be
+    removed.
+    """
+    in_flight = store.path / ".run-1.0f4c8a2b9d6e4a17b3c5d8e9f0a1b2c3.tmp"
+    in_flight.write_text("concurrent writer still writing", encoding="utf-8")
+
+    store.save(make_run("run-1"))
+
+    assert in_flight.exists()
+    assert in_flight.read_text(encoding="utf-8") == "concurrent writer still writing"
+
+
+def test_save_checkpoint_preserves_another_writers_unique_temporary_file(
+    store: FileStore,
+) -> None:
+    """Checkpoint cleanup likewise spares a concurrent unique temp file."""
+    in_flight = store.path / ".run-1.9e7d6c5b4a39281706f5e4d3c2b1a09f.checkpoint.tmp"
+    in_flight.write_text("concurrent checkpoint still writing", encoding="utf-8")
+
+    store.save_checkpoint(make_run("run-1"), "data")
+
+    assert in_flight.exists()
+    assert in_flight.read_text(encoding="utf-8") == "concurrent checkpoint still writing"
+
+
 # --------------------------------------------------------------------------- #
 # Checkpoints
 # --------------------------------------------------------------------------- #

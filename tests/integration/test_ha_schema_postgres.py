@@ -630,4 +630,3 @@ def test_validator_rejects_a_live_scalar_column_turned_into_an_array(
     assert any(
         issue.kind == "column_type" and "state" in issue.detail for issue in report.issues
     )
-
