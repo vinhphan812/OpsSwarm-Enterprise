@@ -1,5 +1,12 @@
 # TRIAGE #2: S1-S4 Skill Contracts Expansion
 
+**Status:** RESOLVED - closed in #2 (2026-10-03)
+
+> **Reading note.** This report analyses a closed issue and is retained for audit trail and
+> traceability only. Its findings are not outstanding work. Open audit findings are tracked in
+> the [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
+
+
 **Date:** 2026-09-22
 **Task:** t_70580a0f
 **Source:** GitHub issue #2

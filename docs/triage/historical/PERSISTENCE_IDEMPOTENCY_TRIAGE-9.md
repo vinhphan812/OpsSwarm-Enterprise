@@ -1,9 +1,28 @@
 # TRIAGE #9: Design persistence, idempotency, concurrency and recovery
 
+**Status:** RESOLVED - closed in #9 (2026-10-05)
+
 **Issue:** https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/9
-**Status:** Architecture Design
+**Design status:** Architecture Design — delivered (original text, preserved below)
 **Author:** dev-architect
 **Date:** 2026-09-22
+
+> **Reading note.** This design document was delivered, not left as a proposal. The five decisions it
+> recommends are recorded in ADRs and the corresponding implementation modules exist:
+>
+> | Decision | ADR | Implementation |
+> |----------|-----|----------------|
+> | GitHub delivery/comment identity for idempotency | [ADR-009-1](../../adr/ADR-009-1_IDEMPOTENCY_STRATEGY.md) | `opsswarm/store.py` |
+> | State machine enforcement level | [ADR-009-2](../../adr/ADR-009-2_STATE_ENFORCEMENT.md) | `opsswarm/runtime.py` |
+> | Checkpoint granularity for crash recovery | [ADR-009-3](../../adr/ADR-009-3_CHECKPOINT_STRATEGY.md) | `opsswarm/reconciliation.py` |
+> | Evidence duplicate handling | [ADR-009-4](../../adr/ADR-009-4_EVIDENCE_DEDUPLICATION.md) | `opsswarm/evidence.py` |
+> | Approve vs abort determinism | [ADR-009-5](../../adr/ADR-009-5_COMMAND_DETERMINISM.md) | `opsswarm/store.py`, `opsswarm/skill_logic.py` |
+>
+> The design below is the historical record of the triage as it was written on 2026-09-22 and is preserved
+> verbatim. The gaps it lists in §2 were closed by the ADR-009-x decisions and their implementation; they
+> are not outstanding work. Open audit findings are tracked in the
+> [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md). This triage contributes no open
+> findings.
 
 ---
 

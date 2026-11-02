@@ -1,5 +1,7 @@
 # Skill Contracts Triage Report
 
+**Status:** RESOLVED - closed in #2 (2026-10-03) and #6 (2026-10-05)
+
 **Date:** 2026-09-22
 **Task:** TRIAGE #2: Define production-grade S1-S8 Skill contracts
 **Source:** https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/2
