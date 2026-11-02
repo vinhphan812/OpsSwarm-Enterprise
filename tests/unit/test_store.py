@@ -3,7 +3,7 @@
 import pytest
 
 from opsswarm.models import RunRecord, RunState
-from opsswarm.store import RunStore
+from opsswarm.store import RunStore, BaseStore, FileStore, HaRunStore
 
 
 @pytest.fixture
@@ -23,6 +23,58 @@ def make_run(run_id: str, state: RunState) -> RunRecord:
         last_checkpoint_at=None,
         checkpoint_sequence=0,
     )
+
+
+class TestBaseStoreAndBackends:
+    """Tests for BaseStore abstract class, FileStore, and HaRunStore stub."""
+
+    def test_base_store_is_abc(self):
+        """BaseStore cannot be instantiated directly."""
+        with pytest.raises(TypeError):
+            BaseStore()
+
+    def test_harunstore_not_implemented(self):
+        """HaRunStore raises NotImplementedError for backend methods."""
+        has = HaRunStore()
+        run = make_run("r1", RunState.OPEN)
+        with pytest.raises(NotImplementedError):
+            has.save(run)
+        with pytest.raises(NotImplementedError):
+            has.load("r1")
+        with pytest.raises(NotImplementedError):
+            has.load_all()
+        with pytest.raises(NotImplementedError):
+            has.save_checkpoint("r1", "type", {})
+        with pytest.raises(NotImplementedError):
+            has.get_last_checkpoint("r1")
+        with pytest.raises(NotImplementedError):
+            has.update_with_cas("r1", {}, 1)
+
+    def test_filestore_new_checkpoint_and_cas(self, store):
+        """Test new checkpoint API and CAS update on FileStore."""
+        run = make_run("run-cas", RunState.OPEN)
+        run.revision = 1
+        store.save(run)
+
+        # New checkpoint API
+        ckpt_id = store.save_checkpoint("run-cas", "state_transition", {"state": "investigating"})
+        assert ckpt_id is not None
+
+        last_ckpt = store.get_last_checkpoint("run-cas")
+        assert last_ckpt is not None
+        assert last_ckpt["checkpoint_type"] == "state_transition"
+        assert last_ckpt["payload"]["state"] == "investigating"
+
+        # CAS update success
+        success = store.update_with_cas("run-cas", {"state": RunState.INVESTIGATING}, expected_revision=1)
+        assert success is True
+        updated = store.load("run-cas")
+        assert updated.revision == 2
+        assert updated.state == RunState.INVESTIGATING
+
+        # CAS update failure due to wrong revision
+        success_fail = store.update_with_cas("run-cas", {"state": RunState.RESOLVED}, expected_revision=1)
+        assert success_fail is False
 
 
 class TestStoreInit:
