@@ -7,7 +7,22 @@ import pytest
 from scripts.validate_manifests import ManifestValidationError, PROFILES, validate_manifest_file
 
 
-def _write_manifest(path: Path, *, replicas: int = 1, readiness_path: str = "/ready") -> Path:
+def _write_manifest(
+    path: Path,
+    *,
+    replicas: int = 1,
+    readiness_path: str = "/ready",
+    with_readiness_probe: bool = True,
+) -> Path:
+    readiness_block = (
+        f"""
+          readinessProbe:
+            httpGet:
+              path: {readiness_path}
+              port: 8080"""
+        if with_readiness_probe
+        else ""
+    )
     path.write_text(
         f"""
 apiVersion: apps/v1
@@ -47,11 +62,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 8080
-          readinessProbe:
-            httpGet:
-              path: {readiness_path}
-              port: 8080
+              port: 8080{readiness_block}
           volumeMounts:
             - name: runtime
               mountPath: /var/lib/opsswarm
@@ -102,6 +113,35 @@ def test_manifest_policy_violations_fail_closed(
 
     with pytest.raises(ManifestValidationError, match=expected_error):
         validate_manifest_file(manifest)
+
+
+@pytest.mark.parametrize("profile_name", ["base", "dev", "prod"])
+def test_every_profile_requires_a_readiness_probe(tmp_path: Path, profile_name: str) -> None:
+    """The readiness gate must be live in every profile (ADR-030 R7).
+
+    A manifest without a readinessProbe is rejected by the base, dev and prod
+    profiles alike.  This is the fixture-based negative test that proves the
+    gate is not a no-op.
+    """
+    manifest = _write_manifest(tmp_path / "no-readiness.yaml", with_readiness_probe=False)
+
+    with pytest.raises(ManifestValidationError, match="a readinessProbe is required"):
+        validate_manifest_file(manifest, PROFILES[profile_name])
+
+
+def test_prod_profile_rejects_a_readiness_probe_on_health(tmp_path: Path) -> None:
+    """The 'readiness probe must not use /health' rule remains enforced."""
+    manifest = _write_manifest(tmp_path / "health-readiness.yaml", readiness_path="/health")
+
+    with pytest.raises(ManifestValidationError, match="must not use /health"):
+        validate_manifest_file(manifest, PROFILES["prod"])
+
+
+def test_shipped_base_manifest_passes_the_base_profile() -> None:
+    """The base profile must hold for the manifest that is actually shipped."""
+    base_manifest = Path(__file__).resolve().parents[2] / "k8s" / "base" / "deployment.yaml"
+
+    assert validate_manifest_file(base_manifest, PROFILES["base"]) == []
 
 
 def _write_network_policy(path: Path, *, namespace: str = "opsswarm", cidr: str = "10.0.0.0/16", except_list: list[str] | None = None) -> Path:
