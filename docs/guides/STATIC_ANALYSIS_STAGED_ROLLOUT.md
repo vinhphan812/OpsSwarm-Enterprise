@@ -9,7 +9,7 @@
 
 | Tool | Scope / configuration | Recorded count |
 |------|-----------------------|---------------:|
-| Ruff | `opsswarm/ tests/`, rule selection `E,F,I,B,RUF` | **884** |
+| Ruff | `opsswarm/ tests/`, rule selection `E,F,I,B,RUF` | **883** |
 | mypy | `opsswarm/`, semantic categories enabled, per-module waivers | **0** |
 | Bandit | HIGH severity in `opsswarm/` | **0** |
 
@@ -140,7 +140,7 @@ corresponding category from the module override. The gate proves the result.
 | `F63` | Pyflakes stub errors | Stage 1 (active) |
 | `F7` | Pyflakes errors | Stage 1 (active) |
 | `F82` | Undefined names | Stage 1 (active) |
-| `E,F,I,B,RUF` | Stage 2 (active); baseline 884; no increases |
+| `E,F,I,B,RUF` | Stage 2 (active); baseline 883; no increases |
 
 ### mypy
 

@@ -9,9 +9,9 @@
 # committed together with the change that caused it.
 
 [baseline.ruff]
-# Measured on the origin/master tree with:
+# Measured on the master tree with:
 #   python -m ruff check opsswarm/ tests/ --select=E,F,I,B,RUF --output-format=json
-error_count = 884
+error_count = 883
 rule_selection = ["E", "F", "I", "B", "RUF"]
 
 [baseline.mypy]
