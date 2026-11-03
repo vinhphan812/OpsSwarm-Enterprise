@@ -6,11 +6,15 @@ the real script against an isolated copy of the repository and asserts on the
 exit code.
 
 The isolated copy keeps the production pyproject.toml so that the per-module
-mypy waivers and the Ruff rule selection are the ones CI will enforce.
+mypy waivers and the Ruff rule selection are the ones CI will enforce. The
+baseline written into the copy is measured from the copy itself, so the test
+stays valid as the repository's violation count moves in either direction and
+only the deliberate fixture violation can trip the gate.
 """
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -19,6 +23,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+RUFF_SELECT = "E,F,I,B,RUF"
 
 
 def _copy_gate_repo(tmp_path: Path) -> Path:
@@ -31,12 +36,43 @@ def _copy_gate_repo(tmp_path: Path) -> Path:
     return destination
 
 
-def _write_baseline(repo: Path, ruff_count: int = 884, mypy_count: int = 0) -> None:
+def _measure_ruff(repo: Path) -> int:
+    """Count the Ruff violations present in the copied tree."""
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "ruff", "check",
+            "opsswarm/", "tests/",
+            f"--select={RUFF_SELECT}",
+            "--output-format=json",
+        ],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert result.returncode in (0, 1), result.stderr
+    return len(json.loads(result.stdout or "[]"))
+
+
+def _measure_mypy(repo: Path) -> int:
+    """Count the mypy errors present in the copied tree."""
+    result = subprocess.run(
+        [sys.executable, "-m", "mypy", "--no-incremental", "opsswarm/"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    assert result.returncode in (0, 1), result.stderr
+    return len([line for line in result.stdout.splitlines() if ": error:" in line])
+
+
+def _write_baseline(repo: Path, ruff_count: int, mypy_count: int) -> None:
     """Write a baseline that matches the copied tree, so only the fixture fails."""
     (repo / ".static_analysis_baseline.toml").write_text(
         "[baseline.ruff]\n"
         f"error_count = {ruff_count}\n"
-        'rule_selection = ["E", "F", "I", "B", "RUF"]\n\n'
+        f'rule_selection = ["E", "F", "I", "B", "RUF"]\n\n'
         "[baseline.mypy]\n"
         f"error_count = {mypy_count}\n\n"
         "[baseline.bandit]\n"
@@ -73,7 +109,7 @@ def test_missing_baseline_fails_both_gates(tmp_path: Path) -> None:
 def test_ruff_gate_detects_f401_in_test_scope(tmp_path: Path) -> None:
     """One deliberate unused import must push the Ruff gate over its baseline."""
     repo = _copy_gate_repo(tmp_path)
-    _write_baseline(repo)
+    _write_baseline(repo, _measure_ruff(repo), 0)
     (repo / "tests" / "fixture_unused_import.py").write_text(
         "import pathlib\n", encoding="utf-8"
     )
@@ -89,7 +125,7 @@ def test_ruff_gate_detects_f401_in_test_scope(tmp_path: Path) -> None:
 def test_mypy_gate_detects_arg_type_in_models(tmp_path: Path) -> None:
     """One deliberate arg-type violation must push the mypy gate over baseline."""
     repo = _copy_gate_repo(tmp_path)
-    _write_baseline(repo)
+    _write_baseline(repo, 0, _measure_mypy(repo))
     models = repo / "opsswarm" / "models.py"
     models.write_text(
         models.read_text(encoding="utf-8")
