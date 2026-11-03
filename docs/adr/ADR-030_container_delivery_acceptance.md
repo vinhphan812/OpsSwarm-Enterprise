@@ -200,16 +200,30 @@ and for **startup probes** (is the app initialised?), but **not** for readiness.
 
 #### Kubernetes readiness probe
 
-Until Issue #30 is resolved, the readiness probe is a **placeholder**. The
-documented behaviour is:
+The readiness probe is a **real** probe on the fail-closed `/ready` endpoint.
+`/ready` was added in commit `9b1c6017` (Issue #30, closed 2026-10-05) and is
+served by `opsswarm/api.py`. It returns `200` only when the instance can
+actually serve traffic, and `503` when:
 
-> **Acceptance gate:** `/ready` endpoint or equivalent dependency-check signal
-> must exist and return 200 only when GitHub credentials are valid and OpenClaw
-> binary is confirmed executable. This is tracked in Issue #30.
+- startup validation has not completed;
+- the process is draining after a SIGTERM;
+- `ha.enabled` is `true` and Postgres is unreachable;
+- `ha.enabled` is `true` and this instance cannot verify its leases.
 
-Operators must **not** set `readinessProbe` to `/health` and claim production
-readiness without the dependency check. The current K8s base manifest documents
-this limitation in its header comment.
+`k8s/base/deployment.yaml` wires it up as `readinessProbe.httpGet.path: /ready`
+(ADR-030 R7, delivered — see the Follow-on Ownership Matrix below).
+
+The liveness probe stays on `/health` and is **deliberately independent of the
+HA / Postgres gate**: a database outage must not restart the pod.
+
+Operators must **not** set `readinessProbe` to `/health`. The rule is enforced
+by `scripts/validate_manifests.py` (every profile rejects `/health` and
+requires a readiness probe to be present), by `scripts/check_probe_policy.py`
+(the positive contract, run by the `container-delivery` workflow against the
+rendered dev overlay), and by the `container-delivery` workflow itself. The
+readiness semantics and the full list of `503` conditions are documented in
+`docs/guides/CONTAINER_DEPLOYMENT.md` (§ Health, liveness and readiness
+probes).
 
 #### Draining
 
@@ -388,7 +402,9 @@ Automated tests are in `tests/integration/test_container_deployment.py`.
 - Operators must supply an explicit `volumeSource` for `openclaw-bin` in any
   K8s overlay — there is no default that works out of the box.
 - The readiness probe cannot claim production-grade dependency checking until
-  Issue #30 is resolved; this is now a documented gap.
+  GitHub credential validity and OpenClaw availability are verified at
+  startup; `/ready` covers the startup, drain and HA-coordination gates only.
+  This remains a documented gap.
 - Production K8s overlays must replace `emptyDir` with PVC-backed volumes for
   evidence and runtime-data durability; this is an operational requirement, not
   an optional optimisation.
@@ -415,7 +431,7 @@ one row.
 | R4 | Move `fsGroup` from container `securityContext` to Pod-level `securityContext` in `k8s/base/deployment.yaml` | **infra/dev-ops** | Updated `k8s/base/deployment.yaml` |
 | R5 | Add PVC-backed volumes for `evidence-store` and `runtime-data` in `k8s/overlays/prod/`; update `CONTAINER_DEPLOYMENT.md` | **infra/dev-ops** | Updated `k8s/overlays/prod/`; updated `CONTAINER_DEPLOYMENT.md` |
 | R6 | Replace broad `0.0.0.0/0` ingress in `k8s/base/network-policy.yaml` with FQDN-based egress and documented ingress CIDRs; add `overlays/prod/` policy | **infra/dev-ops** | Updated `k8s/base/network-policy.yaml`; updated `CONTAINER_DEPLOYMENT.md` |
-| R7 | Add `/ready` endpoint or dependency-check signal; implement as `readinessProbe` in K8s base (tracked in Issue #30) | **runtime/backend** | Issue #30 closure; updated `deployment.yaml` readiness probe |
+| R7 | Add `/ready` endpoint or dependency-check signal; implement as `readinessProbe` in K8s base (tracked in Issue #30) | **runtime/backend** | **DELIVERED** — Issue #30 closed 2026-10-05 (`/ready` added in `9b1c6017`); `k8s/base/deployment.yaml` now declares `readinessProbe.httpGet.path: /ready` with the liveness probe left on `/health`. Enforced by `scripts/validate_manifests.py` (all profiles now require a readiness probe and reject `/health`), by `scripts/check_probe_policy.py`, and by the `container-delivery` and `manifest-supply-chain` workflows. Evidence: Issues #125 and #126, PR `feat/125-k8s-readiness-probe`. |
 | R8 | Confirm `replicas: 1` in K8s base and add Issue #70 non-goal statement to `CONTAINER_DEPLOYMENT.md` and `k8s/base/deployment.yaml` header | **docs** (this ADR) | This ADR; `CONTAINER_DEPLOYMENT.md` updated by R3/R5/R6 |
 | R9 | Add `acceptance_test` marker group to `tests/integration/test_container_deployment.py` for R1–R7 regression coverage | **test/qa** | Updated `tests/integration/test_container_deployment.py` |
 
@@ -443,9 +459,9 @@ one row.
 
 | Option | Description | Rejected because |
 |--------|-------------|-----------------|
-| Use `/health` as readiness | Current implementation | Does not verify GitHub token or OpenClaw availability |
+| Use `/health` as readiness | Current implementation | Does not verify the startup, drain or HA-coordination gates; a broken instance would be advertised as ready |
 | Readiness probe with shell exec curl | Check GitHub API in probe | Adds latency to every readiness check; credential exposure in probe command |
-| Separate readiness service | `/ready` endpoint with dependency checks | Correct solution; tracked in Issue #30 |
+| Separate readiness service | `/ready` endpoint with dependency checks | **Accepted** — implemented in `9b1c6017` (Issue #30) and wired up as the K8s `readinessProbe` (ADR-030 R7) |
 
 ---
 

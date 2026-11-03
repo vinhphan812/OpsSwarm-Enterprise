@@ -39,8 +39,14 @@ than as exceptions:
     The local-development overlay.  Uses the ``:dev`` tag and ``emptyDir``
     volumes, so persistent storage is *not* required.
 ``prod``
-    The production overlay.  Requires a version-pinned image tag (or digest)
-    and durable PVC-backed storage.
+    The production overlay.  Requires a version-pinned image tag (or digest),
+    durable PVC-backed storage and a readiness probe.
+
+Every profile requires a readiness probe: ``/ready`` is the fail-closed
+readiness gate (ADR-014-2, ADR-030 R7), so a rendered workload without one
+violates the policy in every environment.  A readiness probe pointing at the
+liveness path (``/health``) is rejected in every profile, because it would
+report the pod ready while its dependencies are still broken.
 
 Exit codes:
     0 -- every rendered manifest satisfies the policy.
@@ -120,13 +126,13 @@ PROFILES: dict[str, Profile] = {
         name="dev",
         require_pinned_image=False,
         require_persistent_storage=False,
-        require_readiness_probe=False,
+        require_readiness_probe=True,
     ),
     "prod": Profile(
         name="prod",
         require_pinned_image=True,
         require_persistent_storage=True,
-        require_readiness_probe=False,
+        require_readiness_probe=True,
     ),
 }
 

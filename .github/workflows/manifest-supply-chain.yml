@@ -35,6 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/manifests
+          kubectl kustomize k8s/base > artifacts/manifests/base.yaml
           kubectl kustomize k8s/overlays/dev > artifacts/manifests/dev.yaml
           kubectl kustomize k8s/overlays/prod > artifacts/manifests/prod.yaml
 
@@ -53,6 +54,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          kubeconform -strict -summary artifacts/manifests/base.yaml
           kubeconform -strict -summary artifacts/manifests/dev.yaml
           kubeconform -strict -summary artifacts/manifests/prod.yaml
 
@@ -60,8 +62,43 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The base profile is exercised here as well: it is the profile the
+          # shipped base manifest must satisfy, and it used to be a dead path
+          # that could drift from k8s/base/deployment.yaml without CI noticing.
+          python scripts/validate_manifests.py --profile base artifacts/manifests/base.yaml
           python scripts/validate_manifests.py --profile dev artifacts/manifests/dev.yaml
           python scripts/validate_manifests.py --profile prod artifacts/manifests/prod.yaml
+
+      - name: Prove the readiness-probe gate is live
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Negative test: strip the readiness probe from the rendered prod
+          # overlay and prove that the prod profile now rejects it.  Without
+          # this the gate could silently regress into a no-op.
+          python - <<'PY' > artifacts/manifests/prod-no-readiness.yaml
+          import sys
+
+          import yaml
+
+          docs = list(yaml.safe_load_all(open("artifacts/manifests/prod.yaml", encoding="utf-8")))
+          removed = False
+          for doc in docs:
+              if not isinstance(doc, dict) or doc.get("kind") != "Deployment":
+                  continue
+              for container in doc["spec"]["template"]["spec"].get("containers", []):
+                  if container.pop("readinessProbe", None) is not None:
+                      removed = True
+          if not removed:
+              sys.exit("ERROR: no readinessProbe block found in the rendered prod overlay")
+          yaml.safe_dump_all(docs, sys.stdout, default_flow_style=False)
+          PY
+          if python scripts/validate_manifests.py --profile prod \
+            artifacts/manifests/prod-no-readiness.yaml; then
+            echo "ERROR: the prod profile accepted a manifest without a readinessProbe" >&2
+            exit 1
+          fi
+          echo "OK: the prod profile rejects a manifest without a readinessProbe"
 
       - name: Upload rendered-manifest evidence
         if: always()

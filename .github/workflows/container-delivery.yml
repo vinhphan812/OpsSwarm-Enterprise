@@ -286,6 +286,14 @@ jobs:
           sudo mv kind /usr/local/bin/kind
           kind version
 
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install the probe-policy checker dependencies
+        run: python -m pip install "PyYAML>=6.0,<7"
+
       - name: Create a single-node cluster
         shell: bash
         run: |
@@ -343,14 +351,41 @@ jobs:
             echo "ERROR: overlay still references a mutable tag" >&2
             exit 1
           fi
-          # Until issue #30 implements a real readiness endpoint, only liveness
-          # is configured. The startup probe is intentionally not used as readiness.
+          # Liveness stays on /health and is deliberately independent of the
+          # HA / Postgres gate: a database outage must not restart the pod.
           grep -n -A3 "livenessProbe:" evidence/dev-overlay.yaml | tee evidence/liveness-probe.txt
-          grep -q "path: /health" evidence/dev-overlay.yaml
-          if grep -q "readinessProbe:" evidence/dev-overlay.yaml; then
-            echo "ERROR: readiness probe must not use a non-existent endpoint" >&2
+          liveness_path="$(grep -A3 "livenessProbe:" evidence/dev-overlay.yaml \
+            | grep -m1 "path:" | sed 's/.*path: *//')"
+          if [ "$liveness_path" != "/health" ]; then
+            echo "ERROR: livenessProbe must target /health, got '$liveness_path'" >&2
             exit 1
           fi
+
+          # Readiness is a POSITIVE requirement: the rendered overlay must
+          # declare exactly one readinessProbe on the fail-closed /ready
+          # endpoint.  /ready returns 503 while startup is incomplete, while
+          # draining, and — under HA — while Postgres or lease verification
+          # fails.  It must never point at /health.
+          readiness_count="$(grep -c "readinessProbe:" evidence/dev-overlay.yaml || true)"
+          if [ "$readiness_count" -ne 1 ]; then
+            echo "ERROR: expected exactly one readinessProbe in the rendered overlay, found $readiness_count" >&2
+            exit 1
+          fi
+          grep -n -A3 "readinessProbe:" evidence/dev-overlay.yaml | tee evidence/readiness-probe.txt
+          readiness_path="$(grep -A3 "readinessProbe:" evidence/dev-overlay.yaml \
+            | grep -m1 "path:" | sed 's/.*path: *//')"
+          if [ "$readiness_path" = "/health" ]; then
+            echo "ERROR: readinessProbe must not use /health; /health is a liveness signal" >&2
+            exit 1
+          fi
+          if [ "$readiness_path" != "/ready" ]; then
+            echo "ERROR: readinessProbe must target /ready, got '$readiness_path'" >&2
+            exit 1
+          fi
+          # The same policy is asserted by the shared checker so that the
+          # manifest and the workflow can never disagree.
+          python scripts/check_probe_policy.py evidence/dev-overlay.yaml \
+            | tee evidence/probe-policy.txt
 
       - name: Apply the dev overlay
         shell: bash
@@ -431,11 +466,23 @@ jobs:
             http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
           cat /tmp/health.json | tee -a evidence/endpoint-probe.txt
           echo | tee -a evidence/endpoint-probe.txt
-          echo "--- GET /health ---" | tee -a evidence/endpoint-probe.txt
-          curl -sS -o /tmp/ready.json -w 'http_status=%{http_code}\n' \
-            http://127.0.0.1:18080/health | tee -a evidence/endpoint-probe.txt
+          # The readiness endpoint must be live and returning 200 now that the
+          # pod has passed the readinessProbe gate.
+          ready_code=""
+          for _ in $(seq 1 30); do
+            ready_code="$(curl -sS -o /tmp/ready.json -w '%{http_code}' \
+              http://127.0.0.1:18080/ready 2>/dev/null || true)"
+            if [ "$ready_code" = "200" ]; then break; fi
+            sleep 2
+          done
+          echo "--- GET /ready ---" | tee -a evidence/endpoint-probe.txt
+          echo "http_status=$ready_code" | tee -a evidence/endpoint-probe.txt
           cat /tmp/ready.json | tee -a evidence/endpoint-probe.txt
           echo | tee -a evidence/endpoint-probe.txt
+          if [ "$ready_code" != "200" ]; then
+            echo "ERROR: /ready never returned 200" >&2
+            exit 1
+          fi
 
       - name: Demonstrate SIGTERM drain behaviour
         shell: bash
