@@ -178,6 +178,12 @@ jobs:
       - name: Type check
         run: python -m mypy
 
+      - name: Ruff Stage-2 baseline
+        run: python scripts/check_ruff_full.py
+
+      - name: mypy Stage-2 baseline
+        run: python scripts/check_mypy_strict.py
+
       - name: Unit and contract layers
         run: python -m pytest tests/unit tests/contracts -q
 
