@@ -17,11 +17,19 @@
 #                          auth config is loaded, GitHub API is reachable, or
 #                          OpenClaw binary responds.  Do NOT mark the service
 #                          as production-ready based solely on this signal.
-#                          A real readiness gate (via /ready) is tracked in
-#                          issue #30 (Prometheus + real readiness signals).
-#   readinessProbe:      — OMITTED.  See the detailed note in the spec below.
-#                          /health is not a readiness signal; do NOT re-add until
-#                          issue #30 provides a real /ready endpoint.
+#                          Liveness is deliberately INDEPENDENT of the HA /
+#                          Postgres gate: a database outage must not trigger a
+#                          restart loop.
+#   readinessProbe:      — /ready endpoint (fail-closed readiness gate).
+#                          /ready returns 503 while startup is incomplete,
+#                          while the process is draining after SIGTERM, and —
+#                          when ha.enabled is true — while Postgres is
+#                          unreachable or this instance cannot verify its
+#                          leases.  The pod is therefore held out of the
+#                          Service endpoints until it can actually serve
+#                          traffic.  NEVER point the readiness probe at
+#                          /health: that is a liveness signal, not a
+#                          readiness gate.
 #   resources:           — conservative defaults; tune based on observed p95.
 #
 # OpenClaw runtime delivery:
@@ -163,6 +171,37 @@ spec:
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
+            successThreshold: 1
+
+          # ── Readiness probe ────────────────────────────────────────────────
+          # HTTP GET /ready is the fail-closed readiness gate (ADR-014-2,
+          # ADR-030 R7).  It returns 503 while startup is incomplete, while the
+          # process is draining after SIGTERM, and — when ha.enabled is true —
+          # while Postgres is unreachable or this instance cannot verify its
+          # leases.  A failing readiness probe removes the pod from the Service
+          # endpoints; it does NOT restart the pod.
+          #
+          # Timings are tuned for the startup sequence and the Postgres
+          # connection-pool warm-up:
+          #   initialDelaySeconds 15 — startup validation plus the first pool
+          #                              connect attempt must complete first.
+          #   periodSeconds 10        — responsive endpoint membership changes.
+          #   failureThreshold 6      — 60 s of continuous failure before the
+          #                              pod is taken out of the Service, which
+          #                              tolerates a slow pool warm-up without
+          #                              flapping.
+          #   timeoutSeconds 5        — bounded probe latency.
+          #
+          # NEVER point this at /health: /health is a liveness signal and would
+          # report the pod ready while its dependencies are still broken.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
             successThreshold: 1
 
           # ── Environment variables ──────────────────────────────────────────

@@ -127,6 +127,27 @@ def kustomize_available() -> bool:
     return is_tool_available("kustomize")
 
 
+def _load_yaml_documents(path: Path) -> list[dict[str, Any]]:
+    """Parse *path* as a multi-document YAML file and return the documents."""
+    import yaml
+
+    documents = [
+        doc for doc in yaml.safe_load_all(path.read_text(encoding="utf-8")) if isinstance(doc, dict)
+    ]
+    return documents
+
+
+def _deployment_containers(documents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the application containers of every Deployment in *documents*."""
+    containers: list[dict[str, Any]] = []
+    for doc in documents:
+        if doc.get("kind") != "Deployment":
+            continue
+        pod_spec = doc["spec"]["template"]["spec"]
+        containers.extend(pod_spec.get("containers") or [])
+    return containers
+
+
 def _extract_top_level_block(text: str, key: str) -> str:
     """Return the YAML block that follows a top-level *key*.
 
@@ -799,14 +820,44 @@ class TestKubernetes:
             "embedded CLI mode must not retain a dangling executable volume"
         )
 
-    def test_deployment_uses_pod_fs_group_without_unsupported_readiness_probe(self):
-        """Pod security is rendered; no readiness gate is claimed before /ready exists."""
+    def test_deployment_uses_pod_fs_group_with_readiness_probe_on_ready(self):
+        """Pod security is rendered; readiness is gated on the real /ready endpoint.
+
+        The base manifest declares a readinessProbe on /ready (ADR-030 R7).  The
+        liveness probe stays on /health and is deliberately independent of the
+        HA / Postgres gate, so a database outage cannot cause a restart loop.
+        """
         content = read(K8S_BASE / "deployment.yaml")
         assert "fsGroup: 10001" in content, "fsGroup must be in the Pod spec securityContext"
-        assert not any(
-            line.lstrip().startswith("readinessProbe:")
-            for line in content.splitlines()
-        ), "do not configure readiness against an endpoint not yet implemented (issue #30)"
+        assert "readinessProbe:" in content, (
+            "the base manifest must declare a readinessProbe on the real /ready endpoint"
+        )
+
+        deployment = _load_yaml_documents(K8S_BASE / "deployment.yaml")
+        containers = _deployment_containers(deployment)
+        assert containers, "the base Deployment must define at least one container"
+
+        for container in containers:
+            readiness = container.get("readinessProbe")
+            assert readiness is not None, "every application container needs a readinessProbe"
+            assert readiness["httpGet"]["path"] == "/ready", (
+                "the readiness probe must target /ready, never /health"
+            )
+            liveness = container.get("livenessProbe")
+            assert liveness is not None, "every application container needs a livenessProbe"
+            assert liveness["httpGet"]["path"] == "/health", (
+                "the liveness probe must stay on /health"
+            )
+
+    def test_base_manifest_passes_the_base_manifest_profile(self):
+        """The base profile is exercised against the shipped base manifest.
+
+        The base profile used to be a dead path in CI, so it could drift from
+        k8s/base/deployment.yaml unnoticed.  It must now hold.
+        """
+        from scripts.validate_manifests import PROFILES, validate_manifest_file
+
+        assert validate_manifest_file(K8S_BASE / "deployment.yaml", PROFILES["base"]) == []
 
     def test_network_policy_has_no_public_ingress(self):
         """C.7  NetworkPolicy base has no 0.0.0.0/0 ingress rule.
