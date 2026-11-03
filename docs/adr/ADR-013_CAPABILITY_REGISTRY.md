@@ -27,6 +27,23 @@ Issue #24 tracks the requirement for a trusted capability registry that makes ap
 deterministic: the operator's declared policy always takes precedence over the model's
 judgment.
 
+**Amendment (ADR-032, Issue #133).** The registry alone is not sufficient. The registry
+matches on command text, so it cannot express "this *operation identity* is safe"; it can
+only express "this *text* is safe". Two gaps remained and are now closed:
+
+1. A **free-text model label could still authorise autonomous execution** when the
+   registry did not match, because the fallback path fell back to `option.risk`.
+2. An **allow-list registry entry could re-authorise a destructive operation**, because
+   the registry won unconditionally on a match.
+
+The deterministic trusted classifier (`opsswarm/trusted_classification.py`) now governs
+registry misses, the model label can only escalate risk, and a deny-level destructive
+marker vetoes any registry match.
+
+`PolicyEngine.classify_operation()` is retained for backward compatibility as a
+free-text heuristic helper. It is no longer part of the resolution path; the trusted
+classifier replaces it there.
+
 ---
 
 ## Required Decisions
@@ -163,32 +180,48 @@ use case.
 #### Precedence
 
 ```
-1. capability-registry rule match  →  use registry risk
-2. PolicyEngine.classify_operation  →  use classified risk (escalation only, applied after registry miss)
-3. option.risk                       →  use model-supplied risk (fallback)
+1. deny-level destructive marker       →  destructive (vetoes a registry match)
+2. capability-registry rule match      →  use registry risk
+3. deterministic trusted classifier    →  use classified risk (applied after registry miss)
+4. option.risk                         →  model-supplied risk may only raise the resolved risk
 ```
 
-The `PolicyEngine.classify_operation()` escalation is preserved as a second layer for
-operations not yet in the registry. It continues to run after the registry lookup, and
-its result is used only if the registry did not match. This means the registry and
-`classify_operation` are not redundant — they cover different scopes.
+The registry is authoritative on a match: it may raise *and* lower the model-supplied
+label, and it may reclassify an operation as `safe_write`/`read` even when the model
+called it `risky_write`.
+
+ADR-032 adds one exception to "registry always wins": a **deny-level destructive marker**
+(data loss, namespace destruction, bulk deletion) is never re-authorised by a registry
+rule. A registry entry that classifies an operation as `risky_write` or `safe_write` cannot
+make an irreversible operation executable, and a human approval cannot override it.
+
+Operations not matched by the registry are resolved by the deterministic trusted
+classifier (`opsswarm/trusted_classification.py`). The classifier is not a free-text
+heuristic: it inspects the declared operation identity (the option's capabilities and the
+operation description) against an operator-owned vocabulary. An operation that is not a
+declared identity is *unknown* and is classified as `risky_write`, which routes it to a
+human approval gate. A model-supplied risk label is never sufficient for autonomous
+execution.
 
 #### Precedence pseudocode
 
 ```python
 def resolve_risk(option: RemediationOption, registry: CapabilityRegistry) -> Risk:
+    # Step 0: deny-level destructive markers are never re-authorised
+    trusted = classify_trusted_operation(option.description, option.capabilities)
+    if trusted.deny_level:
+        return Risk.DESTRUCTIVE
+
     # Step 1: registry override (always wins on match)
-    registry_risk = registry.lookup(option.description)
-    if registry_risk is not None:
-        return registry_risk
+    registry_result = registry.lookup(option.description)
+    if registry_result is not None and registry_result.matched:
+        return registry_result.registry_risk
 
-    # Step 2: heuristic escalation (fallback for unregistered operations)
-    classified = PolicyEngine.classify_operation(option.description)
-    if _RISK_ORDER[classified] > _RISK_ORDER[option.risk]:
-        return classified
-
-    # Step 3: model-supplied label
-    return option.risk
+    # Step 2: trusted classifier (fallback for unregistered operations)
+    effective = trusted.effective_risk
+    if _RISK_ORDER[option.risk] > _RISK_ORDER[effective]:
+        effective = option.risk
+    return effective
 ```
 
 The `_RISK_ORDER` is `{read: -1, safe_write: 0, risky_write: 1, destructive: 2}`.
@@ -214,19 +247,18 @@ trail, rollback, and access control via existing repo permissions.
 
 ### D5 — What happens when an unknown operation is encountered?
 
-**Decision: Fail-open for the registry (warning + model label), fail-closed for `classify_operation`.**
+**Decision: Fail-closed for autonomous execution.**
 
-| Scenario | Behavior |
+| Scenario | Behaviour |
 |----------|----------|
-| Registry file is missing or unreadable | Log `WARNING`, use model label. Do not block startup or approval. |
-| Registry file has invalid YAML | Raise `ValueError` at startup. Block startup until fixed. |
-| Registry file has unknown `version` | Raise `ValueError` at startup. |
-| No rule matches the operation | Use `PolicyEngine.classify_operation()` result; if that also yields the model's original label, use model label. Log the unmatched operation at `INFO` level. |
+| Production registry is missing or unreadable | Production startup fails because the registry is required. |
+| Registry file has invalid YAML or an unknown version | Raise `ValueError` at startup; block until fixed. |
+| No rule matches the operation | Apply the deterministic trusted classifier. Recognised safe/read operations may run only if policy allows; risky operations require human approval; destructive operations are denied. Unknown operations require human approval. The model label alone never authorises automatic execution. |
 | Rule matches but `risk` value is invalid | Raise `ValueError` at startup (validation is done once on load, not at match time). |
 
-The asymmetric treatment of missing file vs. invalid file is intentional: a missing file
-means "no registry configured" (operator has not opted in), while an invalid file means
-"registry is misconfigured" (operator tried to configure it and made an error).
+The production registry is required because autonomous remediation must not depend on a
+model-provided risk label. Non-production configurations may omit the registry; in that case
+the trusted classifier still governs, and unknown operations require human approval.
 
 ---
 
@@ -264,9 +296,9 @@ Evidence entries are appended via the existing `EvidenceStore.append()` mechanis
 |----|----------|-----------|
 | D1 | `config/capability-registry.yaml`, path configurable via `capability_registry.path` in `production.yaml` | Operator-authored policy separate from code; uses existing config infrastructure |
 | D2 | YAML schema with `version`, `rules[].id`, `canonical_operation`, `pattern`, `pattern_mode`, `risk` | Matches existing YAML conventions; extensible without breaking existing entries |
-| D3 | Registry always wins on match; `classify_operation()` preserved as a second escalation layer | Deterministic approval requires operator policy as source of truth; existing escalation behavior retained for unregistered ops |
-| D4 | Git-tracked, PR-reviewed, startup validation, no hot reload | Policy-as-code discipline; startup validation catches misconfiguration early |
-| D5 | Missing registry file: warning + model label; invalid YAML/version: block startup; unmatched operation: `classify_operation` then model label | Missing ≠ misconfigured; unmatched operations degrade gracefully with full logging |
+| D3 | Registry wins on match, except that a deny-level destructive marker vetoes the match; deterministic trusted classification is the next authority; model risk can only escalate, never authorise | Deterministic approval requires operator policy as source of truth |
+| D4 | Git-tracked, PR-reviewed, startup validation, no hot reload; production registry required | Policy-as-code discipline; missing production policy blocks autonomous execution |
+| D5 | Missing production registry blocks startup; unmatched operation is classified conservatively; unknown requires approval; destructive is denied | Model-supplied risk is never sufficient for autonomous execution |
 
 ---
 

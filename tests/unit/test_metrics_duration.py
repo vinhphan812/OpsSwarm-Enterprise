@@ -60,7 +60,7 @@ def _safe_workflow_responses():
             "options": [
                 {
                     "id": "restart",
-                    "description": "restart pods",
+                    "description": "deploy.restart",
                     "profile": "recovery-responder",
                     "risk": "safe_write",
                     "estimated_recovery": "2m",
@@ -100,7 +100,7 @@ def _failed_verify_responses():
             "options": [
                 {
                     "id": "restart",
-                    "description": "restart pods",
+                    "description": "deploy.restart",
                     "profile": "recovery-responder",
                     "risk": "safe_write",
                     "estimated_recovery": "2m",

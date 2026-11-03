@@ -1,6 +1,6 @@
 import pytest
 
-from opsswarm.models import *
+from opsswarm.models import RecoveryPlan, RemediationOption, Risk
 from opsswarm.policy import PolicyEngine
 
 
@@ -19,8 +19,18 @@ def engine():
 
 @pytest.mark.unit
 def test_single_safe_auto():
-    p = RecoveryPlan(options=[RemediationOption(id="x", description="safe", risk=Risk.SAFE_WRITE)])
+    # ADR-032: autonomous execution requires a declared operation identity.
+    p = RecoveryPlan(
+        options=[RemediationOption(id="x", description="cache.refresh", risk=Risk.SAFE_WRITE)]
+    )
     assert engine().classify_plan(p)[0] == "AUTO"
+
+
+@pytest.mark.unit
+def test_single_undeclared_operation_requires_approval():
+    """ADR-032: a model risk label alone never authorises autonomous execution."""
+    p = RecoveryPlan(options=[RemediationOption(id="x", description="safe", risk=Risk.SAFE_WRITE)])
+    assert engine().classify_plan(p)[0] == "APPROVAL"
 
 
 @pytest.mark.unit

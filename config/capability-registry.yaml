@@ -9,9 +9,9 @@
 # Decisions (ADR-013):
 #   D1: Standalone YAML file at config/capability-registry.yaml
 #   D2: version + ordered rules with pattern / pattern_mode / risk fields
-#   D3: Registry always wins on match; classify_operation() preserved as escalation layer
-#   D4: Git-tracked, startup validation, no hot reload
-#   D5: Missing file → warning + model label; invalid YAML → ValueError (blocks startup)
+#   D3: Registry always wins on match; trusted classifier governs registry misses; model risk cannot authorize AUTO
+#   D4: Git-tracked, startup validation, no hot reload; production requires registry availability
+#   D5: Unknown or unmatched operations require approval; destructive operations are denied
 #
 # NOTE: Rule order matters. More-specific rules must come BEFORE less-specific ones.
 #       Regex patterns (for destructive) are used BEFORE prefix/contains patterns
