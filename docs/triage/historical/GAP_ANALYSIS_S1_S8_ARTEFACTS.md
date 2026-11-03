@@ -1,8 +1,27 @@
 # Gap Analysis: S1-S8 Operational Artefacts and Authority Contracts
 
+**Status:** SUPERSEDED - see ADR-011 (Skill Artefact Contract, approved)
+
 **Task:** t_076bdc59  
 **Date:** 2026-09-22  
 **Scope:** Reconcile GitHub Issue #2 with skills/s1-intent-guard through skills/s8-orchestration-hub and ADR-006
+
+> **Reading note — this analysis was rejected, not implemented.** The analysis below recommended that each
+> Skill folder contain `scripts/`, `resources/` and `tests/` directories. That recommendation was
+> **superseded by [ADR-011](../../adr/ADR-011_SKILL_ARTEFACT_CONTRACT.md)**, which decides the opposite:
+>
+> > Each Skill folder contains **only** `SKILL.md`. No `scripts/`, `resources/`, or `tests/` directories
+> > are created under `skills/sX/`.
+>
+> The canonical layout is therefore one `SKILL.md` per skill folder, with the skill tests under
+> `tests/unit/skill_s{1-8}/` and the shared validation logic in `opsswarm/validators.py`. The
+> `AGENTS.md` repository instructions state the same rule. The tables below record the state observed on
+> 2026-09-22 and are preserved as the historical record; the "MISSING" entries they list are **not**
+> outstanding work. Issue #2 was closed on 2026-10-03 with ADR-011 as the governing decision.
+>
+> Open audit findings are tracked in the
+> [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md). This analysis contributes no open
+> findings.
 
 ---
 
@@ -62,6 +81,11 @@ description: <one-line>
 ## 3. Gap Analysis
 
 ### 3.1 Missing Artefacts by Category
+
+*The table below is the original analysis as recorded on 2026-09-22, preserved unchanged. Its "ALL MISSING"
+verdicts were **superseded by ADR-011** and are not outstanding gaps: ADR-011 decides that no `scripts/`,
+`resources/` or `tests/` directory is created under `skills/sX/`. The skill tests live under
+`tests/unit/skill_s{1-8}/`.*
 
 | Category       | Status      | Gap Description                                   |
 |----------------|-------------|---------------------------------------------------|

@@ -1,5 +1,12 @@
 # Security and Supply-Chain CI Gate Triage Report
 
+**Status:** RESOLVED - closed in #7 (2026-09-27)
+
+> **Reading note.** This report analyses a closed issue and is retained for audit trail and
+> traceability only. Its findings are not outstanding work. Open audit findings are tracked in
+> the [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
+
+
 **Date:** 2026-09-22
 **Task:** TRIAGE #7: Author security and supply-chain CI gate report
 **Source:** https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/7

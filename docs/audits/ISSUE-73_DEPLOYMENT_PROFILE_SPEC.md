@@ -1,10 +1,22 @@
 # Issue #73 deployment-profile architecture audit and implementation specification
 
-**Status:** implementation-ready design; no deployment artifacts are introduced by this audit.
+**Status:** RESOLVED - closed in #73 (2026-11-02). This document remains the governing specification for
+the container deployment profile; it is not a historical finding.
 
 **Audited revision:** `ade851b` (`origin/master` at audit time)
 
 **Scope:** OCI image, local Compose, Kubernetes profile, deployment security, lifecycle, and delivery evidence for [Issue #73](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/73).
+
+> **Reading note.** This is a **current specification**, retained in `docs/audits/` because it defines the
+> deployment profile the operators must follow. It is not an open finding and is not an audit worklist.
+> Statements such as "no Dockerfile, Compose file, Helm chart, Kustomization, Kubernetes manifest, or
+> image workflow exists at the audited revision" describe the repository at revision `ade851b`; the
+> artefacts were subsequently delivered under #73 and are verified in `Dockerfile`, `docker-compose.yml`,
+> `k8s/` and `.github/workflows/container-delivery.yml`.
+>
+> The residual open findings that arise from this specification — the missing Kubernetes readiness probe
+> and the container-delivery guard — are tracked in the
+> [current audit worklist](CURRENT_AUDIT_WORKLIST.md), each with its owning issue.
 
 ## 1. Executive decision
 

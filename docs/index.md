@@ -57,7 +57,41 @@ CI quality gates are defined in [`.github/workflows/ci.yml`](https://github.com/
 
 ## Audits & Reports
 
-- [Audit Reports](audits/) — Documentation audits, security reviews, and analysis.
+- [Audit Reports index](audits/README.md) — every audit report with its date, scope, status and owning issue.
+
+### Current audit worklist
+
+There is exactly **one** current audit worklist in the repository. Open audit findings are listed there
+and nowhere else, each with the GitHub issue that owns the work:
+
+- [CURRENT_AUDIT_WORKLIST.md](audits/CURRENT_AUDIT_WORKLIST.md) — the single current audit worklist.
+
+### Current specifications
+
+- [ISSUE-73_DEPLOYMENT_PROFILE_SPEC.md](audits/ISSUE-73_DEPLOYMENT_PROFILE_SPEC.md) — governing
+  specification for the OCI, Compose and Kubernetes deployment profile (Issue #73, resolved).
+
+### Historical reports
+
+The reports below are retained for audit trail and traceability only. Each belongs to a closed issue and
+carries a status header stating the outcome of its findings:
+
+- [DOCUMENTATION_IA_AUDIT_2026-09-22.md](triage/historical/DOCUMENTATION_IA_AUDIT_2026-09-22.md) —
+  documentation information architecture audit (resolved).
+- [GAP_ANALYSIS_ISSUE8_RELEASE_WORKFLOW.md](triage/historical/GAP_ANALYSIS_ISSUE8_RELEASE_WORKFLOW.md) —
+  release workflow gap analysis (resolved).
+- [GAP_ANALYSIS_S1_S8_ARTEFACTS.md](triage/historical/GAP_ANALYSIS_S1_S8_ARTEFACTS.md) — per-Skill
+  artefact gap analysis (superseded by ADR-011).
+- [PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md](triage/historical/PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md) —
+  persistence, idempotency and recovery design (resolved).
+
+The full historical index is [triage/historical/README.md](triage/historical/README.md).
+
+## Documentation rules
+
+- One current audit worklist; historical reports under the triage historical area.
+- Only confirmed architectural decisions are promoted to ADRs in [`adr/`](adr/README.md).
+- Resolved findings are removed from current audit content, never presented as outstanding.
 
 ## Additional Resources
 

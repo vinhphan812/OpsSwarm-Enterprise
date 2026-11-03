@@ -1,5 +1,12 @@
 # Release Clean-Install Triage Report
 
+**Status:** RESOLVED - closed in #8 (2026-10-05)
+
+> **Reading note.** This report analyses a closed issue and is retained for audit trail and
+> traceability only. Its findings are not outstanding work. Open audit findings are tracked in
+> the [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
+
+
 **Date:** 2026-09-22
 **Task:** TRIAGE #8: Reproducible release and clean-install gate
 **Source:** https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/8

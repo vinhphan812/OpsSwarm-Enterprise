@@ -288,7 +288,7 @@ class SkillValidator:
 | Document                              | Status          |
 |---------------------------------------|-----------------|
 | ADR-006_SKILL_FRONTMATTER_CONTRACT.md | APPROVED        |
-| GAP_ANALYSIS_S1_S8_ARTEFACTS.md       | Source analysis |
+| [GAP_ANALYSIS_S1_S8_ARTEFACTS.md](../triage/historical/GAP_ANALYSIS_S1_S8_ARTEFACTS.md) | Source analysis (superseded by this ADR) |
 | opsswarm/skill_logic.py               | Production code |
 | opsswarm/orchestrator.py              | Production code |
 | opsswarm/models.py                    | Production code |

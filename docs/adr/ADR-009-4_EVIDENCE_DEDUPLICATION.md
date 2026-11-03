@@ -2,7 +2,7 @@
 
 **Status:** Proposed  
 **Created:** 2026-09-22  
-**Related:** Issue #9, PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md
+**Related:** Issue #9, [PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md](../triage/historical/PERSISTENCE_IDEMPOTENCY_TRIAGE-9.md)
 
 ## Context
 
