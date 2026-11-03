@@ -17,8 +17,8 @@
 7. [Rollback Procedure](#rollback-procedure)
 8. [Schema Migrations](#schema-migrations)
 9. [Canary Rollout Procedure](#canary-rollout-procedure)
-10. [Evidence Migration](#evidence-migration)
-11. [Rate-Limit Degraded Mode](#rate-limit-degraded-mode)
+10. [Rate-Limit Degraded Mode](#rate-limit-degraded-mode)
+11. [Evidence Migration](#evidence-migration)
 
 ---
 

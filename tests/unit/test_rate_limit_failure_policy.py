@@ -25,18 +25,23 @@ from __future__ import annotations
 import logging
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+import opsswarm
 import opsswarm.auth as auth_module
 from opsswarm.metrics import metrics
 from opsswarm.rate_limit_errors import (
     RateLimitInfrastructureError,
     RateLimitProgrammingError,
 )
+
+# Sentinel for "the parent package has no such attribute", distinct from None.
+_MISSING = object()
 
 
 def _reset_limiter() -> None:
@@ -54,6 +59,45 @@ def _stub_shared_store(side_effect: BaseException) -> AsyncMock:
     stub = AsyncMock()
     stub.check_rate_limit_pg = AsyncMock(side_effect=side_effect)
     return stub
+
+
+@contextmanager
+def _patched_shared_store(stub: AsyncMock):
+    """Patch the shared store into place so the stub is what the code sees.
+
+    ``opsswarm.auth`` resolves the store with a package-relative import
+    (``from . import ha_db``).  That form reads the attribute already bound on
+    the parent package, so patching ``sys.modules`` alone is not enough once
+    the real module has been imported by an earlier test: the real module
+    would win and the stub would never be exercised.
+
+    Patch both the ``sys.modules`` entry and the parent-package attribute so
+    the substitution is effective regardless of import form and of test
+    ordering.
+
+    Passing ``None`` simulates the module being unavailable (the optional
+    ``ha`` extra is not installed).  In that case the ``sys.modules`` entry
+    must be ``None`` and the parent attribute must be removed, because that
+    combination is what makes the import raise ``ImportError`` - the same
+    failure production sees.
+    """
+    if stub is None:
+        saved = getattr(opsswarm, "ha_db", _MISSING)
+        with patch.dict(sys.modules, {"opsswarm.ha_db": None}):
+            if saved is not _MISSING:
+                delattr(opsswarm, "ha_db")
+            try:
+                yield None
+            finally:
+                if saved is not _MISSING:
+                    opsswarm.ha_db = saved
+        return
+
+    with (
+        patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+        patch.object(opsswarm, "ha_db", stub, create=True),
+    ):
+        yield stub
 
 
 class TestSharedRateLimitFailurePolicy:
@@ -75,7 +119,7 @@ class TestSharedRateLimitFailurePolicy:
                     "opsswarm.auth._ha_config",
                     return_value={"rate_limit_table_enabled": True},
                 ),
-                patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+                _patched_shared_store(stub),
             ):
                 allowed_first, _ = await auth_module.check_monitoring_rate_limit_async("ip-a")
                 allowed_second, retry_after = await auth_module.check_monitoring_rate_limit_async("ip-a")
@@ -96,7 +140,7 @@ class TestSharedRateLimitFailurePolicy:
                 "opsswarm.auth._ha_config",
                 return_value={"rate_limit_table_enabled": True},
             ),
-            patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+            _patched_shared_store(stub),
         ):
             await auth_module.check_monitoring_rate_limit_async("ip-b")
 
@@ -115,7 +159,7 @@ class TestSharedRateLimitFailurePolicy:
                 "opsswarm.auth._ha_config",
                 return_value={"rate_limit_table_enabled": True},
             ),
-            patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+            _patched_shared_store(stub),
         ):
             with pytest.raises(RateLimitProgrammingError):
                 await auth_module.check_monitoring_rate_limit_async("ip-c")
@@ -136,7 +180,7 @@ class TestSharedRateLimitFailurePolicy:
                 "opsswarm.auth._ha_config",
                 return_value={"rate_limit_table_enabled": True},
             ),
-            patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+            _patched_shared_store(stub),
             patch.object(
                 api_module,
                 "_get_real_client_ip",
@@ -175,7 +219,7 @@ class TestSharedRateLimitFailurePolicy:
                 "opsswarm.auth._ha_config",
                 return_value={"rate_limit_table_enabled": True},
             ),
-            patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+            _patched_shared_store(stub),
         ):
             with caplog.at_level(logging.WARNING, logger="opsswarm.auth"):
                 await auth_module.check_monitoring_rate_limit_async("ip-e")
@@ -192,7 +236,7 @@ class TestSharedRateLimitFailurePolicy:
                 "opsswarm.auth._ha_config",
                 return_value={"rate_limit_table_enabled": True},
             ),
-            patch.dict(sys.modules, {"opsswarm.ha_db": None}),
+            _patched_shared_store(None),
         ):
             allowed, retry_after = await auth_module.check_monitoring_rate_limit_async("ip-f")
         assert allowed is True
