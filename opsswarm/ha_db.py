@@ -22,15 +22,51 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, AsyncGenerator
 
 import psycopg
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 
 from .config import get_ha, load_config
+from .rate_limit_errors import (
+    RateLimitInfrastructureError,
+    RateLimitProgrammingError,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit failure classes (Issue #127)
+#
+# The shared PostgreSQL rate limiter distinguishes two failure modes:
+#
+# - an *infrastructure* outage, where the database cannot be reached at all
+#   (connection refused, timeout, DNS failure, pool exhausted).  This is
+#   transient and external to the request, so the caller is throttled by a
+#   bounded local fallback instead of being waved through.
+# - a *programming* defect, where the database is reachable but the query or
+#   the schema is wrong (missing table, bad SQL, schema mismatch).  That is a
+#   deployment fault and must not be masked at runtime, so it propagates.
+# ---------------------------------------------------------------------------
+
+# Exceptions that mean "the database could not be reached" rather than "the
+# query or the schema is wrong".  ``psycopg.OperationalError`` covers
+# connection refused, timeout and DNS failure; ``psycopg.InterfaceError``
+# covers a closed or unusable connection.  A missing table or invalid SQL
+# raises ``psycopg.ProgrammingError`` / ``psycopg.errors.UndefinedTable``,
+# which are deliberately *not* in this tuple.
+_INFRASTRUCTURE_ERRORS: tuple[type[BaseException], ...] = tuple(
+    exc_type
+    for exc_type in (
+        psycopg.OperationalError,
+        psycopg.InterfaceError,
+        ConnectionError,
+        TimeoutError,
+    )
+    if exc_type is not None
+)
 
 # ----------------------------------------------------------------------
 # Instance identification
@@ -65,17 +101,21 @@ def reset_instance_id() -> None:
 # ----------------------------------------------------------------------
 
 # Lazy-initialized async connection pool
-_connection_pool: asyncio.Queue[AsyncConnection] | None = None
+_connection_pool: asyncio.Queue[AsyncConnection[dict[str, Any]]] | None = None
 _pool_size = 5
 
 
-async def _create_pool(database_url: str) -> asyncio.Queue[AsyncConnection]:
+async def _create_pool(
+    database_url: str,
+) -> asyncio.Queue[AsyncConnection[dict[str, Any]]]:
     """Create a pool of async PostgreSQL connections."""
     global _connection_pool
     if _connection_pool is not None:
         return _connection_pool
 
-    pool = asyncio.Queue(maxsize=_pool_size)
+    pool: asyncio.Queue[AsyncConnection[dict[str, Any]]] = asyncio.Queue(
+        maxsize=_pool_size
+    )
     for _ in range(_pool_size):
         conn = await AsyncConnection.connect(
             database_url,
@@ -88,7 +128,7 @@ async def _create_pool(database_url: str) -> asyncio.Queue[AsyncConnection]:
     return pool
 
 
-async def _get_connection() -> AsyncConnection:
+async def _get_connection() -> AsyncConnection[dict[str, Any]]:
     """Get a connection from the pool."""
     global _connection_pool
     cfg = get_ha(load_config())
@@ -98,11 +138,19 @@ async def _get_connection() -> AsyncConnection:
     if _connection_pool is None:
         await _create_pool(cfg["database_url"])
 
+    pool = _connection_pool
+    if pool is None:  # pragma: no cover - defensive; _create_pool always sets it
+        raise RuntimeError("HA connection pool could not be created")
+
     # Wait for a connection with timeout
     try:
-        conn = await asyncio.wait_for(_connection_pool.get(), timeout=5.0)
-    except asyncio.TimeoutError:
-        raise RuntimeError("Timeout waiting for database connection")
+        conn = await asyncio.wait_for(pool.get(), timeout=5.0)
+    except asyncio.TimeoutError as exc:
+        # Pool exhaustion is an infrastructure outage, not a defect.  Raising
+        # TimeoutError keeps it inside the infrastructure failure class so the
+        # caller falls back instead of treating it as a deployment fault
+        # (Issue #127).
+        raise TimeoutError("Timeout waiting for database connection") from exc
 
     # Check if connection is still alive
     if conn.closed:
@@ -117,7 +165,7 @@ async def _get_connection() -> AsyncConnection:
     return conn
 
 
-async def _return_connection(conn: AsyncConnection) -> None:
+async def _return_connection(conn: AsyncConnection[dict[str, Any]]) -> None:
     """Return a connection to the pool."""
     global _connection_pool
     if _connection_pool is not None and not conn.closed:
@@ -125,7 +173,7 @@ async def _return_connection(conn: AsyncConnection) -> None:
 
 
 @asynccontextmanager
-async def get_db() -> AsyncGenerator[AsyncConnection, None]:
+async def get_db() -> AsyncGenerator[AsyncConnection[dict[str, Any]], None]:
     """Context manager for database operations.
 
     Yields an async connection from the pool. The connection is automatically
@@ -279,11 +327,32 @@ async def check_rate_limit_pg(
             )
             return True, 0
 
-    except Exception as e:
-        logger.error("Rate limit check failed: %s", e)
-        # Fail-open on database errors to avoid blocking service
-        # TODO: Could fail-closed by raising, but that would cause total outage
-        return True, 0
+    except _INFRASTRUCTURE_ERRORS as exc:
+        # The database cannot be reached (connection refused, timeout, DNS
+        # failure, pool exhausted).  This is an outage, not a defect: the
+        # caller is throttled by a bounded local fallback instead of being
+        # waved through (Issue #127).
+        logger.warning(
+            "Shared rate-limit store unreachable (%s); "
+            "falling back to the bounded local limit",
+            type(exc).__name__,
+        )
+        raise RateLimitInfrastructureError(
+            "The shared rate-limit store is unreachable."
+        ) from exc
+    except Exception as exc:
+        # A programming or schema defect (missing table, bad SQL, mismatched
+        # schema) is a deployment fault, not an outage.  Masking it at runtime
+        # would hide the defect, so it propagates (Issue #127).
+        logger.error(
+            "Shared rate-limit store rejected the query (%s); "
+            "the rate-limit schema is not usable as deployed",
+            type(exc).__name__,
+        )
+        raise RateLimitProgrammingError(
+            "The shared rate-limit store rejected the query; "
+            "the rate-limit schema is not usable as deployed."
+        ) from exc
 
 
 async def prune_expired_rate_limits() -> int:

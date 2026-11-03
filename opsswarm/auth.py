@@ -34,6 +34,7 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
+import importlib
 import logging
 import os
 import re
@@ -43,6 +44,11 @@ from typing import Final, Optional
 from fastapi import HTTPException, Request
 
 from .config import DEFAULT_MONITORING, get_ha, get_monitoring, load_config
+from .metrics import metrics
+from .rate_limit_errors import (
+    RateLimitInfrastructureError,
+    RateLimitProgrammingError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -204,7 +210,9 @@ class _PgRateLimiter:
         """Return (allowed, retry_after_seconds).
 
         Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
-        Falls back to in-memory limiter when HA is disabled or on errors.
+        When the shared store is unreachable the request is throttled by the
+        bounded local limit rather than waved through (Issue #127).  A schema
+        or programming defect propagates instead of being masked.
         """
         cfg = _ha_config()
 
@@ -214,23 +222,60 @@ class _PgRateLimiter:
             return _monitoring_limiter.is_allowed(source_id)
 
         try:
-            # Import here to avoid import errors when psycopg is not installed
-            from . import ha_db
+            # Resolve the module through importlib so the lookup consults
+            # ``sys.modules`` first.  The base package must work without the
+            # optional ``ha`` extra installed, and the lookup must be
+            # deterministic for callers that substitute the module.
+            ha_db = importlib.import_module("opsswarm.ha_db")
+        except ImportError as exc:
+            # The shared store cannot be used because its driver is not
+            # installed.  That is an unavailable store, not a schema defect:
+            # throttle through the bounded local limit and say so.
+            logger.warning(
+                "Shared rate-limit store is unavailable (%s); "
+                "applying the bounded local limit",
+                type(exc).__name__,
+            )
+            metrics.record_rate_limit_degraded("infrastructure")
+            return _rate_limit_fallback.is_allowed(source_id)
+
+        try:
             return await ha_db.check_rate_limit_pg(
                 source_id,
                 self._max,
                 self._window
             )
-        except Exception as e:
-            logger.warning("PgRateLimiter failed, falling back to in-memory: %s", e)
-            return _monitoring_limiter.is_allowed(source_id)
+        except RateLimitInfrastructureError as exc:
+            # The shared store is down.  Throttle with the bounded local limit
+            # instead of allowing the request, and make the degraded mode
+            # observable through the metrics endpoint (Issue #127).
+            logger.warning(
+                "Shared rate-limit store unavailable (%s); "
+                "applying the bounded local limit",
+                type(exc).__name__,
+            )
+            metrics.record_rate_limit_degraded("infrastructure")
+            return _rate_limit_fallback.is_allowed(source_id)
+        except RateLimitProgrammingError:
+            # A deployment defect.  Propagate: masking it would hide the fault.
+            logger.error(
+                "Shared rate-limit store is misconfigured; "
+                "the request is not rate limited"
+            )
+            metrics.record_rate_limit_degraded("programming")
+            raise
 
 
-# Default monitoring limiter - uses in-memory by default, switches to pg when enabled
+# Default monitoring limiter - uses in-memory by default, switches to pg when HA is enabled
 _monitoring_limiter = _SimpleRateLimiter(
     max_requests=MONITORING_RATE_LIMIT,
     window_seconds=60,
 )
+
+# During a shared-store outage, use a deliberately stricter per-process quota.
+# This is bounded by the limiter's existing bucket cap and allows only five
+# requests per source per minute rather than the normal twenty.
+_rate_limit_fallback = _SimpleRateLimiter(max_requests=5, window_seconds=60)
 
 # PostgreSQL-backed limiter (used when ha.rate_limit_table_enabled=true)
 _monitoring_limiter_pg = _PgRateLimiter(
@@ -252,7 +297,9 @@ async def _start_rate_limit_pruner() -> None:
             await asyncio.sleep(3600)  # 1 hour
             cfg = _ha_config()
             if cfg.get("rate_limit_table_enabled"):
-                from . import ha_db
+                # importlib consults sys.modules first, so the lookup is
+                # deterministic for callers that substitute the module.
+                ha_db = importlib.import_module("opsswarm.ha_db")
                 await ha_db.prune_expired_rate_limits()
         except asyncio.CancelledError:
             break
@@ -669,30 +716,17 @@ def check_monitoring_body_size(content_length: int | None) -> None:
         )
 
 
-def check_monitoring_rate_limit(source_id: str) -> tuple[bool, int]:
-    """Return (allowed, retry_after_seconds) for monitoring endpoint.
-
-    Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
-    Falls back to in-memory limiter when HA is disabled or on errors.
-    """
-    cfg = _ha_config()
-
-    if cfg.get("rate_limit_table_enabled"):
-        # Use async PostgreSQL-backed limiter
-        # Note: This is a sync function, but we need to call async code
-        # The monitoring endpoint is async, so we need a different approach
-        # For now, we use the sync in-memory limiter but log a warning
-        logger.debug("Using PostgreSQL-backed rate limiter (via async)")
-        # TODO: Refactor to use async call from async context
-
-    return _monitoring_limiter.is_allowed(source_id)
-
-
 async def check_monitoring_rate_limit_async(source_id: str) -> tuple[bool, int]:
-    """Async version of check_monitoring_rate_limit for use in async endpoints.
+    """Return (allowed, retry_after_seconds) for the monitoring endpoint.
 
     Uses PostgreSQL-backed rate limiting when ha.rate_limit_table_enabled=true.
-    Falls back to in-memory limiter when HA is disabled or on errors.
+    When the shared store is unreachable the request is throttled by the
+    bounded local limit rather than waved through (Issue #127).  A schema or
+    programming defect propagates instead of being masked.
+
+    This is the only monitoring rate-limit entry point.  The previous
+    synchronous variant silently returned in-memory verdicts under an HA
+    configuration, so it was removed rather than kept as a trap (Issue #127).
     """
     cfg = _ha_config()
 

@@ -18,6 +18,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import opsswarm.auth as auth_module
+from opsswarm.rate_limit_errors import (
+    RateLimitInfrastructureError,
+    RateLimitProgrammingError,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -82,16 +86,49 @@ class TestPgRateLimiter:
         stub.check_rate_limit_pg.assert_awaited_once_with("source-2", 5, 60)
 
     async def test_falls_back_to_in_memory_when_postgres_raises(self):
+        """An infrastructure outage falls back to the bounded local limit."""
         limiter = auth_module._PgRateLimiter(max_requests=5, window_seconds=60)
-        stub = MagicMock()
-        stub.check_rate_limit_pg = AsyncMock(side_effect=RuntimeError("connection refused"))
         with (
-            patch("opsswarm.auth._ha_config", return_value={"rate_limit_table_enabled": True}),
-            patch.dict(sys.modules, {"opsswarm.ha_db": stub}),
+            patch(
+                "opsswarm.auth._ha_config",
+                return_value={"rate_limit_table_enabled": True},
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "opsswarm.ha_db": MagicMock(
+                        check_rate_limit_pg=AsyncMock(
+                            side_effect=RateLimitInfrastructureError("unreachable")
+                        )
+                    )
+                },
+            ),
         ):
             allowed, retry_after = await limiter.is_allowed("source-3")
         assert allowed is True
         assert retry_after == 0
+
+    async def test_programming_error_is_not_masked(self):
+        """A schema defect propagates instead of falling back (Issue #127)."""
+        limiter = auth_module._PgRateLimiter(max_requests=5, window_seconds=60)
+        with (
+            patch(
+                "opsswarm.auth._ha_config",
+                return_value={"rate_limit_table_enabled": True},
+            ),
+            patch.dict(
+                sys.modules,
+                {
+                    "opsswarm.ha_db": MagicMock(
+                        check_rate_limit_pg=AsyncMock(
+                            side_effect=RateLimitProgrammingError("schema is not usable")
+                        )
+                    )
+                },
+            ),
+        ):
+            with pytest.raises(RateLimitProgrammingError):
+                await limiter.is_allowed("source-4")
 
 
 class TestMonitoringRateLimit:
@@ -114,9 +151,19 @@ class TestMonitoringRateLimit:
         assert allowed is True
         stub.check_rate_limit_pg.assert_awaited_once()
 
-    def test_sync_variant_uses_in_memory_limiter(self):
+    async def test_sync_entry_point_no_longer_exists(self):
+        """The misleading synchronous entry point was removed (Issue #127).
+
+        It used to return the in-memory verdict while the operator believed
+        the shared PostgreSQL limiter was active.  A caller must not be able
+        to reach in-memory semantics by accident, so the function is gone
+        rather than kept as a trap.
+        """
+        assert not hasattr(auth_module, "check_monitoring_rate_limit")
+
+    async def test_async_uses_in_memory_limiter_when_disabled(self):
         with patch("opsswarm.auth._ha_config", return_value={"rate_limit_table_enabled": False}):
-            allowed, retry_after = auth_module.check_monitoring_rate_limit("ip-3")
+            allowed, retry_after = await auth_module.check_monitoring_rate_limit_async("ip-3")
         assert allowed is True
         assert retry_after == 0
 

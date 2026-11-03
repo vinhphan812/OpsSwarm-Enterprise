@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import os
 
@@ -16,14 +17,13 @@ from .auth import (
     _probe_scope_from_bearer,
     admin_scope,
     check_monitoring_body_size,
-    check_monitoring_rate_limit,
     read_scope,
     reload_auth_config,
     verify_scoped_bearer,
     write_scope,
 )
 from .commands import parse_command
-from .config import get_github, get_ha, get_monitoring, load_config
+from .config import get_github, get_ha, load_config
 from .errors import new_correlation_id, sanitize_for_log
 from .github_client import (
     GitHubClient,
@@ -34,6 +34,7 @@ from .logging_config import reset_corr_id, set_corr_id
 from .metrics import metrics
 from .openclaw import OpenClawClient
 from .orchestrator import Orchestrator
+from .rate_limit_errors import RateLimitProgrammingError
 from .runtime import check_draining, get_readiness
 from .webhook import verify_signature
 
@@ -217,7 +218,7 @@ async def ready():
     # HA enabled: ha_db is only imported when HA is active.
     # This avoids a hard psycopg dependency in legacy (ha.enabled=false) mode.
     try:
-        from . import ha_db  # noqa: F401
+        ha_db = importlib.import_module("opsswarm.ha_db")  # noqa: F401
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -447,8 +448,25 @@ async def monitoring_event(request: Request):
         # Fallback: client IP (proxy-aware)
         rate_key = source_ip
 
-    # Use async rate limiter to support PostgreSQL-backed rate limiting
-    allowed, retry_after = await auth_module.check_monitoring_rate_limit_async(rate_key)
+    # Use async rate limiter to support PostgreSQL-backed rate limiting.
+    # A shared-store defect is a deployment fault, so the request is rejected
+    # rather than admitted without a limit.  The response is deliberately
+    # generic: the caller must not learn anything about the database
+    # (Issue #127).
+    try:
+        allowed, retry_after = await auth_module.check_monitoring_rate_limit_async(rate_key)
+    except RateLimitProgrammingError as exc:
+        corr_id = new_correlation_id()
+        logger.error(
+            "Shared rate-limit store is misconfigured [%s] (%s)",
+            corr_id,
+            type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Rate limiting is unavailable",
+            headers={"X-Correlation-Id": corr_id},
+        ) from None
     if not allowed:
         raise HTTPException(
             status_code=429,

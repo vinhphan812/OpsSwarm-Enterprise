@@ -166,7 +166,9 @@ async def test_monitoring_dispatch_remains_tracked_after_handler_returns(monkeyp
 
     monkeypatch.setattr(api_module.engine, "start_issue", background_work)
     monkeypatch.setattr(api_module, "check_monitoring_body_size", lambda *args: None)
-    monkeypatch.setattr(api_module, "check_monitoring_rate_limit", lambda *args: (True, 0))
+    monkeypatch.setattr(
+        auth_module, "check_monitoring_rate_limit_async", AsyncMock(return_value=(True, 0))
+    )
     monkeypatch.setattr(api_module, "_get_real_client_ip", lambda *args: "127.0.0.1")
     monkeypatch.setattr(api_module, "_probe_scope_from_bearer", AsyncMock(return_value=auth_module.SCOPE_MONITOR))
     monkeypatch.setattr(api_module, "verify_scoped_bearer", AsyncMock(return_value=auth_module.SCOPE_MONITOR))
