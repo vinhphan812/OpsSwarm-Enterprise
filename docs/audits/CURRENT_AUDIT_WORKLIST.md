@@ -16,19 +16,21 @@ current specification referenced by production code, or a historical report reta
 
 | Finding | Owning issue | Area | State |
 |---------|--------------|------|-------|
-| Static-analysis baseline file `.static_analysis_baseline.toml` is absent from `master`, so the Ruff and
-mypy Stage-2 gate scripts cannot enforce a baseline | [#124](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/124) | CI quality gates | Open |
-| `k8s/base/deployment.yaml` declares no `readinessProbe`, and the repository's own manifest validator rejects
-the base profile without one | [#125](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/125) | Deployment | Open |
-| `.github/workflows/container-delivery.yml` still fails the build if a `readinessProbe` appears, although
-`/ready` now exists | [#126](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/126) | CI | Open |
-| The shared HA rate limiter in `opsswarm/ha_db.py` fails open on database errors, and the synchronous
-`check_monitoring_rate_limit` entry point in `opsswarm/auth.py` silently returns in-memory semantics
-under an HA configuration | [#127](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/127) | Resilience | Open |
+| _None. This worklist currently records no open audit findings._ | - | - | - |
 
 **This list is exhaustive for the audits covered by this worklist.** There are no further open audit
 findings: the documentation information architecture audit and the Issue #8 release workflow gap analysis
 both have an empty open-finding set (see below).
+
+The findings previously listed here have all been resolved and their owning issues closed, so they are
+no longer restated as open work:
+
+| Former finding | Owning issue | Resolution |
+|----------------|--------------|------------|
+| The static-analysis baseline file `.static_analysis_baseline.toml` was absent from `master`, so the Ruff and mypy Stage-2 gate scripts could not enforce a baseline | [#124](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/124) | Closed: the baseline file is tracked and both gate scripts enforce it |
+| `k8s/base/deployment.yaml` declared no `readinessProbe`, and the repository's own manifest validator rejected the base profile without one | [#125](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/125) | Closed: the base profile declares a readiness probe and the manifest validator enforces it |
+| `.github/workflows/container-delivery.yml` still failed the build if a `readinessProbe` appeared, although `/ready` now exists | [#126](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/126) | Closed: the container-delivery workflow accepts the readiness probe |
+| The shared HA rate limiter in `opsswarm/ha_db.py` failed open on database errors, and the synchronous `check_monitoring_rate_limit` entry point in `opsswarm/auth.py` silently returned in-memory semantics under an HA configuration | [#127](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/127) | Closed: the failure policy is explicit (bounded local fallback on an outage, propagation on a schema defect), the degraded mode is observable, and the synchronous entry point is removed |
 
 ## Audits with no open findings
 
