@@ -1,9 +1,16 @@
 # Documentation Information Architecture Audit
 
+**Status:** RESOLVED - closed in #2 and #3 (2026-10-03); remaining documentation drift closed in #25 (2026-10-05)
+
 **Audit Date:** 2026-09-22  
 **Auditor:** dev-pm (Kanban task t_5a16be33)  
 **Repository:** https://github.com/vinhphan812/OpsSwarm-Enterprise
 **Scope:** docs/ directory, root README links, documentation classification
+
+> **Reading note.** The analysis below is the historical record of the audit as it was written on
+> 2026-09-22. It is preserved verbatim. Where the original text describes a defect as open, that
+> statement is superseded by the resolution notes in §4.1a, §8a and §11a. The current truth about open
+> audit findings is the [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
 
 ---
 
@@ -104,6 +111,25 @@ The root `README.md` (15,738 bytes, tracked) contains the following doc links:
 | **P2**   | No `docs/audits/` directory                                  | No standard location for audit reports | Low    |
 | **P3**   | 11 triage artifacts in flat `docs/`                          | Clutter, harder navigation             | Medium |
 | **P3**   | No `docs/guides/` for contracts/specs                        | Contracts mixed with operational docs  | Medium |
+
+### 4.1a Priority items — resolution status (added 2026-11-02, issue #128)
+
+All four priority items in §4.1 were resolved by the v2.2 documentation restructure. The artefact that
+resolved each item is named below.
+
+| Priority | Finding                                          | Status now | Artefact that resolved it                                                                 |
+|----------|--------------------------------------------------|------------|------------------------------------------------------------------------------------------|
+| **P1**   | No `docs/index.md` or `docs/README.md`            | **RESOLVED** | [`docs/index.md`](../../index.md) and [`docs/README.md`](../../README.md) exist as the entry points |
+| **P1**   | ADR-006 in root instead of `docs/adr/`           | **RESOLVED** | [`docs/adr/ADR-006_SKILL_FRONTMATTER_CONTRACT.md`](../../adr/ADR-006_SKILL_FRONTMATTER_CONTRACT.md) |
+| **P2**   | No `docs/adr/README.md`                          | **RESOLVED** | [`docs/adr/README.md`](../../adr/README.md) is the ADR index |
+| **P2**   | No `docs/audits/` directory                      | **RESOLVED** | [`docs/audits/`](../../audits/) exists and now has its own index, [`docs/audits/README.md`](../../audits/README.md) |
+
+The two P3 items were also resolved: the triage artefacts now live under
+[`docs/triage/`](../../triage/) with the historical set under
+[`docs/triage/historical/`](../../triage/historical/), and the contracts, specs and policies moved to
+[`docs/guides/`](../../guides/).
+
+**Open findings:** none. See the [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
 
 ### 4.2 Naming Convention Defects
 
@@ -241,6 +267,20 @@ docs/
 | ADR permanence                          | Keep forever OR archive after v2.2               | ADRs are permanent architectural records                |
 | docs/audits/ contents after reorg       | Keep all audit reports                           | Yes, for traceability                                   |
 
+### 8a Unresolved decisions — outcome (added 2026-11-02, issue #128)
+
+Each decision below has since been taken. The original question is preserved above; the outcome is
+recorded here.
+
+| Decision | Outcome | Where it is recorded |
+|----------|---------|----------------------|
+| Keep or delete triage files after v2.2? | **Kept.** The triage artefacts are retained for traceability. Historical reports live under [`docs/triage/historical/`](../../triage/historical/), each with a status header stating whether its findings are resolved. | [`docs/triage/historical/README.md`](../../triage/historical/README.md) |
+| Naming convention for new files | **Kebab-case adopted** for new prose documents; the ADR set keeps its `ADR-NNN_NAME.md` convention, which is a naming standard rather than a defect. | [`docs/adr/README.md`](../../adr/README.md) |
+| ADR permanence | **ADRs are permanent architectural records.** They are never archived or deleted; they are superseded by a later ADR, never rewritten in place. | [`docs/adr/README.md`](../../adr/README.md) |
+| docs/audits/ contents after reorg | **All audit reports kept.** Current reports are indexed by [`docs/audits/README.md`](../../audits/README.md); resolved reports were moved to the historical area with a status header. | [`docs/audits/README.md`](../../audits/README.md) |
+
+No decision in §8 remains open.
+
 ---
 
 ## 9. Validation Plan for Follow-up Work
@@ -275,6 +315,10 @@ git status docs/
 
 **No other files modified** — audit is non-destructive.
 
+*Since 2026-11-02 (issue #128) this report lives at
+[`docs/triage/historical/DOCUMENTATION_IA_AUDIT_2026-09-22.md`](./DOCUMENTATION_IA_AUDIT_2026-09-22.md)
+and is indexed by [`docs/audits/README.md`](../../audits/README.md).*
+
 ---
 
 ## 11. Follow-up Kanban Cards
@@ -285,6 +329,17 @@ To be created after this audit is reviewed:
 2. **Batch 2: Move ADR-006 to adr/** — Assign: dev-pm
 3. **Batch 3: Separate guides and triage** — Assign: dev-pm
 4. **Batch 4: Final validation** — Assign: dev-reviewer
+
+### 11a Follow-up Kanban cards — status (added 2026-11-02, issue #128)
+
+All four batches were executed as part of the v2.2 delivery. No batch remains unstarted.
+
+| Batch | Scope | Status | Evidence |
+|-------|-------|--------|----------|
+| 1 | Create `docs/index.md` and `docs/adr/README.md` | **DONE** | [`docs/index.md`](../../index.md), [`docs/adr/README.md`](../../adr/README.md) |
+| 2 | Move ADR-006 into `docs/adr/` | **DONE** | [`docs/adr/ADR-006_SKILL_FRONTMATTER_CONTRACT.md`](../../adr/ADR-006_SKILL_FRONTMATTER_CONTRACT.md) |
+| 3 | Separate `docs/guides/` and `docs/triage/` | **DONE** | [`docs/guides/`](../../guides/), [`docs/triage/`](../../triage/), [`docs/triage/historical/`](../../triage/historical/) |
+| 4 | Final validation | **DONE** | `python docs/validate.py` is the CI documentation gate (linkcheck plus code-example tests) |
 
 ---
 

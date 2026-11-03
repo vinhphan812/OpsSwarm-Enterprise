@@ -1,11 +1,43 @@
 # GAP ANALYSIS: Issue #8 Release Workflow
 
+**Status:** RESOLVED - closed in #8 (2026-10-05)
+
 **Task:** t_445c6a63
 **Auditor:** dev-ops
 **Date:** 2026-09-22
-**Status:** ANALYSIS COMPLETE
+**Analysis status:** ANALYSIS COMPLETE (original text, preserved below)
+
+> **Reading note.** The analysis below is the historical record of the gap analysis as it was written on
+> 2026-09-22, and is preserved verbatim under the heading *Original analysis (2026-09-22)*. The three
+> artefacts the original analysis recorded as missing are now present; the corrected inventory is in
+> *Current evidence inventory* above. Open audit findings are tracked in the
+> [current audit worklist](../../audits/CURRENT_AUDIT_WORKLIST.md).
 
 ---
+
+## Current evidence inventory (updated 2026-11-02, issue #128)
+
+| File                                                 | Status now | Evidence                                                                      |
+| ---------------------------------------------------- | ----------- | ------------------------------------------------------------------------------ |
+| `.github/workflows/release.yml`                      | EXISTS      | 488 lines, well-structured                                                    |
+| `requirements.txt`                                   | EXISTS      | Correct format                                                                |
+| `requirements.lock`                                  | EXISTS      | pip-tools hash lock                                                           |
+| `scripts/smoke-wheel.py`                             | EXISTS      | Full smoke harness                                                            |
+| `docs/guides/RELEASE_POLICY.md`                      | EXISTS      | Policy document                                                               |
+| `docs/adr/ADR-008_DEPENDENCY_LOCK_RELEASE_POLICY.md` | EXISTS      | ADR document                                                                  |
+| `docs/adr/ADR-010_SECURITY_WORKFLOW_AND_POLICY.md`   | EXISTS      | Security ADR                                                                  |
+| `scripts/validate-artifacts.py`                      | **PRESENT** | 366 lines; invoked from `release.yml:361` and `release.yml:395`                 |
+| `artifacts/` directory                               | **PRESENT** | `artifacts/.gitkeep`; `.gitignore` entries `artifacts/*`, `!artifacts/.gitkeep`, `!artifacts/issue-75-qa-report.md` |
+| `.github/workflows/security.yml`                     | **PRESENT** | 285 lines                                                                      |
+
+**All three artefacts previously recorded as missing now exist.** The original findings 1, 2 and 3 are
+therefore closed. The remaining findings in the original analysis (4 to 8) were either false positives
+corrected in the original text, non-blocking code smells, or operational assumptions outside the scope of
+this issue. No finding from this analysis remains open.
+
+---
+
+## Original analysis (2026-09-22)
 
 ## Executive Summary
 
@@ -17,6 +49,10 @@ created.
 ---
 
 ## Evidence Inventory: What Was Audited
+
+*The table below is the original inventory as recorded on 2026-09-22, preserved unchanged. The corrected
+inventory is in [Current evidence inventory](#current-evidence-inventory-updated-2026-11-02-issue-128)
+above.*
 
 | File                                                 | Status      | Notes                                                         |
 | ---------------------------------------------------- | ----------- | ------------------------------------------------------------- |
@@ -243,6 +279,10 @@ This is correct — `PROVENANCE.md` is retained only in the workflow artifact (3
 
 ## Summary Table
 
+*The table below is the original summary as recorded on 2026-09-22, preserved unchanged. Findings 1, 2 and 3
+are now closed: all three artefacts exist (see
+[Current evidence inventory](#current-evidence-inventory-updated-2026-11-02-issue-128)).*
+
 | #   | Finding                                              | Severity         | Type             | Local / CI-Required / Runtime | Blocking?                 |
 | --- | ---------------------------------------------------- | ---------------- | ---------------- | ----------------------------- | ------------------------- |
 | 1   | `scripts/validate-artifacts.py` absent               | CRITICAL         | Missing file     | Local                         | YES                       |
@@ -324,6 +364,10 @@ Eight cards were created, ordered by dependency:
 ---
 
 ## Verification Commands (Local Evidence)
+
+*The commands below are the original 2026-09-22 checks, preserved unchanged. The three "EXPECT: empty"
+assertions have since been inverted: the artefacts now exist, so a present result is the correct outcome.
+The cyclonedx-py and version-alignment checks are unaffected.*
 
 ```bash
 # Confirm validate-artifacts.py is absent
