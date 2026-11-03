@@ -1,84 +1,86 @@
 #!/usr/bin/env python3
-"""
-scripts/check_mypy_strict.py — Issue #71 mypy Stage-2 CI gate.
+"""Enforce the mypy Stage-2 error-count baseline; a missing baseline fails.
 
-Compares mypy strict-mode error count against the baseline recorded in
-.static_analysis_baseline.toml.  This script demonstrates the target config;
-it is advisory in Stage 1 (exits 2) and becomes a hard gate in Stage 2.
-
-Stage-2 config (planned):
-  disable_error_code = [import-untyped, misc]
-  on: models, policy, registry — 0 errors
-
-Full rollout (Stage-3):
-  Remove most disables; fix remaining errors across all of opsswarm/.
+Issue #71 shipped this script in "advisory" mode: when the baseline artefact
+was absent the script exited 2 and CI carried on. Issue #124 makes the gate
+fail closed, because a gate that can silently degrade is not a gate.
 
 Exits:
-  0  — error count is within baseline (pass)
-  1  — error count EXCEEDS baseline (fail)
-  2  — baseline not reached / advisory mode (degraded)
+  0 - error count is within the recorded baseline (pass)
+  1 - error count exceeds the baseline, or the baseline is missing (fail)
+  2 - mypy itself could not be run, or the baseline is malformed (fail)
 
 Usage:
-    python scripts/check_mypy_strict.py
-    uv run python scripts/check_mypy_strict.py
+  python scripts/check_mypy_strict.py
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BASELINE_FILE = REPO_ROOT / ".static_analysis_baseline.toml"
 
 
-def load_baseline() -> dict | None:
-    if not BASELINE_FILE.exists():
-        return None
-    import tomllib
-
-    with BASELINE_FILE.open("rb") as f:
-        return tomllib.load(f).get("baseline", {}).get("mypy", {})
+class BaselineError(RuntimeError):
+    """The baseline artefact is missing or does not carry the expected keys."""
 
 
-def run_mypy_stage1() -> tuple[int, list[str]]:
-    """Run mypy with Stage-1 config (current pyproject.toml)."""
+def load_baseline() -> dict:
+    """Load the required baseline; absence or corruption is a hard failure."""
+    if not BASELINE_FILE.is_file():
+        raise BaselineError(f"Required baseline not found: {BASELINE_FILE}")
+    with BASELINE_FILE.open("rb") as handle:
+        data = tomllib.load(handle)
+    baseline = data.get("baseline", {}).get("mypy", {})
+    if not isinstance(baseline, dict) or "error_count" not in baseline:
+        raise BaselineError("Baseline must define [baseline.mypy].error_count")
+    return baseline
+
+
+def run_mypy() -> list[str]:
+    """Run mypy over the package and return the error lines it reported."""
     result = subprocess.run(
-        [sys.executable, "-m", "mypy", "opsswarm/"],
+        [sys.executable, "-m", "mypy", "--no-incremental", "opsswarm/"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=300,
+        timeout=600,
     )
-    errors = [
-        line for line in result.stdout.splitlines()
-        if "opsswarm/" in line and ":" in line and "error:" in line
-    ]
-    return result.returncode, errors
+    if result.returncode not in (0, 1):
+        raise RuntimeError(f"mypy exited with {result.returncode}: {result.stderr[:1000]}")
+    return [line for line in result.stdout.splitlines() if ": error:" in line]
 
 
 def main() -> None:
-    baseline = load_baseline()
-    if baseline is None:
-        print(
-            "INFO: .static_analysis_baseline.toml not found. "
-            "Running in advisory mode.",
-            file=sys.stderr,
-        )
+    try:
+        baseline = load_baseline()
+    except BaselineError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        print(f"ERROR: baseline could not be read: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    baseline_count = baseline["error_count"]
+
+    try:
+        errors = run_mypy()
+    except (OSError, RuntimeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(2)
 
-    baseline_count = baseline.get("error_count", -1)
-
-    rc, errors = run_mypy_stage1()
     current_count = len(errors)
 
-    print(f"mypy Stage-1: {current_count} error(s) (baseline: {baseline_count})")
+    print(f"mypy Stage-2: {current_count} error(s) (baseline: {baseline_count})")
 
     if current_count > baseline_count:
         print(f"FAIL: {current_count} > {baseline_count}", file=sys.stderr)
-        for e in errors[:20]:
-            print(f"  {e}", file=sys.stderr)
+        for error in errors[:20]:
+            print(f"  {error}", file=sys.stderr)
         sys.exit(1)
 
     print(f"PASS: within baseline ({current_count} <= {baseline_count})")

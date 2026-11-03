@@ -1,0 +1,35 @@
+# Static analysis baseline - Issue #124.
+#
+# This file is a required CI input. Both gate scripts fail closed when it is
+# missing, so it must never be deleted, renamed or excluded from the repository.
+#
+# Delta policy: the recorded counts are ceilings, not targets. A pull request
+# that keeps the counts at or below these values passes; a pull request that
+# increases them fails CI. Lowering a count is always welcome and must be
+# committed together with the change that caused it.
+
+[baseline.ruff]
+# Measured on the master tree with:
+#   python -m ruff check opsswarm/ tests/ --select=E,F,I,B,RUF --output-format=json
+error_count = 883
+rule_selection = ["E", "F", "I", "B", "RUF"]
+
+[baseline.mypy]
+# Measured with the per-module waiver configuration in pyproject.toml:
+#   python -m mypy --no-incremental opsswarm/
+error_count = 0
+semantic_modules = [
+    "opsswarm.models",
+    "opsswarm.policy",
+    "opsswarm.registry",
+    "opsswarm.orchestrator",
+    "opsswarm.reconciliation",
+    "opsswarm.store",
+    "opsswarm.evidence",
+    "opsswarm.auth",
+    "opsswarm.github_client",
+    "opsswarm.openclaw",
+]
+
+[baseline.bandit]
+high_severity_count = 0

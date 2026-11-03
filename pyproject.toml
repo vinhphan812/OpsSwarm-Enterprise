@@ -87,25 +87,114 @@ line-ending = "lf"
 [tool.mypy]
 python_version = "3.11"
 files = ["opsswarm"]
+# Pin the analysis platform so the enforced error count is identical on the
+# developer workstation and on the Linux CI runner. Without this, mypy resolves
+# `fcntl` vs `msvcrt` differently per OS and the baseline gate becomes flaky.
+platform = "linux"
 ignore_missing_imports = true
 check_untyped_defs = true
 no_implicit_optional = true
 show_error_codes = true
 warn_unused_configs = true
+# Issue #124: the broad global `disable_error_code` list has been removed.
+# Every mypy semantic category is now enabled by default. The remaining
+# waivers are narrowly scoped per module below and each one states why the
+# finding still needs to be resolved.
+disable_error_code = []
+
+# ---------------------------------------------------------------------------
+# Per-module mypy waivers (Issue #124).
+#
+# These are the only modules that still report findings under the full
+# semantic category set. Each waiver is scoped to the specific category and
+# names the reason it is still outstanding. Removing a waiver requires fixing
+# the corresponding finding; adding a new one must record the reason.
+# ---------------------------------------------------------------------------
+
+[[tool.mypy.overrides]]
+# Two HA rate-limiter buckets share a default that mypy cannot narrow to int.
+module = "opsswarm.auth"
+disable_error_code = ["assignment"]
+
+[[tool.mypy.overrides]]
+# A list-typed CLI option is narrowed by the caller, not by the parser.
+module = "opsswarm.cli"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+# PyYAML has no installed stubs, and the config loader returns a loosely typed
+# mapping before validation.
+module = "opsswarm.config"
+disable_error_code = ["arg-type", "import-untyped"]
+
+[[tool.mypy.overrides]]
+# EvidenceStore predates strict typing: the chain signature accepts a generic
+# Mapping, path fields are Optional, and the `list` method name shadows the
+# builtin inside its own annotations.
+module = "opsswarm.evidence"
 disable_error_code = [
     "arg-type",
     "assignment",
     "attr-defined",
-    "call-arg",
-    "import-untyped",
-    "index",
-    "misc",
     "operator",
     "return-value",
     "union-attr",
     "valid-type",
-    "var-annotated",
 ]
+
+[[tool.mypy.overrides]]
+# The HA pool and queue are Optional handles that are resolved lazily.
+module = "opsswarm.ha_db"
+disable_error_code = ["union-attr", "var-annotated"]
+
+[[tool.mypy.overrides]]
+# Markdown node attributes are parsed from untyped front matter.
+module = "opsswarm.markdown"
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+# Prometheus metric labels and counters are accumulated in plain dictionaries
+# that need explicit annotations.
+module = "opsswarm.metrics"
+disable_error_code = ["assignment", "var-annotated"]
+
+[[tool.mypy.overrides]]
+# The orchestrator still uses legacy model field names and Optional incident
+# contexts on the governed remediation path.
+module = "opsswarm.orchestrator"
+disable_error_code = ["arg-type", "assignment", "attr-defined", "call-arg"]
+
+[[tool.mypy.overrides]]
+# The reconciliation record is Optional until it is resolved.
+module = "opsswarm.reconciliation"
+disable_error_code = ["union-attr"]
+
+[[tool.mypy.overrides]]
+# PyYAML has no installed stubs in the current dependency set.
+module = "opsswarm.registry"
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+# Skill metadata is read from an untyped mapping at runtime.
+module = "opsswarm.skill_logic"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+# The run store lock uses platform-specific file locking primitives and
+# resolves the current run record optionally.
+module = "opsswarm.store"
+disable_error_code = ["assignment", "attr-defined"]
+
+[[tool.mypy.overrides]]
+# PyYAML has no installed stubs in the current dependency set.
+module = "opsswarm.tool_allowlist"
+disable_error_code = ["import-untyped"]
+
+[[tool.mypy.overrides]]
+# PyYAML has no installed stubs, and the validator accepts a loosely typed
+# payload before validation.
+module = "opsswarm.validators"
+disable_error_code = ["arg-type", "import-untyped"]
 
 [tool.setuptools.packages.find]
 include = ["opsswarm*"]

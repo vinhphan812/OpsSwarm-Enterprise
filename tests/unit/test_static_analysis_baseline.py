@@ -8,6 +8,8 @@ Run locally before pushing:
     python -m pytest tests/unit/test_static_analysis_baseline.py -v
     python -m ruff check opsswarm/ tests/ --select=E,F,I,B,RUF
     python -m mypy opsswarm/
+
+The gate failure modes live in tests/unit/test_static_analysis_gate_failures.py.
 """
 
 from __future__ import annotations
@@ -95,9 +97,9 @@ def test_ruff_stage2_via_ci_script():
         text=True,
         timeout=180,
     )
-    # Exit 0 = within baseline. Exit 1 = over baseline (or internal error).
-    # Exit 2 = no baseline file found (degraded but not a hard failure).
-    assert result.returncode in (0, 2), (
+    # Issue #124: the gate fails closed. Exit 0 = within baseline.
+    # Exit 1 = over baseline or missing baseline. Exit 2 = the tool could not run.
+    assert result.returncode == 0, (
         f"scripts/check_ruff_full.py failed:\n"
         f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
     )
@@ -140,6 +142,8 @@ def test_mypy_stage1_clean():
         line for line in result.stdout.splitlines()
         if SCRUB_SENTINEL in line and ":" in line
     ]
+    # Issue #124: the semantic categories are enabled globally with per-module
+    # waivers, so the package must type-check cleanly.
     assert result.returncode == 0, (
         f"mypy found {len(errors)} error(s):\n"
         + "\n".join(errors[:30])
