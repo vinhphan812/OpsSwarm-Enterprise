@@ -78,6 +78,11 @@ class Metrics:
         # Rate-limit occurrences (GitHub API throttling)
         self.rate_limited = Counter()  # count
 
+        # Shared rate-limit store degraded (Issue #127) — reason: count
+        # reason is "infrastructure" (the store is unreachable) or
+        # "programming" (the store answered but its schema is not usable).
+        self.rate_limit_degraded = Counter()  # reason: count
+
         # Circuit-breaker state transitions (dependency, state): count
         self.circuit_state_transitions = Counter()
 
@@ -202,6 +207,18 @@ class Metrics:
     def record_rate_limited(self):
         """Record a GitHub API rate-limit (429 / evidenced 403) occurrence."""
         self.rate_limited["total"] += 1
+
+    def record_rate_limit_degraded(self, reason: str = "unknown"):
+        """Record that the shared rate-limit store was not usable (Issue #127).
+
+        ``reason`` is "infrastructure" when the store could not be reached, or
+        "programming" when the store answered but its schema is not usable.
+        The counter makes the degraded mode visible in the metrics endpoint
+        rather than only in the logs.
+        """
+        reason = _safe_label(reason, default="unknown")
+        self.rate_limit_degraded[reason] += 1
+        self._observed_labels.setdefault("rate_limit_degraded", set()).add(reason)
 
     def record_circuit_state(self, dependency: str, state: str):
         """Record a circuit-breaker state transition with cardinality guards.
@@ -333,6 +350,11 @@ class Metrics:
         # ── NEW: dependency resilience (Issue #75) ──────────────────────────
         if self.rate_limited:
             lines.append(f'opsswarm_rate_limited_total {self.rate_limited["total"]}')
+
+        for reason, count in sorted(self.rate_limit_degraded.items()):
+            lines.append(
+                f'opsswarm_rate_limit_degraded_total{{reason="{reason}"}} {count}'
+            )
 
         for (dependency, state), count in sorted(self.circuit_state_transitions.items()):
             lines.append(

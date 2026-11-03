@@ -1157,7 +1157,7 @@ class TestRateLimiterBounded:
 class TestAuthenticatedIdentityQuota:
     """ADR-014-2 D3: Authenticated request gets stable scope-based quota."""
 
-    def test_authenticated_caller_uses_scope_key(self):
+    async def test_authenticated_caller_uses_scope_key(self):
         """Authenticated request should record both IP and scope keys."""
         import opsswarm.auth as auth_module
 
@@ -1167,15 +1167,15 @@ class TestAuthenticatedIdentityQuota:
         auth_module._monitoring_limiter._max_buckets = 1000
 
         # Both IP and scope keys should be recorded
-        auth_module.check_monitoring_rate_limit("203.0.113.99")
-        auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+        await auth_module.check_monitoring_rate_limit_async("203.0.113.99")
+        await auth_module.check_monitoring_rate_limit_async("scope:opsswarm:monitor")
 
         ip_hits = auth_module._monitoring_limiter._hits.get(("203.0.113.99",), [])
         scope_hits = auth_module._monitoring_limiter._hits.get(("scope:opsswarm:monitor",), [])
         assert len(ip_hits) == 1, "IP key should have one hit"
         assert len(scope_hits) == 1, "Scope key should have one hit"
 
-    def test_scope_key_provides_stable_quota_across_ip_spoofing(self):
+    async def test_scope_key_provides_stable_quota_across_ip_spoofing(self):
         """
         An attacker cannot bypass the IP-based rate limit by spoofing many
         different IPs — each IP gets its own bucket.  Authenticated requests
@@ -1189,23 +1189,23 @@ class TestAuthenticatedIdentityQuota:
 
         # Exhaust the IP-based quota for 203.0.113.99
         for _ in range(20):
-            auth_module.check_monitoring_rate_limit("203.0.113.99")
+            await auth_module.check_monitoring_rate_limit_async("203.0.113.99")
 
         # Exhaust the scope-based quota
         for _ in range(20):
-            auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+            await auth_module.check_monitoring_rate_limit_async("scope:opsswarm:monitor")
 
         # Same IP is blocked (quota exhausted)
-        allowed_same_ip, _ = auth_module.check_monitoring_rate_limit("203.0.113.99")
+        allowed_same_ip, _ = await auth_module.check_monitoring_rate_limit_async("203.0.113.99")
         assert not allowed_same_ip, "IP quota for 203.0.113.99 should be exhausted"
 
         # Scope key is blocked (quota exhausted)
-        allowed_scope, _ = auth_module.check_monitoring_rate_limit("scope:opsswarm:monitor")
+        allowed_scope, _ = await auth_module.check_monitoring_rate_limit_async("scope:opsswarm:monitor")
         assert not allowed_scope, "Scope quota should be exhausted"
 
         # A different IP is NOT blocked — it has its own independent quota.
         # This confirms spoofing does not help the attacker.
-        allowed_new_ip, _ = auth_module.check_monitoring_rate_limit("1.2.3.4")
+        allowed_new_ip, _ = await auth_module.check_monitoring_rate_limit_async("1.2.3.4")
         assert allowed_new_ip, "Different IP should have its own independent quota"
 
 

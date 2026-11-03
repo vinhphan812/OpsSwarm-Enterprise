@@ -693,3 +693,9 @@ For local SBOM inspection:
 # Install syft
 syft packages docker:your-registry/opsswarm:v2.2.0 -o spdx-json
 ```
+
+## PostgreSQL-backed rate limiting
+
+When `ha.rate_limit_table_enabled=true`, monitoring requests use the shared PostgreSQL limiter (ADR-031). If Postgres cannot be reached because of a connection or timeout failure, each replica applies a stricter local fallback of 5 requests per source per minute (normal quota: 20/minute); requests over that quota receive HTTP 429. A schema or query defect instead raises a generic server error and is not masked by local fallback. Neither response exposes database error text or connection details.
+
+Monitor `opsswarm_rate_limit_degraded_total{reason="infrastructure"}` for outages and `opsswarm_rate_limit_degraded_total{reason="programming"}` for deployment defects. Infrastructure fallback decisions also produce a WARNING log containing the exception type only. Local fallback is per replica, not a replacement for healthy shared enforcement. See the [HA Coordination Runbook](../runbooks/HA_COORDINATION.md#rate-limit-degraded-mode) and [ADR-031](../adr/ADR-031_HA_COORDINATION.md).

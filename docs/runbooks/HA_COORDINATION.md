@@ -17,7 +17,8 @@
 7. [Rollback Procedure](#rollback-procedure)
 8. [Schema Migrations](#schema-migrations)
 9. [Canary Rollout Procedure](#canary-rollout-procedure)
-10. [Evidence Migration](#evidence-migration)
+10. [Rate-Limit Degraded Mode](#rate-limit-degraded-mode)
+11. [Evidence Migration](#evidence-migration)
 
 ---
 
@@ -581,6 +582,19 @@ ls runtime-data/runs/*.json | wc -l
 # 7. Monitor for 15 minutes
 # 8. If healthy: complete rollout. If not: rollback immediately.
 ```
+
+---
+
+## Rate-Limit Degraded Mode
+
+The shared rate limiter is backed by PostgreSQL under [ADR-031](../adr/ADR-031_HA_COORDINATION.md). Its outage policy was made explicit for Issue #127:
+
+- **Connection or timeout outage:** each process uses a local fallback limited to 5 requests per source per minute (normal quota: 20/minute). This is stricter but not globally coordinated; it prevents an unconditional fail-open.
+- **Schema/query/programming defect:** the request is rejected with a generic `500 Rate limiting is unavailable`. The defect is not hidden by falling back to local state.
+- **Caller response:** infrastructure outages are handled by the local fallback; callers over that fallback receive the normal `429 Rate limit exceeded` response. Programming failures return a generic server error; database messages, hostnames, ports and credentials are not included in response bodies. A programming failure also carries an `X-Correlation-Id` header so the server-side log entry can be located.
+- **Observability:** every degraded decision increments `opsswarm_rate_limit_degraded_total` with `reason="infrastructure"` or `reason="programming"`. Infrastructure fallbacks also emit a WARNING with the exception type only. Alert on increases and inspect the database connectivity/schema before restoring normal shared enforcement.
+
+Verify the metric through the metrics endpoint and inspect the runtime logs. Do not treat a non-zero degraded counter as a healthy distributed rate limit: local fallback quotas are per process.
 
 ---
 

@@ -143,11 +143,6 @@ disable_error_code = [
 ]
 
 [[tool.mypy.overrides]]
-# The HA pool and queue are Optional handles that are resolved lazily.
-module = "opsswarm.ha_db"
-disable_error_code = ["union-attr", "var-annotated"]
-
-[[tool.mypy.overrides]]
 # Markdown node attributes are parsed from untyped front matter.
 module = "opsswarm.markdown"
 disable_error_code = ["union-attr"]
