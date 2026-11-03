@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
 import logging
 import os
 
@@ -218,7 +217,7 @@ async def ready():
     # HA enabled: ha_db is only imported when HA is active.
     # This avoids a hard psycopg dependency in legacy (ha.enabled=false) mode.
     try:
-        ha_db = importlib.import_module("opsswarm.ha_db")  # noqa: F401
+        from . import ha_db  # noqa: F401
     except ImportError as exc:
         raise HTTPException(
             status_code=503,

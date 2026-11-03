@@ -34,7 +34,6 @@ import asyncio
 import hashlib
 import hmac
 import ipaddress
-import importlib
 import logging
 import os
 import re
@@ -222,11 +221,9 @@ class _PgRateLimiter:
             return _monitoring_limiter.is_allowed(source_id)
 
         try:
-            # Resolve the module through importlib so the lookup consults
-            # ``sys.modules`` first.  The base package must work without the
-            # optional ``ha`` extra installed, and the lookup must be
-            # deterministic for callers that substitute the module.
-            ha_db = importlib.import_module("opsswarm.ha_db")
+            # Import here so the base package works without the optional
+            # ``ha`` extra installed.
+            from . import ha_db
         except ImportError as exc:
             # The shared store cannot be used because its driver is not
             # installed.  That is an unavailable store, not a schema defect:
@@ -297,9 +294,7 @@ async def _start_rate_limit_pruner() -> None:
             await asyncio.sleep(3600)  # 1 hour
             cfg = _ha_config()
             if cfg.get("rate_limit_table_enabled"):
-                # importlib consults sys.modules first, so the lookup is
-                # deterministic for callers that substitute the module.
-                ha_db = importlib.import_module("opsswarm.ha_db")
+                from . import ha_db
                 await ha_db.prune_expired_rate_limits()
         except asyncio.CancelledError:
             break
