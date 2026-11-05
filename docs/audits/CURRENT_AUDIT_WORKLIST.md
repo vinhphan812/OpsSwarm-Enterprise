@@ -16,7 +16,7 @@ current specification referenced by production code, or a historical report reta
 
 | Finding | Owning issue | Area | State |
 |---------|--------------|------|-------|
-| Autonomous remediation trusts model risk labels without applying effective risk on the AUTO path; production also omits the required capability registry | [#133](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/133) | Policy / remediation authorisation | In progress; AUTO now requires registry or trusted classifier, unknown operations go to human approval, destructive operations are denied |
+| Autonomous remediation trusts model risk labels without applying effective risk on the AUTO path; production also omits the required capability registry | [#134](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/134) | Policy / remediation authorisation | In review — implementation is in PR [#133](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/133), not yet merged into `master`. On that branch AUTO requires a registry match or a declared operation identity in the operation description, model-supplied capabilities can only escalate risk, compound commands are resolved command by command, unknown operations go to human approval, and destructive operations are denied. |
 
 **This list is exhaustive for the audits covered by this worklist.** There are no further open audit
 findings: the documentation information architecture audit and the Issue #8 release workflow gap analysis

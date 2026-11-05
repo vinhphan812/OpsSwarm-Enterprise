@@ -5,7 +5,7 @@ from typing import cast
 
 from .models import RecoveryPlan, RemediationOption, Risk
 from .registry import _RISK_ORDER, CapabilityRegistry, RegistryResult
-from .trusted_classification import classify_trusted_operation
+from .trusted_classification import classify_trusted_operation, split_operation_segments
 
 # Re-export so callers don't need a second import
 __all__ = ["CapabilityRegistry", "PolicyEngine", "RegistryResult"]
@@ -15,7 +15,7 @@ class PolicyEngine:
     """Deterministic approval policy for remediation options.
 
     The effective risk of an operation is decided by operator-owned sources
-    only (ADR-013, ADR-032):
+    only (ADR-013 D3, amended by Issue #134 / PR #133):
 
       1. a deny-level destructive marker detected by the trusted classifier
          always wins and can never be downgraded by a registry match or a
@@ -56,7 +56,7 @@ class PolicyEngine:
 
         It is no longer part of the risk-resolution path: the trusted
         classifier in `opsswarm.trusted_classification` governs registry
-        misses (ADR-032).
+        misses (ADR-013 D3).
         """
         if not command:
             return Risk.RISKY_WRITE
@@ -92,18 +92,30 @@ class PolicyEngine:
         """Return True when a trusted source authorises autonomous execution.
 
         A capability-registry match always authorises. A classifier result
-        authorises only when the operation carries an explicitly declared
-        operation identity; an unrecognised operation is never authorised and
-        must go through a human approval gate (ADR-032).
+        authorises only when the operation description carries an explicitly
+        declared operation identity; an unrecognised operation is never
+        authorised and must go through a human approval gate (ADR-013 D3,
+        amended by Issue #134 / PR #133).
+
+        Model-supplied capabilities are not an authorisation input: they are
+        model-authored and no operator validates their membership, so they
+        may only raise risk.
+
+        Every chained segment of the operation must be authorised
+        individually, so an allow-listed command cannot authorise a
+        destructive command chained behind it.
         """
-        _, registry_result, _ = self.resolve_effective_risk_for_option(
-            option.id, option.description, option.risk, option.capabilities
-        )
-        if registry_result is not None and registry_result.matched:
-            return True
-        return classify_trusted_operation(
-            option.description, option.capabilities
-        ).declared_operation
+        segments = split_operation_segments(option.description) or [option.description]
+        for segment in segments:
+            segment_registry = (
+                self._registry.lookup(segment) if self._registry is not None else None
+            )
+            if segment_registry is not None and segment_registry.matched:
+                continue
+            if classify_trusted_operation(segment, option.capabilities).declared_operation:
+                continue
+            return False
+        return True
 
     # ------------------------------------------------------------------ #
     # ADR-013 registry integration
@@ -150,45 +162,71 @@ class PolicyEngine:
     ) -> tuple[Risk, RegistryResult | None, Risk | None]:
         """Resolve effective risk for a standalone RemediationOption.
 
-        Precedence (ADR-013 D3, ADR-032):
+        Precedence (ADR-013 D3, amended by Issue #134 / PR #133):
 
-          1. a capability-registry match is authoritative and may raise or
+          1. a deny-level destructive marker always wins — no registry match
+             and no model label can downgrade it;
+          2. a capability-registry match is authoritative and may raise or
              lower the model-supplied label;
-          2. a destructive marker found by the trusted classifier always
-             wins — no registry match and no model label can downgrade it;
           3. otherwise the trusted classifier decides, and an unrecognised
              operation is risky (human approval) rather than model-decided;
           4. the model-supplied label may only raise the resolved risk.
+
+        The operation description is the only model-supplied field that may
+        carry a declared operation identity. Model-supplied capabilities may
+        only raise risk; they never authorise autonomous execution.
+
+        A description that chains several commands is resolved segment by
+        segment and the most severe segment decides the outcome, so an
+        allow-listed command cannot authorise a destructive command chained
+        behind it.
         """
-        trusted = classify_trusted_operation(option_description, capabilities or [])
-        classified_risk = trusted.effective_risk
+        segments = split_operation_segments(option_description) or [option_description]
 
         registry_result: RegistryResult | None = None
-        if self._registry is not None:
-            registry_result = self._registry.lookup(option_description)
+        classified_risk: Risk | None = None
+        effective: Risk | None = None
 
-        if registry_result is not None and registry_result.matched:
-            # The registry is operator-owned and authoritative on a match
-            # (ADR-013 D3): it may raise *and* lower the model-supplied label.
-            effective = registry_result.registry_risk
-            assert effective is not None
-            if trusted.deny_level:
-                # ADR-032: a destructive operation is never re-authorised by an
+        for segment in segments:
+            segment_classified = classify_trusted_operation(segment, capabilities or [])
+            segment_registry = (
+                self._registry.lookup(segment) if self._registry is not None else None
+            )
+            if registry_result is None:
+                # Keep a lookup result for a configured registry even when no
+                # rule matched, so callers can record the evidence.
+                registry_result = segment_registry
+
+            if segment_classified.deny_level:
+                # A destructive operation is never re-authorised by an
                 # allow-list entry, no matter what the registry declares.
-                effective = Risk.DESTRUCTIVE
-            return effective, registry_result, None
+                return Risk.DESTRUCTIVE, segment_registry, segment_classified.effective_risk
 
-        if classified_risk == Risk.DESTRUCTIVE:
-            # A destructive classification is never downgraded by a registry
-            # match or by the model-supplied label.
-            effective = classified_risk
-            if _RISK_ORDER.get(model_risk, -1) > _RISK_ORDER.get(effective, -1):
-                effective = model_risk
-            return effective, registry_result, classified_risk
+            if segment_registry is not None and segment_registry.matched:
+                # The registry is operator-owned and authoritative on a match
+                # (ADR-013 D3): it may raise *and* lower the model-supplied label.
+                segment_effective = segment_registry.registry_risk
+                assert segment_effective is not None
+                segment_classified_risk = None
+                registry_result = segment_registry
+            else:
+                segment_effective = segment_classified.effective_risk
+                segment_classified_risk = segment_classified.effective_risk
+                if model_risk is not None and _RISK_ORDER.get(model_risk, -1) > _RISK_ORDER.get(
+                    segment_effective, -1
+                ):
+                    # A model label may only raise risk, never lower it.
+                    segment_effective = model_risk
 
-        effective = classified_risk
-        if _RISK_ORDER.get(model_risk, -1) > _RISK_ORDER.get(effective, -1):
-            effective = model_risk
+            if effective is None or _RISK_ORDER.get(segment_effective, -1) > _RISK_ORDER.get(
+                effective, -1
+            ):
+                effective = segment_effective
+                classified_risk = segment_classified_risk
+
+        if effective is None:
+            effective = Risk.RISKY_WRITE
+            classified_risk = Risk.RISKY_WRITE
         return effective, registry_result, classified_risk
 
     def resolve_effective_risk_plan(

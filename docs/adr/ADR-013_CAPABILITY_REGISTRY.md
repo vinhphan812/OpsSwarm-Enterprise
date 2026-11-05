@@ -2,7 +2,7 @@
 
 **Status:** Proposed
 **Created:** 2026-09-28
-**Related:** Issue #24, PR #32, ADR-012
+**Related:** Issue #24, PR #32, ADR-012, Issue #134, PR #133
 
 ---
 
@@ -27,18 +27,24 @@ Issue #24 tracks the requirement for a trusted capability registry that makes ap
 deterministic: the operator's declared policy always takes precedence over the model's
 judgment.
 
-**Amendment (ADR-032, Issue #133).** The registry alone is not sufficient. The registry
+**Amendment (Issue #134, PR #133).** The registry alone is not sufficient. The registry
 matches on command text, so it cannot express "this *operation identity* is safe"; it can
-only express "this *text* is safe". Two gaps remained and are now closed:
+only express "this *text* is safe". Three gaps remained and are now closed:
 
 1. A **free-text model label could still authorise autonomous execution** when the
    registry did not match, because the fallback path fell back to `option.risk`.
 2. An **allow-list registry entry could re-authorise a destructive operation**, because
    the registry won unconditionally on a match.
+3. A **model-supplied capability list could authorise autonomous execution**, because
+   `RemediationOption.capabilities` is emitted by the model and its membership in the
+   operator vocabulary was treated as proof of a declared operation identity.
+4. A **registry prefix match could authorise a compound command**, because the pattern
+   was applied to the whole description rather than to each chained command.
 
 The deterministic trusted classifier (`opsswarm/trusted_classification.py`) now governs
-registry misses, the model label can only escalate risk, and a deny-level destructive
-marker vetoes any registry match.
+registry misses, the model label can only escalate risk, a deny-level destructive marker
+vetoes any registry match, model-supplied capabilities can only escalate risk, and a
+description that chains several commands is resolved command by command.
 
 `PolicyEngine.classify_operation()` is retained for backward compatibility as a
 free-text heuristic helper. It is no longer part of the resolution path; the trusted
@@ -190,37 +196,67 @@ The registry is authoritative on a match: it may raise *and* lower the model-sup
 label, and it may reclassify an operation as `safe_write`/`read` even when the model
 called it `risky_write`.
 
-ADR-032 adds one exception to "registry always wins": a **deny-level destructive marker**
+This ADR adds one exception to "registry always wins": a **deny-level destructive marker**
 (data loss, namespace destruction, bulk deletion) is never re-authorised by a registry
 rule. A registry entry that classifies an operation as `risky_write` or `safe_write` cannot
 make an irreversible operation executable, and a human approval cannot override it.
 
 Operations not matched by the registry are resolved by the deterministic trusted
 classifier (`opsswarm/trusted_classification.py`). The classifier is not a free-text
-heuristic: it inspects the declared operation identity (the option's capabilities and the
-operation description) against an operator-owned vocabulary. An operation that is not a
-declared identity is *unknown* and is classified as `risky_write`, which routes it to a
-human approval gate. A model-supplied risk label is never sufficient for autonomous
-execution.
+heuristic: it inspects the operation description against an operator-owned vocabulary and
+inspects destructive and risky markers across the description and the declared
+capabilities. An operation that is not a declared identity is *unknown* and is classified
+as `risky_write`, which routes it to a human approval gate. A model-supplied risk label
+is never sufficient for autonomous execution.
+
+#### Trust boundary: what may authorise autonomous execution
+
+Only two operator-owned sources may authorise autonomous execution:
+
+1. a **capability-registry rule** matched against the operation text; or
+2. the **operation description** being exactly an operator-declared operation identity
+   (a controlled vocabulary term such as `cache.refresh`).
+
+`RemediationOption.capabilities` is **not** an authorisation input. The S3 model emits
+it in the recovery-plan JSON and no operator validates its membership, so a capability
+list that claims a safe identity cannot make an operation safe. Capabilities are inspected
+only for destructive and risky markers, where they can **escalate** risk — never lower it.
+The description is the field that is actually executed, so it is the only model-supplied
+field that may carry a declared operation identity, and the match is exact.
+
+#### Compound commands
+
+A description may chain several commands (`;`, `&&`, `||`, `|`, a newline, a command
+substitution, or a backtick). A registry rule in `prefix` mode matches the beginning of
+the text, so matching the whole description would let an allow-listed first command
+authorise a destructive command chained behind it. The description is therefore split into
+its individual command segments (separators inside quotes are ignored), each segment is
+resolved independently, and the most severe segment decides the outcome. Autonomous
+execution additionally requires **every** segment to be authorised individually.
 
 #### Precedence pseudocode
 
 ```python
 def resolve_risk(option: RemediationOption, registry: CapabilityRegistry) -> Risk:
-    # Step 0: deny-level destructive markers are never re-authorised
-    trusted = classify_trusted_operation(option.description, option.capabilities)
-    if trusted.deny_level:
-        return Risk.DESTRUCTIVE
+    effective = None
+    for segment in split_operation_segments(option.description):
+        trusted = classify_trusted_operation(segment, option.capabilities)
+        if trusted.deny_level:
+            # Step 0: deny-level destructive markers are never re-authorised
+            return Risk.DESTRUCTIVE
 
-    # Step 1: registry override (always wins on match)
-    registry_result = registry.lookup(option.description)
-    if registry_result is not None and registry_result.matched:
-        return registry_result.registry_risk
+        # Step 1: registry override (always wins on match, per segment)
+        registry_result = registry.lookup(segment)
+        if registry_result is not None and registry_result.matched:
+            segment_effective = registry_result.registry_risk
+        else:
+            # Step 2: trusted classifier, then the model label may only raise
+            segment_effective = trusted.effective_risk
+            if _RISK_ORDER[option.risk] > _RISK_ORDER[segment_effective]:
+                segment_effective = option.risk
 
-    # Step 2: trusted classifier (fallback for unregistered operations)
-    effective = trusted.effective_risk
-    if _RISK_ORDER[option.risk] > _RISK_ORDER[effective]:
-        effective = option.risk
+        if effective is None or _RISK_ORDER[segment_effective] > _RISK_ORDER[effective]:
+            effective = segment_effective
     return effective
 ```
 
@@ -296,7 +332,7 @@ Evidence entries are appended via the existing `EvidenceStore.append()` mechanis
 |----|----------|-----------|
 | D1 | `config/capability-registry.yaml`, path configurable via `capability_registry.path` in `production.yaml` | Operator-authored policy separate from code; uses existing config infrastructure |
 | D2 | YAML schema with `version`, `rules[].id`, `canonical_operation`, `pattern`, `pattern_mode`, `risk` | Matches existing YAML conventions; extensible without breaking existing entries |
-| D3 | Registry wins on match, except that a deny-level destructive marker vetoes the match; deterministic trusted classification is the next authority; model risk can only escalate, never authorise | Deterministic approval requires operator policy as source of truth |
+| D3 | Registry wins on match, except that a deny-level destructive marker vetoes the match; deterministic trusted classification is the next authority; model risk can only escalate, never authorise. Model-supplied capabilities are not an authorisation input (they can only escalate risk), and a compound command is resolved command by command | Deterministic approval requires operator policy as source of truth; a model-authored claim must never authorise execution |
 | D4 | Git-tracked, PR-reviewed, startup validation, no hot reload; production registry required | Policy-as-code discipline; missing production policy blocks autonomous execution |
 | D5 | Missing production registry blocks startup; unmatched operation is classified conservatively; unknown requires approval; destructive is denied | Model-supplied risk is never sufficient for autonomous execution |
 

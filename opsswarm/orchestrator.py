@@ -501,7 +501,7 @@ class Orchestrator:
                 )
             )
             effective_action = self.policy.action(effective_risk)
-            # ADR-032: a model-provided risk label is never sufficient
+            # ADR-013 D3: a model-provided risk label is never sufficient
             # authorisation. Autonomous execution additionally requires that a
             # trusted source recognises the operation: either a capability
             # registry match or an explicitly declared operation identity.
@@ -914,7 +914,7 @@ class Orchestrator:
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
             if not option: raise ValueError(f"Unknown option id: {command.argument}")
 
-            # ADR-032: re-resolve trusted risk before honouring approval; a
+            # ADR-013 D3: re-resolve trusted risk before honouring approval; a
             # human approval cannot override a destructive DENY.
             effective_risk, registry_result, classified_risk = (
                 self.policy.resolve_effective_risk_for_option(

@@ -7,13 +7,13 @@ def engine(): return PolicyEngine(
 
 
 def test_single_safe_auto():
-    # ADR-032: autonomous execution needs a declared operation identity.
+    # ADR-013 D3: autonomous execution needs a declared operation identity.
     p = RecoveryPlan(options=[RemediationOption(id='x', description='cache.refresh', risk=Risk.SAFE_WRITE)])
     assert engine().classify_plan(p)[0] == 'AUTO'
 
 
 def test_single_undeclared_operation_requires_approval():
-    """ADR-032: a model risk label alone never authorises autonomous execution."""
+    """ADR-013 D3: a model risk label alone never authorises autonomous execution."""
     p = RecoveryPlan(options=[RemediationOption(id='x', description='safe', risk=Risk.SAFE_WRITE)])
     assert engine().classify_plan(p)[0] == 'APPROVAL'
 
