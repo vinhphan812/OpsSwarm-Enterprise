@@ -16,14 +16,13 @@ current specification referenced by production code, or a historical report reta
 
 | Finding | Owning issue | Area | State |
 |---------|--------------|------|-------|
-| _None. This worklist currently records no open audit findings._ | - | - | - |
+| Autonomous remediation trusts model risk labels without applying effective risk on the AUTO path; production also omits the required capability registry | [#134](https://github.com/vinhphan812/OpsSwarm-Enterprise/issues/134) | Policy / remediation authorisation | In review — implementation is in PR [#133](https://github.com/vinhphan812/OpsSwarm-Enterprise/pull/133), not yet merged into `master`. On that branch AUTO requires a registry match or a declared operation identity in the operation description, model-supplied capabilities can only escalate risk, compound commands are resolved command by command, unknown operations go to human approval, and destructive operations are denied. |
 
 **This list is exhaustive for the audits covered by this worklist.** There are no further open audit
 findings: the documentation information architecture audit and the Issue #8 release workflow gap analysis
 both have an empty open-finding set (see below).
 
-The findings previously listed here have all been resolved and their owning issues closed, so they are
-no longer restated as open work:
+The policy / remediation authorisation finding above is a live work item and is not covered by the historical audits listed here.
 
 | Former finding | Owning issue | Resolution |
 |----------------|--------------|------------|

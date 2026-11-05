@@ -4,9 +4,8 @@
 
 import pytest
 
-from opsswarm.models import Risk, RemediationOption, RecoveryPlan
+from opsswarm.models import RecoveryPlan, RemediationOption, Risk
 from opsswarm.policy import PolicyEngine
-
 
 # === NORMAL (8 tests) ===
 
@@ -180,7 +179,7 @@ def test_policy_classify_read_risk():
     """Risk-F5: PolicyEngine classifies read as AUTO"""
     engine = PolicyEngine({"policy": {"read": "AUTO"}})
     plan = RecoveryPlan(
-        options=[RemediationOption(id="opt1", description="Monitor", risk=Risk.READ)]
+        options=[RemediationOption(id="opt1", description="metrics.read", risk=Risk.READ)]
     )
 
     result, _ = engine.classify_plan(plan)
@@ -192,7 +191,7 @@ def test_policy_classify_safe_write():
     """Risk-F6: PolicyEngine classifies safe_write as AUTO"""
     engine = PolicyEngine({"policy": {"safe_write": "AUTO"}})
     plan = RecoveryPlan(
-        options=[RemediationOption(id="opt1", description="Safe fix", risk=Risk.SAFE_WRITE)]
+        options=[RemediationOption(id="opt1", description="cache.refresh", risk=Risk.SAFE_WRITE)]
     )
 
     result, _ = engine.classify_plan(plan)

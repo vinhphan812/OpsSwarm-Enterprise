@@ -26,6 +26,10 @@ openclaw:
     recovery-responder: opsswarm-recovery-responder
     communications-postmortem: opsswarm-communications-postmortem
 
+capability_registry:
+  path: "config/capability-registry.yaml"
+  required: true
+
 policy:
   read: AUTO
   safe_write: AUTO

@@ -15,7 +15,7 @@ def issue(): return {'number': 1, 'title': '[Incident] fails', 'body': '...',
 @pytest.mark.asyncio
 async def test_webhook_idempotency(tmp_path, cfg, issue):
     responses = investigation_and_rca() + [
-        {'options': [{'id': 'fix', 'description': 'fix it', 'profile': 'recovery-responder', 'risk': 'safe_write'}], 'recommended_option': 'fix'},
+        {'options': [{'id': 'fix', 'description': 'cache.refresh', 'profile': 'recovery-responder', 'risk': 'safe_write'}], 'recommended_option': 'fix'},
         {'option_id': 'fix', 'success': True, 'summary': 'fixed', 'evidence': ['r1'], 'ambiguous': False, 'raw': {}},
         {'verified': True, 'summary': 'service healthy', 'evidence': ['sli:ok'], 'confidence': 0.99, 'raw': {}}
     ]

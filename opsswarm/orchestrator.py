@@ -494,9 +494,36 @@ class Orchestrator:
         action, reason = self.policy.classify_plan(run.recovery_plan)
         metrics.record_policy_action(action)
         if action == "AUTO":
-            option = run.recovery_plan.options[0];
-            await self._execute_option(run, option);
-            return
+            option = run.recovery_plan.options[0]
+            effective_risk, registry_result, classified_risk = (
+                self.policy.resolve_effective_risk_for_option(
+                    option.id, option.description, option.risk, option.capabilities
+                )
+            )
+            effective_action = self.policy.action(effective_risk)
+            # ADR-013 D3: a model-provided risk label is never sufficient
+            # authorisation. Autonomous execution additionally requires that a
+            # trusted source recognises the operation: either a capability
+            # registry match or an explicitly declared operation identity.
+            if not self.policy.authorises_autonomous_execution(option):
+                effective_action = "HUMAN_APPROVAL"
+                reason = "Unknown operation requires human approval"
+            elif effective_action == "AUTO" and effective_risk not in {
+                Risk.READ,
+                Risk.SAFE_WRITE,
+            }:
+                effective_action = "DENY"
+                reason = f"Untrusted risk cannot execute automatically ({effective_risk.value})"
+
+            if effective_action == "AUTO":
+                await self._execute_option(run, option)
+                return
+            if effective_action == "HUMAN_APPROVAL":
+                action = "APPROVAL"
+                reason = f"Trusted effective risk requires approval ({effective_risk.value})"
+            else:
+                action = "DENY"
+                reason = f"Policy denies effective risk ({effective_risk.value})"
         if action in {"APPROVAL", "DECISION", "INPUT"}:
             kind = {"APPROVAL": "APPROVAL", "DECISION": "DECISION", "INPUT": "INPUT"}[action]
             run.decision = DecisionRequest(id=f"DEC-{run.issue_number}-{uuid.uuid4().hex[:6]}", kind=kind,
@@ -887,12 +914,14 @@ class Orchestrator:
             option = next((o for o in run.recovery_plan.options if o.id == command.argument), None)
             if not option: raise ValueError(f"Unknown option id: {command.argument}")
 
-            # ADR-013: resolve effective risk via trusted registry first.
-            # Precedence: registry match (always wins) → classify_operation (escalation only)
-            #   → model-supplied label (fallback).
+            # ADR-013 D3: re-resolve trusted risk before honouring approval; a
+            # human approval cannot override a destructive DENY.
             effective_risk, registry_result, classified_risk = (
                 self.policy.resolve_effective_risk_for_option(
-                    option.id, option.description, option.risk
+                    option.id,
+                    option.description,
+                    option.risk,
+                    option.capabilities,
                 )
             )
 
@@ -900,7 +929,7 @@ class Orchestrator:
             # Even when no rule matched, recording the lookup provides an audit trail of
             # what the system considered. We record it only when there was a meaningful
             # override or a non-trivial fallback path.
-            if registry_result is not None or classified_risk is not None:
+            if registry_result is not None or classified_risk is not None or effective_risk != option.risk:
                 evidence_payload: dict[str, Any] = {
                     "option_id": option.id,
                     "model_risk": option.risk.value,

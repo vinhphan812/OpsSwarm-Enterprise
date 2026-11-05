@@ -77,7 +77,7 @@ def test_classify_plan_single_auto():
         {"policy": {"safe_write": "AUTO"}}
     )
     plan = RecoveryPlan(
-        options=[RemediationOption(id="x", description="safe", risk=Risk.SAFE_WRITE)]
+        options=[RemediationOption(id="x", description="cache.refresh", risk=Risk.SAFE_WRITE)]
     )
     code, msg = eng.classify_plan(plan)
     assert code == "AUTO"

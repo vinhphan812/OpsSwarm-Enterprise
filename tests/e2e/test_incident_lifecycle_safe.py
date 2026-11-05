@@ -19,7 +19,7 @@ def issue(): return {'number': 1, 'title': '[Incident] booking fails',
 async def test_incident_lifecycle_safe(tmp_path, cfg, issue):
     responses = investigation_and_rca() + [
         {'options': [
-            {'id': 'refresh', 'description': 'refresh cache', 'profile': 'recovery-responder', 'risk': 'safe_write',
+            {'id': 'refresh', 'description': 'cache.refresh', 'profile': 'recovery-responder', 'risk': 'safe_write',
              'estimated_recovery': '1m', 'rationale': 'safe', 'capabilities': ['cache.refresh']}],
             'recommended_option': 'refresh', 'confidence': 0.9, 'requires_business_input': False,
             'business_input_question': None},

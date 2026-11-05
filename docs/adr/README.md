@@ -22,7 +22,7 @@ This directory contains Architectural Decision Records for the OpsSwarm project.
 | [010](ADR-010_SECURITY_WORKFLOW_AND_POLICY.md)   | Security Workflow and Policy   | Approved | #7 CI gate                                      |
 | [011](ADR-011_SKILL_ARTEFACT_CONTRACT.md) | Skill Artifact Contract        | Approved | #2, #6                                     |
 | [012](ADR-012_COMMAND_OUTCOME_MODEL.md) | Command Outcome Model          | Approved | #9 reliability (CONFIRMED/ABSENT/UNKNOWN) |
-| [013](ADR-013_CAPABILITY_REGISTRY.md)  | Trusted Capability Registry    | Proposed | #24 deterministic approval                 |
+| [013](ADR-013_CAPABILITY_REGISTRY.md)  | Trusted Capability Registry    | Proposed | #24 deterministic approval; amended by #134 (PR #133) for the model-claim and compound-command trust boundary |
 | [014](ADR-014_RUNTIME_API_AUTHENTICATION.md) | Runtime API Authentication, Scopes, and Ingress Controls | Accepted | #21 authn/authz for Runtime API and monitoring ingress |
 | [014-2](ADR-014-2_PROXY_AWARE_INGRESS.md) | Proxy-Aware Ingress for /hooks/monitoring | Accepted | #85 proxy-aware ingress; partially supersedes ADR-014 §D5 |
 | [015](ADR-015_TWO_PHASE_PLAN_WORKFLOW.md) | Two-Phase Plan: Immediate Remediation vs. Deferred RCA | Accepted | #43 Plan_Remediation vs Plan_RCA; `PLAN_RCA`/`PLAN_RCA_RESOLVED` states; budget separation |

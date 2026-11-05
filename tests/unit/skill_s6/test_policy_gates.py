@@ -17,7 +17,10 @@ def make_config(policy: dict) -> dict:
 def make_option(risk: Risk = Risk.SAFE_WRITE, opt_id: str = "opt-1") -> RemediationOption:
     """Factory for test remediation option."""
     return RemediationOption(
-        id=opt_id, description="Test option", risk=risk, estimated_recovery="5 minutes"
+        id=opt_id,
+        description="metrics.read" if risk == Risk.READ else "cache.refresh",
+        risk=risk,
+        estimated_recovery="5 minutes",
     )
 
 
